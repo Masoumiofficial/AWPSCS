@@ -61,6 +61,8 @@ class Activator {
             delete_option('apex_omega_evergreen');
             delete_option('apex_omega_autowatch');
             delete_option('apex_omega_autowatch_last_run');
+            delete_option('apex_omega_commentor');
+            delete_option('apex_omega_commentor_last_run');
             delete_option('apex_omega_artist_weights');
             delete_option('apex_omega_artist_taxonomy');
             delete_option('apex_omega_artist_external_cache');

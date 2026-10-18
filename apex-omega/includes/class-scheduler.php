@@ -305,6 +305,10 @@ class Scheduler {
         if (class_exists('\\ApexOmega\\Core\\Evergreen')) {
             try { \ApexOmega\Core\Evergreen::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Evergreen tick error: '.$e->getMessage()); }
         }
+        // 💬 نگهبان کامنت هوشمند — روزانه/هر تیک (مثل AutoWatch)
+        if (class_exists('\\ApexOmega\\Core\\CommentGuardian')) {
+            try { \ApexOmega\Core\CommentGuardian::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Commentor tick error: '.$e->getMessage()); }
+        }
     }
 
     /**

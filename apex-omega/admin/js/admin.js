@@ -208,6 +208,15 @@ jQuery(function($){
       else $('#apex-autowatch-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
     }).fail(function(xhr){ $('#apex-autowatch-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره نگهبان'));
   });
+  // commentor
+  $(document).on('click','#apex-commentor-save',function(e){
+    e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('ذخیره…');
+    const enabled=$('#apex-commentor-enabled').is(':checked')?1:0, threshold=parseInt($('#apex-commentor-threshold').val())||10000, minc=parseInt($('#apex-commentor-min').val())||2, maxc=parseInt($('#apex-commentor-max').val())||4, daily=parseInt($('#apex-commentor-daily').val())||2, maxpost=parseInt($('#apex-commentor-maxpost').val())||60, batch=parseInt($('#apex-commentor-batch').val())||20, recent=parseInt($('#apex-commentor-recent').val())||60;
+    $.post(getAjax(),{action:'apex_save_commentor',_ajax_nonce:getNonce(),enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent},function(res){
+      if(res.success) $('#apex-commentor-result').text('✅ '+res.data.message+' — آستانه '+res.data.settings.threshold).css('color','#065f46');
+      else $('#apex-commentor-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
+    }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💬 ذخیره نگهبان کامنت'));
+  });
   // rhythm — live % update
   $(document).on('input','#apex-rhythm-artist-ratio',function(){ const v=parseInt($(this).val()||85); $('#apex-rhythm-artist-val').text(v+'%'); $('#apex-rhythm-title-val').text((100-v)+'%'); });
   $(document).on('click','#apex-rhythm-save',function(e){

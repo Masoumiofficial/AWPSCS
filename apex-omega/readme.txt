@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.6.2
+Stable tag: 1.7.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 1.7.0 =
+* 💬 نگهبان کامنت هوشمند — کامنت‌گذاری خودکار ایرانی با نام‌های انگلیسی‌نویسی (200 نام + 200 فامیل با ترکیب اسم1+فامیل5 و سه فرمت فقط‌اسم/فقط‌فامیل/کامل 20/20/60) — کامنت AI مرتبط به خواننده/عنوان با fallback فارسی per tier (ساده/تحسین/هیجانی با ایموجی) — منطق هوشمند: <10K → 2-3 معمولی، 10K-100K→5-10، 100K-500K→12-25، 500K-1.5M→30-60 با همبستگی وزن خواننده + سقف 60 + cooldown 24h + batch 20 هر 5دقیقه + رشد روزانه پرطرفدار 1-3 — کاملاً set-and-forget با کارت بنفش در توزیع هوشمند.
 
 = 1.6.2 =
 * 🚀 حسابرسی کامل همه دکمه‌ها — درخواست 2026-10-18: تمام 15+ دکمهٔ توزیع هوشمند که کار نمی‌کردند فیکس شدند: type=button برای همهٔ دکمه‌های Ajax (جلوگیری از submit ناخواسته)، getNonce/getAjax قوی با fallback به _wpnonce/hidden + ajaxurl، هندلر جامع vanilla مستقل از کش/minify jQuery برای پیش‌نمایش/اعمال/پریست‌ها/هرم/مساوی/صفر/±/AI/ذخیره تاکسونومی/ذخیره آرتیست/AI+IR/Evergreen/AutoWatch/Rhythm/Undo + نمایش هشدار نانس خالی + فیکس pause/resume/cancel/rollback با پیام خطای واضح + حذف اکشن نامعتبر apex_tier_save.

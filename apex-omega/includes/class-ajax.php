@@ -32,6 +32,7 @@ class Ajax {
             'apex_save_evergreen',
             'apex_save_rhythm',
             'apex_save_autowatch',
+            'apex_save_commentor',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -129,6 +130,9 @@ class Ajax {
                 break;
             case 'apex_save_autowatch':
                 self::save_autowatch();
+                break;
+            case 'apex_save_commentor':
+                self::save_commentor();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -554,5 +558,20 @@ class Ajax {
         $data = array_filter($data, function($v){ return $v !== null; });
         \ApexOmega\Core\AutoWatch::save_settings($data);
         wp_send_json_success(['message'=>'نگهبان ذخیره شد','settings'=>\ApexOmega\Core\AutoWatch::get_settings()]);
+    }
+    private static function save_commentor(): void {
+        $data = [
+            'enabled' => isset($_POST['enabled']) ? !empty($_POST['enabled']) : null,
+            'threshold' => isset($_POST['threshold']) ? (int)$_POST['threshold'] : null,
+            'min_comments' => isset($_POST['min_comments']) ? (int)$_POST['min_comments'] : null,
+            'max_comments' => isset($_POST['max_comments']) ? (int)$_POST['max_comments'] : null,
+            'daily_growth' => isset($_POST['daily_growth']) ? (int)$_POST['daily_growth'] : null,
+            'max_per_post' => isset($_POST['max_per_post']) ? (int)$_POST['max_per_post'] : null,
+            'batch' => isset($_POST['batch']) ? (int)$_POST['batch'] : null,
+            'only_recent_days' => isset($_POST['only_recent_days']) ? (int)$_POST['only_recent_days'] : null,
+        ];
+        $data = array_filter($data, function($v){ return $v !== null; });
+        \ApexOmega\Core\CommentGuardian::save_settings($data);
+        wp_send_json_success(['message'=>'نگهبان کامنت ذخیره شد','settings'=>\ApexOmega\Core\CommentGuardian::get_settings()]);
     }
 }

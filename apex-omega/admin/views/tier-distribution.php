@@ -240,6 +240,34 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       </div>
       <small>💡 خواننده تازه‌کار (وزن <30) → 500-3000، ویژه (≥85) → تا 1.6× بیشتر + Evergreen هر تیک صعودی. امتیاز هم همبسته (10-150 رأی، 3.3-5.0⭐).</small>
     </div>
+    <?php $commentor = \ApexOmega\Core\CommentGuardian::get_settings(); $cm_enabled = !empty($commentor['enabled']); $cm_last = get_option('apex_omega_commentor_last_run', []); ?>
+    <div class="apex-card" style="margin:12px 0; background:#faf5ff; border:1px solid #9333ea; border-right:4px solid #9333ea;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h4 style="margin:0;color:#6b21a8;">💬 نگهبان کامنت هوشمند — کامنت‌گذاری خودکار ایرانی  ✅ جدید v1.7.0</h4>
+          <small style="color:#581c87;">برای هر آهنگ بر اساس وزن خواننده + بازدید، کامنت فارسی مرتبط (AI) با نام ایرانی انگلیسی (Arad Moradi) می‌گذارد — تازه‌کار 2-3 تا معمولی، پرطرفدار تا 60 تا بازارم با رشد روزانه. کاملاً طبیعی.</small>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #9333ea;border-radius:999px;padding:6px 14px;font-weight:800;cursor:pointer;">
+          <input type="checkbox" id="apex-commentor-enabled" <?php checked($cm_enabled,true); ?>> فعال
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px;align-items:end;">
+        <label>آستانه تازه (بازدید کمتر از):<br><input type="number" id="apex-commentor-threshold" min="1000" max="50000" step="1000" value="<?php echo esc_attr($commentor['threshold']); ?>" style="width:100%;"></label>
+        <label>حداقل کامنت تازه:<br><input type="number" id="apex-commentor-min" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['min_comments']); ?>" style="width:100%;"></label>
+        <label>حداکثر کامنت تازه:<br><input type="number" id="apex-commentor-max" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['max_comments']); ?>" style="width:100%;"></label>
+        <label>رشد روزانه پرطرفدار:<br><input type="number" id="apex-commentor-daily" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['daily_growth']); ?>" style="width:100%;"></label>
+        <label>سقف هر پست:<br><input type="number" id="apex-commentor-maxpost" min="10" max="100" step="5" value="<?php echo esc_attr($commentor['max_per_post']); ?>" style="width:100%;"></label>
+        <label>هر تیک چند پست:<br><input type="number" id="apex-commentor-batch" min="5" max="50" step="1" value="<?php echo esc_attr($commentor['batch']); ?>" style="width:100%;"></label>
+        <label>فقط پست‌های چند روز اخیر:<br><input type="number" id="apex-commentor-recent" min="0" max="365" step="1" value="<?php echo esc_attr($commentor['only_recent_days']); ?>" style="width:100%;"> <small>0=همه</small></label>
+        <button type="button" id="apex-commentor-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💬 ذخیره نگهبان کامنت</button>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+        <small style="color:#6b7280;">هر <code>apex_omega_tick</code> (5 دقیقه) تا <span id="apex-commentor-batch-hint"><?php echo esc_html($commentor['batch']); ?></span> پست چک می‌شود — cooldown 24ساعته هر پست.</small>
+        <span id="apex-commentor-result" style="font-weight:700;"></span>
+        <?php if (!empty($cm_last['at'])): ?><small style="color:#065f46;">آخرین اجرا: <?php echo esc_html($cm_last['at']); ?> — <?php echo esc_html($cm_last['posts']); ?> پست → <?php echo esc_html($cm_last['comments']); ?> کامنت <code><?php echo esc_html(substr($cm_last['exec']??'',0,8)); ?></code></small><?php endif; ?>
+      </div>
+      <small>💡 نام‌گذاری: 200 نام + 200 فامیل ایرانی (Arad/Moradi) با ترکیب اسم1+فامیل5 و سه فرمت (فقط اسم/فقط فامیل/کامل 20/20/60) — کامنت AI مرتبط به خواننده، fallback فارسی per tier (ساده/تحسین/هیجانی).</small>
+    </div>
     <script>
     // 🚀 فیکس جامع 1.6.2 — همه دکمه‌های توزیع هوشمند بدون وابستگی به کش/مینیفایر jQuery
     (function(){
@@ -279,6 +307,16 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
             if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46';}}
             else if(resEl){resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b';}
           }).catch(function(err){ if(resEl){resEl.textContent='❌ خطا: '+err; resEl.style.color='#991b1b';}}).finally(function(){ btn.disabled=false; btn.textContent='💾 ذخیره نگهبان'; });
+        });
+        // Commentor
+        bindOnce('apex-commentor-save', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
+          var enabled=qs('apex-commentor-enabled')?.checked?1:0, threshold=parseInt(qs('apex-commentor-threshold')?.value)||10000, minc=parseInt(qs('apex-commentor-min')?.value)||2, maxc=parseInt(qs('apex-commentor-max')?.value)||4, daily=parseInt(qs('apex-commentor-daily')?.value)||2, maxpost=parseInt(qs('apex-commentor-maxpost')?.value)||60, batch=parseInt(qs('apex-commentor-batch')?.value)||20, recent=parseInt(qs('apex-commentor-recent')?.value)||60;
+          var resEl=qs('apex-commentor-result'); if(resEl) resEl.textContent='در حال ذخیره…';
+          apexPost('apex_save_commentor',{enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent}).then(function(j){
+            if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46';}}
+            else if(resEl){resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b';}
+          }).catch(function(err){ if(resEl){resEl.textContent='❌ خطا: '+err; resEl.style.color='#991b1b';}}).finally(function(){ btn.disabled=false; btn.textContent='💬 ذخیره نگهبان کامنت'; });
         });
         // Rhythm
         bindOnce('apex-rhythm-save', function(btn){
