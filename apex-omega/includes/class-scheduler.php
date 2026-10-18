@@ -15,6 +15,23 @@ class Scheduler {
         if (!wp_next_scheduled('apex_omega_cleanup')) {
             wp_schedule_event(time(), 'daily', 'apex_omega_cleanup');
         }
+        // خودترمیم: اگر رویداد اصلی حذف یا تکی شده بود، دوباره بساز (مهم برای بعد از غیرفعال/فعال یا دستکاری WP Crontrol)
+        add_action('init', [__CLASS__, 'maybe_heal_cron'], 20);
+        add_action('admin_init', [__CLASS__, 'maybe_heal_cron'], 20);
+    }
+
+    public static function maybe_heal_cron(): void {
+        // فقط در پیشخوان یا هر init، سبک و idempotent
+        if (!wp_next_scheduled(self::CRON_HOOK)) {
+            self::ensure_cron();
+            return;
+        }
+        // اگر به‌اشتباه به‌صورت non-repeating ثبت شده (توسط WP Crontrol دستی)
+        $sched = wp_get_schedule(self::CRON_HOOK);
+        if ($sched !== self::CRON_INTERVAL) {
+            wp_clear_scheduled_hook(self::CRON_HOOK);
+            self::ensure_cron();
+        }
     }
 
     public static function add_cron_schedules(array $schedules): array {
@@ -26,7 +43,15 @@ class Scheduler {
     }
 
     public static function ensure_cron(): void {
-        if (!wp_next_scheduled(self::CRON_HOOK)) {
+        $ts = wp_next_scheduled(self::CRON_HOOK);
+        if (!$ts) {
+            wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+            return;
+        }
+        // اگر تکی ثبت شده بود (wp_get_schedule === false)، پاک و بازسازی
+        $sched = wp_get_schedule(self::CRON_HOOK);
+        if ($sched !== self::CRON_INTERVAL) {
+            wp_clear_scheduled_hook(self::CRON_HOOK);
             wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
         }
     }

@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,10 +57,12 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 
 == Changelog ==
 
-= 1.0.0 =
+= 1.0.1 =
+* فیکس خودترمیم Cron: اگر `apex_omega_tick` به‌صورت تکی (non-repeating) در WP Crontrol ساخته شد یا حذف شد، در هر `init/admin_init` دوباره به‌صورت `هر ۵ دقیقه` بازسازی می‌شود. پیام «رویداد زمان‌بندی فعال نیست» دیگر با یک رفرش حل می‌شود.
 
+= 1.0.0 =
 * انتشار اولیه — مدیریت views + kksr + زمان‌بندی + تاریخچه + امنیت + RTL
 
 == Upgrade Notice ==
 
-از 0 به 1.0.0: نصب تازه، جداول ساخته می‌شوند.
+از 0 به 1.0.1: نصب تازه، جداول ساخته می‌شوند. آپدیت از 1.0.0: فقط نسخه، بدون مهاجرت DB.
