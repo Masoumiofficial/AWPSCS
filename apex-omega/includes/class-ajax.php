@@ -14,6 +14,11 @@ class Ajax {
             'apex_cancel_schedule',
             'apex_rollback',
             'apex_bulk_apply',
+            'apex_tier_save',
+            'apex_preview_tier',
+            'apex_apply_tier',
+            'apex_ai_suggest',
+            'apex_ai_save',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -57,6 +62,18 @@ class Ajax {
                 break;
             case 'apex_bulk_apply':
                 self::bulk_apply();
+                break;
+            case 'apex_preview_tier':
+                self::preview_tier();
+                break;
+            case 'apex_apply_tier':
+                self::apply_tier();
+                break;
+            case 'apex_ai_suggest':
+                self::ai_suggest();
+                break;
+            case 'apex_ai_save':
+                self::ai_save();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -299,5 +316,85 @@ class Ajax {
         }
 
         wp_send_json_success(['success_count'=>$success_count, 'errors'=>$errors, 'execution_id'=>$exec]);
+    }
+
+    private static function preview_tier(): void {
+        $counts = $_POST['counts'] ?? [];
+        if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
+        // ممکن است به صورت counts[tier_1]=5 بیاید
+        if (empty($counts) && isset($_POST['counts'])) {
+            // حالت fallback: $_POST['counts'] آرایه PHP است
+            $counts = (array) $_POST['counts'];
+        }
+        // sanitize
+        $clean = [];
+        foreach ((array)$counts as $k=>$v) {
+            $k = sanitize_text_field($k);
+            $clean[$k] = max(0, (int)$v);
+        }
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+        ];
+        $res = \ApexOmega\Core\TierManager::preview_distribution($clean, $filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+
+    private static function apply_tier(): void {
+        $counts = $_POST['counts'] ?? [];
+        if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
+        $clean = [];
+        foreach ((array)$counts as $k=>$v) {
+            $k = sanitize_text_field($k);
+            $clean[$k] = max(0, (int)$v);
+        }
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+        ];
+        // ذخیره حالت خودکار
+        $auto_enable = !empty($_POST['auto_enable']);
+        if ($auto_enable) {
+            update_option('apex_omega_auto_tier', ['enabled'=>true, 'counts'=>$clean, 'filters'=>$filters, 'updated_at'=>current_time('mysql', true)], false);
+            \ApexOmega\Core\TierManager::schedule_auto();
+        } else {
+            // اگر تیک برداشته شد
+            $auto = get_option('apex_omega_auto_tier', []);
+            if (!empty($auto['enabled'])) {
+                update_option('apex_omega_auto_tier', ['enabled'=>false], false);
+                \ApexOmega\Core\TierManager::unschedule_auto();
+            }
+        }
+        $res = \ApexOmega\Core\TierManager::apply_distribution($clean, $filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+
+    private static function ai_suggest(): void {
+        global $wpdb;
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+        $tiers = \ApexOmega\Core\TierManager::get_tiers();
+        $res = \ApexOmega\Core\AI_Helper::suggest_distribution($total, $tiers);
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
+    }
+
+    private static function ai_save(): void {
+        $data = [
+            'api_key' => $_POST['api_key'] ?? '',
+            'model' => $_POST['model'] ?? 'gpt-4o-mini',
+            'endpoint' => $_POST['endpoint'] ?? 'https://api.gapgpt.app/v1/chat/completions',
+            'provider' => 'gapgpt',
+        ];
+        // اگر کاربر •••• فرستاد، نگه دار
+        if ($data['api_key'] === '••••••••' || $data['api_key'] === '') {
+            $cur = \ApexOmega\Core\AI_Helper::get_settings();
+            if (empty($_POST['api_key']) || $_POST['api_key'] === '••••••••') {
+                $data['api_key'] = $cur['api_key'];
+            }
+        }
+        \ApexOmega\Core\AI_Helper::save_settings($data);
+        wp_send_json_success(['message'=>'ذخیره شد']);
     }
 }

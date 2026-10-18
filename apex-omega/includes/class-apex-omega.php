@@ -25,8 +25,19 @@ class Plugin {
         add_action('apex_omega_kksr_updated', [$this, 'purge_cache'], 20, 5);
         add_action('apex_omega_views_updated', [$this, 'purge_cache_views'], 20, 5);
 
+        // توزیع خودکار روزانه
+        add_action('apex_omega_auto_tier_tick', [$this, 'run_auto_tier']);
+
         // هشدار ادمین
         add_action('admin_notices', [$this, 'admin_notices']);
+    }
+
+    public function run_auto_tier(): void {
+        $auto = get_option('apex_omega_auto_tier', []);
+        if (empty($auto['enabled']) || empty($auto['counts'])) return;
+        // فقط روی آثار جدید یا بدون تیره؟ برای سادگی: فقط آثار بدون _apex_tier یا قدیمی‌تر از 7 روز
+        \ApexOmega\Core\TierManager::apply_distribution($auto['counts'], $auto['filters'] ?? ['category'=>'all','post_type'=>'any']);
+        error_log('[APEX Ω] auto tier distribution executed');
     }
 
     public function on_kksr_vote($post_id, $rating): void {

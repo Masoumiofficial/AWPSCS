@@ -37,6 +37,14 @@ class Admin {
         );
         add_submenu_page(
             'apex-omega',
+            'توزیع هوشمند — APEX Ω',
+            'توزیع هوشمند ✨',
+            'apex_manage_statistics',
+            'apex-omega-tier',
+            [$this, 'render_tier']
+        );
+        add_submenu_page(
+            'apex-omega',
             'ویرایش گروهی — APEX Ω',
             'ویرایش گروهی',
             'apex_manage_statistics',
@@ -74,11 +82,14 @@ class Admin {
 
         wp_enqueue_style('apex-omega-admin', APEX_OMEGA_URL . 'admin/css/admin-rtl.css', [], APEX_OMEGA_VERSION);
         wp_enqueue_script('apex-omega-admin', APEX_OMEGA_URL . 'admin/js/admin.js', ['jquery'], APEX_OMEGA_VERSION, true);
+        global $wpdb;
+        $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
         wp_localize_script('apex-omega-admin', 'ApexOmega', [
             'ajax_url' => admin_url('admin-ajax.php'),
             'rest_url' => rest_url('apex-omega/v1/'),
             'nonce' => wp_create_nonce('apex_omega_nonce'),
             'rest_nonce' => wp_create_nonce('wp_rest'),
+            'total_posts' => $total_posts,
             'i18n' => [
                 'confirm_large_drop' => 'کاهش بزرگ شناسایی شد. آیا مطمئن هستید؟',
                 'confirm_bulk' => 'آیا از اعمال گروهی مطمئن هستید؟',
@@ -104,6 +115,8 @@ class Admin {
         if (isset($input['max_default_percent'])) $out['max_default_percent'] = max(1, min(100, (float)$input['max_default_percent']));
         if (isset($input['enable_real_cron_hint'])) $out['enable_real_cron_hint'] = !empty($input['enable_real_cron_hint']);
         if (isset($input['remove_data_on_uninstall'])) $out['remove_data_on_uninstall'] = !empty($input['remove_data_on_uninstall']);
+        // تیره‌ها
+        if (isset($input['ai_api_key'])) $out['ai_api_key'] = sanitize_text_field($input['ai_api_key']);
         return $out;
     }
 
@@ -183,6 +196,15 @@ class Admin {
                 'remove_data_on_uninstall' => isset($_POST['remove_data_on_uninstall']),
             ];
             update_option('apex_omega_settings', $this->sanitize_settings($input));
+            // AI جداگانه
+            if (isset($_POST['apex_ai_api_key'])) {
+                \ApexOmega\Core\AI_Helper::save_settings([
+                    'api_key' => $_POST['apex_ai_api_key'],
+                    'model' => $_POST['apex_ai_model'] ?? 'gpt-4o-mini',
+                    'endpoint' => $_POST['apex_ai_endpoint'] ?? 'https://api.gapgpt.app/v1/chat/completions',
+                ]);
+                echo '<div class="notice notice-success"><p>تنظیمات AI ذخیره شد.</p></div>';
+            }
             echo '<div class="notice notice-success"><p>تنظیمات ذخیره شد.</p></div>';
         }
         $settings = wp_parse_args(get_option('apex_omega_settings', []), [
@@ -192,7 +214,13 @@ class Admin {
             'enable_real_cron_hint' => true,
             'remove_data_on_uninstall' => false,
         ]);
+        $ai_set = \ApexOmega\Core\AI_Helper::get_settings();
         include APEX_OMEGA_DIR . 'admin/views/settings.php';
+    }
+
+    public function render_tier(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/tier-distribution.php';
     }
 
     public function render_help(): void {
