@@ -257,13 +257,13 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         <label>حداکثر کامنت تازه:<br><input type="number" id="apex-commentor-max" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['max_comments']); ?>" style="width:100%;"></label>
         <label>رشد روزانه پرطرفدار:<br><input type="number" id="apex-commentor-daily" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['daily_growth']); ?>" style="width:100%;"></label>
         <label>سقف هر پست:<br><input type="number" id="apex-commentor-maxpost" min="10" max="100" step="5" value="<?php echo esc_attr($commentor['max_per_post']); ?>" style="width:100%;"></label>
-        <label>هر تیک چند پست:<br><input type="number" id="apex-commentor-batch" min="5" max="50" step="1" value="<?php echo esc_attr($commentor['batch']); ?>" style="width:100%;"></label>
+        <label>پردازش روزانه:<br><input type="number" id="apex-commentor-batch" min="0" max="500" step="10" value="<?php echo esc_attr($commentor['batch']); ?>" style="width:100%;"> <small>0=همهٔ پست‌ها روزانه (توصیه) — بدون سقف 20</small></label>
         <label>فقط پست‌های چند روز اخیر:<br><input type="number" id="apex-commentor-recent" min="0" max="365" step="1" value="<?php echo esc_attr($commentor['only_recent_days']); ?>" style="width:100%;"> <small>0=همه</small></label>
         <button type="button" id="apex-commentor-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💬 ذخیره نگهبان کامنت</button>
         <button type="button" id="apex-commentor-run" class="button button-apex secondary" style="background:#fff;color:#7c3aed;border-color:#7c3aed;">▶️ اجرای فوری (تست)</button>
       </div>
       <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-        <small style="color:#6b7280;">هر <code>apex_omega_tick</code> (5 دقیقه) تا <span id="apex-commentor-batch-hint"><?php echo esc_html($commentor['batch']); ?></span> پست چک می‌شود — cooldown 24ساعته هر پست.</small>
+        <small style="color:#6b7280;">روزانه <strong>هر چی پست داری</strong> بر اساس الگوی ریتم (بازدید+امتیاز+وزن خواننده) چک می‌شود — اول پر‌بازدیدها، بعد تازه‌ها — هر پست cooldown 24ساعته. خوانندهٔ معروف با آهنگ تازه هم متعادل 3-5 کامنت می‌گیرد نه انفجاری.</small>
         <span id="apex-commentor-result" style="font-weight:700;"></span>
         <?php if (!empty($cm_last['at'])): ?><small style="color:#065f46;">آخرین اجرا: <?php echo esc_html($cm_last['at']); ?> — <?php echo esc_html($cm_last['posts']); ?> پست → <?php echo esc_html($cm_last['comments']); ?> کامنت <code><?php echo esc_html(substr($cm_last['exec']??'',0,8)); ?></code></small><?php endif; ?>
       </div>
@@ -312,7 +312,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         // Commentor
         bindOnce('apex-commentor-save', function(btn){
           btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
-          var enabled=qs('apex-commentor-enabled')?.checked?1:0, threshold=parseInt(qs('apex-commentor-threshold')?.value)||10000, minc=parseInt(qs('apex-commentor-min')?.value)||2, maxc=parseInt(qs('apex-commentor-max')?.value)||4, daily=parseInt(qs('apex-commentor-daily')?.value)||2, maxpost=parseInt(qs('apex-commentor-maxpost')?.value)||60, batch=parseInt(qs('apex-commentor-batch')?.value)||20, recent=parseInt(qs('apex-commentor-recent')?.value)||60;
+          var enabled=qs('apex-commentor-enabled')?.checked?1:0, threshold=parseInt(qs('apex-commentor-threshold')?.value)||10000, minc=parseInt(qs('apex-commentor-min')?.value)||2, maxc=parseInt(qs('apex-commentor-max')?.value)||4, daily=parseInt(qs('apex-commentor-daily')?.value)||2, maxpost=parseInt(qs('apex-commentor-maxpost')?.value)||60, batch=parseInt(qs('apex-commentor-batch')?.value), recent=parseInt(qs('apex-commentor-recent')?.value)||0; if(isNaN(batch)) batch=0;
           var resEl=qs('apex-commentor-result'); if(resEl) resEl.textContent='در حال ذخیره…';
           apexPost('apex_save_commentor',{enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent}).then(function(j){
             if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46';}}

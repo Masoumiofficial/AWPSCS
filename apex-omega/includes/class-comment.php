@@ -24,8 +24,8 @@ class CommentGuardian {
             'max_comments' => 4,   // حداکثر برای تازه
             'daily_growth' => 2,   // هر روز برای پرطرفدار 1-3 تا اضافه
             'max_per_post' => 60,  // سقف کل کامنت هر پست حتی الماس
-            'batch' => 20,         // هر تیک چند پست چک شود
-            'only_recent_days' => 0, // فقط پست‌های 60 روز اخیر (0=همه)
+            'batch' => 0,          // 0=بدون سقف — روزانه همهٔ پست‌ها (درخواست کاربر 1.8.0)
+            'only_recent_days' => 0, // 0=همه
             'cooldown_hours' => 24,
         ];
         $saved = get_option(self::OPTION, []);
@@ -37,7 +37,7 @@ class CommentGuardian {
         $out['max_comments'] = max($out['min_comments'], min(10, (int)$out['max_comments']));
         $out['daily_growth'] = max(1, min(5, (int)$out['daily_growth']));
         $out['max_per_post'] = max(10, min(100, (int)$out['max_per_post']));
-        $out['batch'] = max(5, min(50, (int)$out['batch']));
+        $out['batch'] = max(0, min(500, (int)$out['batch'])); // 0=همه، الگوی روزانه
         $out['only_recent_days'] = max(0, min(365, (int)$out['only_recent_days']));
         $out['cooldown_hours'] = max(1, min(168, (int)$out['cooldown_hours']));
         return $out;
@@ -64,8 +64,8 @@ class CommentGuardian {
         return !empty(self::get_settings()['enabled']);
     }
 
-    // محاسبهٔ هدف کامنت بر اساس بازدید + وزن خواننده (همبسته با تیره)
-    public static function calculate_target(int $views, int $weight): int {
+    // محاسبهٔ هدف کامنت — الگوی ریتم استاندارد: بازدید + وزن خواننده + امتیاز (همهٔ جوانب)
+    public static function calculate_target(int $views, int $weight, float $avg = 4.0): int {
         $views = max(0, $views);
         $weight = max(0, min(100, $weight));
         // پایه بر اساس بازدید (طبق درخواست کاربر)
@@ -89,6 +89,14 @@ class CommentGuardian {
             $mult = 0.95;
         } else {
             $mult = 0.85;
+        }
+        // ضریب امتیاز: ستاره‌دار بیشتر کامنت می‌گیرد (همبستگی بازدید↔امتیاز)
+        $rating_mult = 0.85 + ($avg / 5) * 0.30; // avg 5→1.15، avg 3→1.03
+        $mult *= $rating_mult;
+        // خوانندهٔ شناخته‌شده ولی آهنگ تازه (وزن بالا + بازدید کم) → وسط: نه خیلی کم نه خیلی زیاد
+        if ($weight >= 75 && $views < 10000) {
+            // آهنگ تازه از سوپراستار — طبیعی‌تر: 3-5 نه 2-3
+            $mult = max($mult, 1.05);
         }
         $target = (int) round( (($base_min + $base_max)/2) * $mult + mt_rand(-1,1) );
         $target = max($base_min, min($base_max, $target));
@@ -400,6 +408,9 @@ class CommentGuardian {
         }
         // پیدا کردن پست‌های کاندید: همهٔ پست‌های منتشرشده که کامنت‌شان زیر سقف تیره است
         // اولویت با پست‌های تازه‌تر (post_date_gmt DESC) — مثل AutoWatch
+        // 1.8.0: بدون سقف 20 — روزانه همهٔ پست‌های سایت بر اساس الگوی ریتم (بازدید+امتیاز+وزن)
+        // batch=0 یعنی بدون LIMIT — روزانه همه
+        $limit_clause = ($batch > 0) ? $wpdb->prepare("LIMIT %d", $batch) : "";
         $sql = "
             SELECT p.ID, p.post_title, p.post_date_gmt, COALESCE(CAST(pm.meta_value AS UNSIGNED), 0) as cur_views
             FROM {$wpdb->posts} p
@@ -413,10 +424,15 @@ class CommentGuardian {
                 AND pm2.meta_value >= %s
             )
             ORDER BY CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
-            LIMIT %d
+            {$limit_clause}
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
-        $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff, $batch), ARRAY_A);
+        if ($batch > 0) {
+            $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
+        } else {
+            // بدون LIMIT — همهٔ پست‌های due
+            $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
+        }
         if ($verbose) echo "candidates:".count($rows)." | threshold:{$threshold} max_per:{$max_per_post} recent:{$recent_days} cooldown:{$cooldown_cutoff}\n";
         if (empty($rows)) {
             if ($verbose) {
@@ -438,7 +454,9 @@ class CommentGuardian {
             // وزن خواننده — همون الگوی ریتم حرفه‌ای
             $weight = ArtistManager::get_weight_for_post($pid);
             // هدف کامنت بر اساس بازدید + وزن (همبسته)
-            $target = self::calculate_target($cur_views, $weight);
+            $stats = Adapter_KKSR::get_stats($pid);
+            $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
+            $target = self::calculate_target($cur_views, $weight, $avg);
             // سقف کلی
             $target = min($target, $max_per_post);
             // تعداد فعلی کامنت‌های تأییدشده
