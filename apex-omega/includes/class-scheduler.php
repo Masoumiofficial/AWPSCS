@@ -1,0 +1,607 @@
+<?php
+namespace ApexOmega\Core;
+
+if (!defined('ABSPATH')) exit;
+
+class Scheduler {
+    const CRON_HOOK = 'apex_omega_tick';
+    const CRON_INTERVAL = 'apex_omega_five_min';
+
+    public static function init(): void {
+        add_filter('cron_schedules', [__CLASS__, 'add_cron_schedules']);
+        add_action(self::CRON_HOOK, [__CLASS__, 'tick']);
+        // پاکسازی قفل‌های منقضی روزانه
+        add_action('apex_omega_cleanup', [Database::class, 'cleanup_expired_locks']);
+        if (!wp_next_scheduled('apex_omega_cleanup')) {
+            wp_schedule_event(time(), 'daily', 'apex_omega_cleanup');
+        }
+    }
+
+    public static function add_cron_schedules(array $schedules): array {
+        $schedules[self::CRON_INTERVAL] = [
+            'interval' => 300,
+            'display' => __('هر ۵ دقیقه — APEX Ω', 'apex-omega'),
+        ];
+        return $schedules;
+    }
+
+    public static function ensure_cron(): void {
+        if (!wp_next_scheduled(self::CRON_HOOK)) {
+            wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+        }
+    }
+
+    public static function clear_cron(): void {
+        $ts = wp_next_scheduled(self::CRON_HOOK);
+        if ($ts) wp_unschedule_event($ts, self::CRON_HOOK);
+        $ts2 = wp_next_scheduled('apex_omega_cleanup');
+        if ($ts2) wp_unschedule_event($ts2, 'apex_omega_cleanup');
+    }
+
+    /**
+     * ایجاد برنامه جدید
+     */
+    public static function create_schedule(array $data): array {
+        $errors = Validator::validate_schedule($data);
+        if ($errors) return ['success' => false, 'errors' => $errors];
+
+        $post_id = (int) $data['post_id'];
+        if (!get_post($post_id)) return ['success' => false, 'errors' => ['نوشته یافت نشد.']];
+
+        // مقدار فعلی
+        $current = self::get_current_value($post_id, $data['field_type']);
+        if ($current === null) return ['success' => false, 'errors' => ['نوع فیلد نامعتبر است.']];
+
+        $target = $data['target_value'];
+
+        // اگر هدف برابر فعلی
+        if ((string)$target === (string)$current) {
+            return ['success' => false, 'errors' => ['مقدار هدف برابر مقدار فعلی است؛ برنامه‌ای لازم نیست.']];
+        }
+
+        // بررسی نوسان اولیه
+        $is_views = $data['field_type'] === 'views';
+        $old_int = $is_views ? (int)$current : (int)$current; // برای سادگی
+        $new_int = (int) $target;
+        $vol = Validator::check_volatility($old_int, $new_int, isset($data['max_step']) ? (int)$data['max_step'] : null, isset($data['max_percent_step']) ? (float)$data['max_percent_step'] : null);
+        $needs_confirm = $vol['requires_confirm'];
+        $large_drop = $vol['delta'] < 0 && abs($vol['percent']) >= 20;
+
+        // اگر کاهش بزرگ و تأیید نشده
+        if ($large_drop && empty($data['confirm_large_drop'])) {
+            return [
+                'success' => false,
+                'requires_confirm' => true,
+                'warnings' => $vol['warnings'],
+                'message' => 'کاهش بزرگ شناسایی شد. لطفاً تأیید صریح را علامت بزنید.',
+            ];
+        }
+
+        // اگر نوسان زیاد و تأیید نشده
+        if ($needs_confirm && empty($data['confirm_volatility'])) {
+            return [
+                'success' => false,
+                'requires_confirm' => true,
+                'warnings' => $vol['warnings'],
+                'message' => 'تغییر از سقف مجاز بیشتر است. لطفاً تأیید کنید.',
+            ];
+        }
+
+        global $wpdb;
+        $table = Database::table_schedules();
+        $now = current_time('mysql');
+        $now_gmt = current_time('mysql', true);
+
+        $start_gmt = $data['start_at_gmt'] ?? $now_gmt;
+        $end_gmt = $data['end_at_gmt'] ?? gmdate('Y-m-d H:i:s', strtotime($now_gmt) + 30*DAY_IN_SECONDS);
+        $start = $data['start_at'] ?? get_date_from_gmt($start_gmt, 'Y-m-d H:i:s');
+        $end = $data['end_at'] ?? get_date_from_gmt($end_gmt, 'Y-m-d H:i:s');
+
+        $next_gmt = $start_gmt;
+        // اگر شروع در گذشته، next را الان بگذار
+        if (strtotime($next_gmt) < time()) $next_gmt = gmdate('Y-m-d H:i:s', time() + 60);
+        $next = get_date_from_gmt($next_gmt, 'Y-m-d H:i:s');
+
+        $config = [
+            'field_type' => $data['field_type'],
+            'warnings_initial' => $vol['warnings'],
+            'is_decrease' => $vol['delta'] < 0,
+        ];
+        if (isset($data['kksr_avg_target'])) $config['kksr_avg_target'] = $data['kksr_avg_target'];
+        if (isset($data['kksr_casts_target'])) $config['kksr_casts_target'] = $data['kksr_casts_target'];
+
+        $insert = [
+            'post_id' => $post_id,
+            'status' => 'active',
+            'mode' => $data['mode'] ?? 'scheduled',
+            'field_type' => $data['field_type'],
+            'current_value' => (string) $current,
+            'target_value' => (string) $target,
+            'min_allowed' => isset($data['min_allowed']) ? (string)$data['min_allowed'] : null,
+            'max_allowed' => isset($data['max_allowed']) ? (string)$data['max_allowed'] : null,
+            'max_step' => isset($data['max_step']) ? (string)$data['max_step'] : null,
+            'max_percent_step' => isset($data['max_percent_step']) ? (float)$data['max_percent_step'] : null,
+            'interval_seconds' => (int) $data['interval_seconds'],
+            'start_at' => $start,
+            'start_at_gmt' => $start_gmt,
+            'end_at' => $end,
+            'end_at_gmt' => $end_gmt,
+            'last_run_at' => null,
+            'last_run_at_gmt' => null,
+            'next_run_at' => $next,
+            'next_run_at_gmt' => $next_gmt,
+            'last_value' => (string) $current,
+            'require_confirm_large_drop' => !empty($data['require_confirm_large_drop']) ? 1 : 1,
+            'large_drop_threshold_percent' => isset($data['large_drop_threshold_percent']) ? (float)$data['large_drop_threshold_percent'] : 20.00,
+            'large_drop_threshold_abs' => isset($data['large_drop_threshold_abs']) ? (int)$data['large_drop_threshold_abs'] : null,
+            'execution_id' => apex_omega_generate_uuid(),
+            'fail_count' => 0,
+            'last_error' => null,
+            'created_by' => get_current_user_id(),
+            'updated_by' => get_current_user_id(),
+            'created_at' => $now,
+            'created_at_gmt' => $now_gmt,
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+            'config_json' => wp_json_encode($config, JSON_UNESCAPED_UNICODE),
+        ];
+
+        $wpdb->insert($table, $insert);
+        $id = (int) $wpdb->insert_id;
+
+        // اطمینان از کرون
+        self::ensure_cron();
+
+        // ذخیره حالت مدیریت روی پست
+        update_post_meta($post_id, '_apex_mode', 'scheduled');
+        update_post_meta($post_id, '_apex_schedule_id', $id);
+
+        return ['success' => true, 'id' => $id, 'warnings' => $vol['warnings']];
+    }
+
+    public static function get_current_value(int $post_id, string $field_type) {
+        if ($field_type === 'views') {
+            return Adapter_Views::get_views($post_id);
+        } elseif (in_array($field_type, ['kksr_casts','kksr_ratings','kksr_avg'], true)) {
+            $stats = Adapter_KKSR::get_stats($post_id);
+            if ($field_type === 'kksr_casts') return $stats['casts'];
+            if ($field_type === 'kksr_ratings') return $stats['ratings'];
+            if ($field_type === 'kksr_avg') return $stats['avg'];
+        } elseif ($field_type === 'kksr_combined') {
+            $stats = Adapter_KKSR::get_stats($post_id);
+            return wp_json_encode(['casts'=>$stats['casts'],'ratings'=>$stats['ratings'],'avg'=>$stats['avg']], JSON_UNESCAPED_UNICODE);
+        }
+        return null;
+    }
+
+    /**
+     * تابع اصلی تیک کرون
+     */
+    public static function tick(): void {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $now_gmt = current_time('mysql', true);
+
+        // فقط برنامه‌های فعال که زمان‌شان رسیده
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM $table WHERE status = %s AND next_run_at_gmt <= %s AND start_at_gmt <= %s AND (end_at_gmt IS NULL OR end_at_gmt >= %s) ORDER BY next_run_at_gmt ASC LIMIT 20",
+            'active', $now_gmt, $now_gmt, $now_gmt
+        ), ARRAY_A);
+
+        if (!$rows) return;
+
+        foreach ($rows as $schedule) {
+            self::execute_schedule($schedule);
+        }
+    }
+
+    /**
+     * اجرای یک برنامه
+     */
+    public static function execute_schedule(array $schedule): void {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $id = (int) $schedule['id'];
+        $post_id = (int) $schedule['post_id'];
+        $field = $schedule['field_type'];
+
+        // قفل همزمانی per-post+field
+        $lock_key = "apex_sched_{$post_id}_{$field}_{$id}";
+        if (!Database::acquire_lock($lock_key, 120)) {
+            // اجرای همزمان دیگری در حال اجراست
+            return;
+        }
+
+        $execution_id = apex_omega_generate_uuid();
+        $now = current_time('mysql');
+        $now_gmt = current_time('mysql', true);
+
+        try {
+            // بازخوانی آخرین مقدار واقعی (نه کش)
+            $current_raw = self::get_current_value($post_id, $field);
+            $target_raw = $schedule['target_value'];
+
+            // اگر پست حذف شده
+            if (!get_post($post_id)) {
+                self::mark_schedule($id, 'error', 'نوشته یافت نشد.', $now, $now_gmt);
+                Database::release_lock($lock_key);
+                return;
+            }
+
+            // اگر مقدار فعلی خارج از min/max مجاز
+            if ($schedule['min_allowed'] !== null && $schedule['min_allowed'] !== '' && is_numeric($current_raw) && is_numeric($schedule['min_allowed'])) {
+                if ((float)$current_raw < (float)$schedule['min_allowed'] || (float)$current_raw > (float)$schedule['max_allowed']) {
+                    // اگر خارج از انتظار است -> نیاز به بررسی
+                    self::mark_schedule($id, 'needs_review', sprintf('مقدار فعلی (%s) خارج از محدوده مجاز [%s - %s] است.', $current_raw, $schedule['min_allowed'], $schedule['max_allowed']), $now, $now_gmt);
+                    Database::release_lock($lock_key);
+                    return;
+                }
+            }
+
+            // تشخیص تغییر خارجی ناگهانی (مثلاً افزونه یا مدیر دیگر)
+            // مقایسه last_value با current: اگر اختلاف زیاد و ناگهانی بدون اجرای ما باشد
+            $last_value = $schedule['last_value'];
+            if ($last_value !== null && $last_value !== '' && $last_value != $current_raw) {
+                // اگر تغییر بزرگ خارجی
+                $delta_ext = (float)$current_raw - (float)$last_value;
+                $percent_ext = (float)$last_value != 0 ? abs($delta_ext) / abs((float)$last_value) * 100 : 100;
+                if (abs($delta_ext) > 1000 && $percent_ext > 10) {
+                    // متوقف کن برای بررسی
+                    self::mark_schedule($id, 'needs_review', sprintf('تغییر خارجی ناگهانی شناسایی شد: از %s به %s (%.1f%%). برنامه متوقف شد.', $last_value, $current_raw, $percent_ext), $now, $now_gmt);
+                    // لاگ هشدار
+                    History::log($post_id, $field, $last_value, $current_raw, 'external_change_detected', null, $execution_id, $id, ['percent'=>$percent_ext,'delta'=>$delta_ext]);
+                    Database::release_lock($lock_key);
+                    return;
+                }
+            }
+
+            // محاسبه گام بعدی
+            $step_result = self::calculate_next_step($schedule, $current_raw, $target_raw);
+            $next_value = $step_result['next_value'];
+            $reached = $step_result['reached'];
+
+            // اعتبارسنجی نهایی قبل از نوشتن
+            // بررسی سقف هر اجرا
+            if ($schedule['max_step'] !== null && $schedule['max_step'] !== '' && is_numeric($schedule['max_step'])) {
+                $max_step = (int) $schedule['max_step'];
+                $delta = abs((float)$next_value - (float)$current_raw);
+                if ($delta > $max_step) {
+                    // محدود کن به سقف
+                    $direction = (float)$next_value > (float)$current_raw ? 1 : -1;
+                    $next_value = (float)$current_raw + ($direction * $max_step);
+                }
+            }
+            if ($schedule['max_percent_step'] !== null && $schedule['max_percent_step'] !== '' && is_numeric($schedule['max_percent_step'])) {
+                $max_percent = (float) $schedule['max_percent_step'];
+                $percent = (float)$current_raw != 0 ? abs(((float)$next_value - (float)$current_raw) / (float)$current_raw * 100) : 100;
+                if ($percent > $max_percent) {
+                    $direction = (float)$next_value > (float)$current_raw ? 1 : -1;
+                    $allowed_delta = abs((float)$current_raw) * $max_percent / 100;
+                    $next_value = (float)$current_raw + ($direction * $allowed_delta);
+                    $next_value = $field === 'views' || $field === 'kksr_casts' ? (int) round($next_value) : round($next_value, 1);
+                }
+            }
+
+            // بررسی نهایی حدود کلی
+            if ($schedule['min_allowed'] !== null && $schedule['min_allowed'] !== '' && is_numeric($next_value) && (float)$next_value < (float)$schedule['min_allowed']) {
+                $next_value = $schedule['min_allowed'];
+            }
+            if ($schedule['max_allowed'] !== null && $schedule['max_allowed'] !== '' && is_numeric($next_value) && (float)$next_value > (float)$schedule['max_allowed']) {
+                $next_value = $schedule['max_allowed'];
+            }
+
+            // جلوگیری از عبور از هدف
+            if ($field === 'views' || $field === 'kksr_casts' || $field === 'kksr_ratings') {
+                $cur_f = (float)$current_raw; $tgt_f = (float)$target_raw; $nxt_f = (float)$next_value;
+                if ($tgt_f > $cur_f && $nxt_f > $tgt_f) $next_value = $tgt_f;
+                if ($tgt_f < $cur_f && $nxt_f < $tgt_f) $next_value = $tgt_f;
+            } else if ($field === 'kksr_avg') {
+                $cur_f = (float)$current_raw; $tgt_f = (float)$target_raw; $nxt_f = (float)$next_value;
+                if ($tgt_f > $cur_f && $nxt_f > $tgt_f) $next_value = $tgt_f;
+                if ($tgt_f < $cur_f && $nxt_f < $tgt_f) $next_value = $tgt_f;
+            }
+
+            // اجرای idempotent: اگر مقدار بعدی برابر فعلی است، فقط زمان‌بندی را جلو ببر
+            if ((string)$next_value === (string)$current_raw) {
+                // اگر به هدف رسیده‌ایم
+                if ((string)$current_raw === (string)$target_raw || $reached) {
+                    self::mark_completed($id, $now, $now_gmt, $current_raw);
+                } else {
+                    // فقط next_run را جلو ببر
+                    self::advance_schedule($id, $next_value, $now, $now_gmt, $schedule);
+                }
+                Database::release_lock($lock_key);
+                return;
+            }
+
+            // نوشتن واقعی
+            $write_success = false;
+            $old_for_history = $current_raw;
+            if ($field === 'views') {
+                $write_success = Adapter_Views::set_views($post_id, (int) $next_value, 'scheduled', $execution_id);
+            } elseif ($field === 'kksr_casts') {
+                // برای casts، ratings را ثابت نگه دار و avg را بازمحاسبه کن
+                $stats = Adapter_KKSR::get_stats($post_id);
+                $write_success = Adapter_KKSR::set_stats($post_id, (int)$next_value, $stats['ratings'], null, 'scheduled', $execution_id);
+            } elseif ($field === 'kksr_ratings') {
+                $stats = Adapter_KKSR::get_stats($post_id);
+                $write_success = Adapter_KKSR::set_stats($post_id, $stats['casts'], (float)$next_value, null, 'scheduled', $execution_id);
+            } elseif ($field === 'kksr_avg') {
+                // avg به تنهایی: باید ratings را بر اساس casts فعلی محاسبه کنیم
+                $stats = Adapter_KKSR::get_stats($post_id);
+                $casts = $stats['casts'] ?: 1;
+                $best = $stats['best'];
+                // فرمول معکوس: ratings = avg * casts / best *5
+                $new_ratings = (float)$next_value * $casts / $best * 5;
+                $write_success = Adapter_KKSR::set_stats($post_id, $casts, $new_ratings, (float)$next_value, 'scheduled', $execution_id);
+            } elseif ($field === 'kksr_combined') {
+                $config = json_decode($schedule['config_json'], true);
+                // combined شامل avg و casts هدف است
+                $target_casts = $config['kksr_casts_target'] ?? null;
+                $target_avg = $config['kksr_avg_target'] ?? null;
+                // ساده: اگر casts هدف داریم، به آن نزدیک شو
+                $stats = Adapter_KKSR::get_stats($post_id);
+                $next_casts = $stats['casts'];
+                $next_avg = $stats['avg'];
+                if ($target_casts !== null) {
+                    // گام برای casts
+                    $delta_c = (int)$target_casts - $stats['casts'];
+                    $step_c = self::calc_step($stats['casts'], (int)$target_casts, $schedule);
+                    $next_casts = $stats['casts'] + $step_c;
+                    if (($delta_c > 0 && $next_casts > (int)$target_casts) || ($delta_c < 0 && $next_casts < (int)$target_casts)) $next_casts = (int)$target_casts;
+                }
+                if ($target_avg !== null) {
+                    $delta_a = (float)$target_avg - $stats['avg'];
+                    $next_avg = $stats['avg'] + self::calc_step_float($stats['avg'], (float)$target_avg, $schedule, 0.1);
+                    if (($delta_a > 0 && $next_avg > (float)$target_avg) || ($delta_a < 0 && $next_avg < (float)$target_avg)) $next_avg = (float)$target_avg;
+                }
+                $best = $stats['best'];
+                $new_ratings = $next_avg * $next_casts / $best * 5;
+                $write_success = Adapter_KKSR::set_stats($post_id, (int)$next_casts, (float)$new_ratings, (float)$next_avg, 'scheduled', $execution_id);
+                $next_value = wp_json_encode(['casts'=>$next_casts,'ratings'=>$new_ratings,'avg'=>$next_avg], JSON_UNESCAPED_UNICODE);
+            }
+
+            if (!$write_success) {
+                $fail_count = (int) $schedule['fail_count'] + 1;
+                $wpdb->update($table, [
+                    'fail_count' => $fail_count,
+                    'last_error' => 'خطا در نوشتن متادیتا',
+                    'updated_at' => $now,
+                    'updated_at_gmt' => $now_gmt,
+                ], ['id' => $id]);
+                if ($fail_count >= 3) {
+                    self::mark_schedule($id, 'error', 'سه تلاش ناموفق پیاپی.', $now, $now_gmt);
+                }
+                Database::release_lock($lock_key);
+                return;
+            }
+
+            // ثبت تاریخچه
+            History::log($post_id, $field, $old_for_history, $next_value, 'scheduled', null, $execution_id, $id, ['schedule_id'=>$id]);
+
+            // بررسی رسیدن به هدف
+            $new_current = self::get_current_value($post_id, $field);
+            $is_completed = (string)$new_current === (string)$target_raw;
+            // برای combined مقایسه casts/avg
+            if ($field === 'kksr_combined') {
+                $cfg = json_decode($schedule['config_json'], true);
+                $st = Adapter_KKSR::get_stats($post_id);
+                $is_completed = true;
+                if (isset($cfg['kksr_casts_target']) && (int)$st['casts'] !== (int)$cfg['kksr_casts_target']) $is_completed = false;
+                if (isset($cfg['kksr_avg_target']) && abs((float)$st['avg'] - (float)$cfg['kksr_avg_target']) > 0.05) $is_completed = false;
+            }
+
+            if ($is_completed || $reached) {
+                self::mark_completed($id, $now, $now_gmt, $next_value);
+            } else {
+                self::advance_schedule($id, $next_value, $now, $now_gmt, $schedule);
+            }
+
+        } catch (\Throwable $e) {
+            error_log('[APEX Ω] Scheduler error: ' . $e->getMessage());
+            self::mark_schedule($id, 'error', $e->getMessage(), $now, $now_gmt);
+        }
+
+        Database::release_lock($lock_key);
+    }
+
+    private static function calculate_next_step(array $schedule, $current, $target): array {
+        $cur = (float) $current;
+        $tgt = (float) $target;
+        if ($cur == $tgt) return ['next_value' => $current, 'reached' => true];
+
+        $interval = (int) $schedule['interval_seconds'];
+        $start_gmt = $schedule['start_at_gmt'];
+        $end_gmt = $schedule['end_at_gmt'];
+        if (!$start_gmt || !$end_gmt) {
+            // بدون بازه؟ گام ساده 10٪ مانده
+            $delta = $tgt - $cur;
+            $step = $delta * 0.1;
+            // برای views/casts گرد کن
+            if (in_array($schedule['field_type'], ['views','kksr_casts'], true)) {
+                $step = (int) round($step);
+                if ($step == 0) $step = $delta > 0 ? 1 : -1;
+            } else {
+                $step = round($step, 1);
+                if ($step == 0) $step = $delta > 0 ? 0.1 : -0.1;
+            }
+            $next = $cur + $step;
+            if (in_array($schedule['field_type'], ['views','kksr_casts','kksr_ratings'], true)) $next = (int) round($next);
+            return ['next_value' => $next, 'reached' => false];
+        }
+
+        $total_seconds = strtotime($end_gmt) - strtotime($start_gmt);
+        $remaining_seconds = strtotime($end_gmt) - time();
+        if ($total_seconds <= 0) $total_seconds = 2592000;
+        if ($remaining_seconds <= 0) return ['next_value' => $target, 'reached' => true];
+
+        $total_steps = max(1, ceil($total_seconds / $interval));
+        $remaining_steps = max(1, ceil($remaining_seconds / $interval));
+
+        $delta = $tgt - $cur;
+        // تقسیم خطی
+        $step = $delta / $remaining_steps;
+
+        // حداقل گام برای جلوگیری از سکون
+        if (in_array($schedule['field_type'], ['views','kksr_casts'], true)) {
+            $step = (int) round($step);
+            if ($step == 0) $step = $delta > 0 ? 1 : -1;
+            $next = $cur + $step;
+            $next = (int) round($next);
+        } elseif ($schedule['field_type'] === 'kksr_ratings') {
+            $step = round($step);
+            if ($step == 0) $step = $delta > 0 ? 1 : -1;
+            $next = $cur + $step;
+        } else { // avg
+            $step = round($step, 1);
+            if (abs($step) < 0.05) $step = $delta > 0 ? 0.1 : -0.1;
+            $next = round($cur + $step, 1);
+        }
+
+        // اگر گام بعدی از هدف عبور می‌کند، مستقیم به هدف
+        if (($delta > 0 && $next > $tgt) || ($delta < 0 && $next < $tgt)) {
+            $next = $tgt;
+        }
+
+        $reached = (string)$next === (string)$tgt;
+        return ['next_value' => $next, 'reached' => $reached];
+    }
+
+    private static function calc_step(int $cur, int $tgt, array $schedule): int {
+        $r = self::calculate_next_step($schedule, $cur, $tgt);
+        return (int) ($r['next_value'] - $cur);
+    }
+    private static function calc_step_float(float $cur, float $tgt, array $schedule, float $min_step): float {
+        $r = self::calculate_next_step($schedule, $cur, $tgt);
+        $diff = (float)$r['next_value'] - $cur;
+        if (abs($diff) < $min_step && abs($tgt - $cur) >= $min_step) {
+            $diff = $tgt > $cur ? $min_step : -$min_step;
+        }
+        return $diff;
+    }
+
+    private static function advance_schedule(int $id, $new_value, string $now, string $now_gmt, array $schedule): void {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $interval = (int) $schedule['interval_seconds'];
+        $next_gmt = gmdate('Y-m-d H:i:s', time() + $interval);
+        $next = get_date_from_gmt($next_gmt, 'Y-m-d H:i:s');
+        $wpdb->update($table, [
+            'last_run_at' => $now,
+            'last_run_at_gmt' => $now_gmt,
+            'next_run_at' => $next,
+            'next_run_at_gmt' => $next_gmt,
+            'last_value' => is_scalar($new_value) ? (string)$new_value : wp_json_encode($new_value, JSON_UNESCAPED_UNICODE),
+            'current_value' => is_scalar($new_value) ? (string)$new_value : wp_json_encode($new_value, JSON_UNESCAPED_UNICODE),
+            'fail_count' => 0,
+            'last_error' => null,
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+        ], ['id' => $id]);
+    }
+
+    private static function mark_completed(int $id, string $now, string $now_gmt, $final_value): void {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $wpdb->update($table, [
+            'status' => 'completed',
+            'last_run_at' => $now,
+            'last_run_at_gmt' => $now_gmt,
+            'next_run_at' => null,
+            'next_run_at_gmt' => null,
+            'last_value' => is_scalar($final_value) ? (string)$final_value : wp_json_encode($final_value, JSON_UNESCAPED_UNICODE),
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+        ], ['id' => $id]);
+
+        // حالت پست را به completed تغییر نده، فقط وضعیت برنامه
+        // برای اطلاع مدیر، یک هشدار ثبت کن
+    }
+
+    private static function mark_schedule(int $id, string $status, string $error, string $now, string $now_gmt): void {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $wpdb->update($table, [
+            'status' => $status,
+            'last_error' => $error,
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+        ], ['id' => $id]);
+    }
+
+    public static function get_schedules_for_post(int $post_id, ?string $status = null): array {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $where = $wpdb->prepare("post_id = %d", $post_id);
+        if ($status) $where .= $wpdb->prepare(" AND status = %s", $status);
+        return $wpdb->get_results("SELECT * FROM $table WHERE $where ORDER BY created_at_gmt DESC", ARRAY_A) ?: [];
+    }
+
+    public static function get_all_active(int $limit = 50): array {
+        global $wpdb;
+        $table = Database::table_schedules();
+        return $wpdb->get_results($wpdb->prepare("SELECT s.*, p.post_title FROM $table s LEFT JOIN {$wpdb->posts} p ON p.ID = s.post_id WHERE s.status = %s ORDER BY s.next_run_at_gmt ASC LIMIT %d", 'active', $limit), ARRAY_A) ?: [];
+    }
+
+    public static function pause(int $id): bool {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $now = current_time('mysql'); $now_gmt = current_time('mysql', true);
+        $r = $wpdb->update($table, ['status'=>'paused','updated_at'=>$now,'updated_at_gmt'=>$now_gmt], ['id'=>$id, 'status'=>'active']);
+        return $r !== false;
+    }
+    public static function resume(int $id): bool {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $now = current_time('mysql'); $now_gmt = current_time('mysql', true);
+        $next_gmt = gmdate('Y-m-d H:i:s', time() + 300);
+        $next = get_date_from_gmt($next_gmt, 'Y-m-d H:i:s');
+        $r = $wpdb->update($table, ['status'=>'active','next_run_at'=>$next,'next_run_at_gmt'=>$next_gmt,'updated_at'=>$now,'updated_at_gmt'=>$now_gmt], ['id'=>$id, 'status'=>'paused']);
+        return $r !== false;
+    }
+    public static function cancel(int $id): bool {
+        global $wpdb;
+        $table = Database::table_schedules();
+        $now = current_time('mysql'); $now_gmt = current_time('mysql', true);
+        $r = $wpdb->update($table, ['status'=>'cancelled','next_run_at'=>null,'next_run_at_gmt'=>null,'updated_at'=>$now,'updated_at_gmt'=>$now_gmt], ['id'=>$id]);
+        if ($r) {
+            $row = $wpdb->get_row($wpdb->prepare("SELECT post_id FROM $table WHERE id=%d", $id), ARRAY_A);
+            if ($row) update_post_meta((int)$row['post_id'], '_apex_mode', 'manual');
+        }
+        return $r !== false;
+    }
+
+    /**
+     * پیش‌نمایش گام‌های آینده
+     */
+    public static function preview(int $post_id, string $field_type, $target_value, string $start_gmt, string $end_gmt, int $interval): array {
+        $current = self::get_current_value($post_id, $field_type);
+        $steps = [];
+        $cur = (float)$current;
+        $tgt = (float)$target_value;
+        $total_seconds = strtotime($end_gmt) - strtotime($start_gmt);
+        $remaining_steps = max(1, ceil($total_seconds / $interval));
+        // شبیه‌سازی
+        for ($i=0; $i < min($remaining_steps, 20); $i++) {
+            $delta = $tgt - $cur;
+            if (abs($delta) < 0.001) break;
+            $step = $delta / ($remaining_steps - $i);
+            if (in_array($field_type, ['views','kksr_casts','kksr_ratings'], true)) {
+                $step = (int) round($step);
+                if ($step == 0) $step = $delta > 0 ? 1 : -1;
+                $cur = $cur + $step;
+                $cur = (int) round($cur);
+                if (($delta > 0 && $cur > $tgt) || ($delta < 0 && $cur < $tgt)) $cur = $tgt;
+            } else {
+                $step = round($step, 1);
+                if (abs($step) < 0.05) $step = $delta > 0 ? 0.1 : -0.1;
+                $cur = round($cur + $step, 1);
+                if (($delta > 0 && $cur > $tgt) || ($delta < 0 && $cur < $tgt)) $cur = $tgt;
+            }
+            $at = gmdate('Y-m-d H:i:s', strtotime($start_gmt) + ($i+1)*$interval);
+            $steps[] = ['step'=> $i+1, 'value'=> $cur, 'at_gmt'=> $at, 'at'=> get_date_from_gmt($at, 'Y-m-d H:i:s')];
+            if ((string)$cur === (string)$tgt) break;
+        }
+        return ['current'=>$current,'target'=>$target_value,'steps'=>$steps,'total_steps'=>$remaining_steps];
+    }
+}
