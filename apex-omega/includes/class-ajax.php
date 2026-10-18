@@ -78,6 +78,15 @@ class Ajax {
             case 'apex_ai_save':
                 self::ai_save();
                 break;
+            case 'apex_save_artist_weights':
+                self::save_artist_weights();
+                break;
+            case 'apex_auto_artist_ai':
+                self::auto_artist_ai();
+                break;
+            case 'apex_auto_artist_ir':
+                self::auto_artist_ir();
+                break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
         }
