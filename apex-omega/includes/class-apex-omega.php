@@ -43,6 +43,7 @@ class Plugin {
         add_action('apex_omega_auto_tier_tick', [$this, 'run_auto_tier']);
 
         // هشدار ادمین
+        add_action('wp_ajax_apex_heal_cron', ['\\ApexOmega\\Core\\Scheduler', 'ajax_heal_cron']);
         add_action('admin_notices', [$this, 'admin_notices']);
     }
 

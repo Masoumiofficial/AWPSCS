@@ -173,7 +173,12 @@ class Admin {
             $w[] = ['type'=>'warning','msg'=>'WP-Cron غیرفعال است. زمان‌بندی دقیق نخواهد بود؛ Cron واقعی سرور را تنظیم کنید.'];
         }
         $next = wp_next_scheduled(Scheduler::CRON_HOOK);
-        if (!$next) $w[] = ['type'=>'warning','msg'=>'رویداد زمان‌بندی APEX فعال نیست. افزونه را غیرفعال/فعال کنید.'];
+        if (!$next) {
+            // خودترمیم فوری — اگر با رونویسی فایل‌ها فعال شده و کرون جا مانده باشد
+            Scheduler::ensure_cron();
+            $next = wp_next_scheduled(Scheduler::CRON_HOOK);
+        }
+        if (!$next) $w[] = ['type'=>'warning','msg'=>'رویداد زمان‌بندی APEX فعال نیست. افزونه را غیرفعال/فعال کنید یا دکمه «ترمیم کرون» را در داشبورد بزنید.'];
 
         // مقادیر خارج از محدوده نمونه‌برداری
         global $wpdb;

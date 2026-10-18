@@ -31,10 +31,14 @@ class Scheduler {
     }
 
     public static function maybe_heal_cron(): void {
-        // جلوگیری از اسپم heal در هر init — حداکثر هر 30دقیقه یک‌بار
+        // در پیشخوان بدون تاخیر ترمیم کن؛ در فرانت حداکثر هر 5 دقیقه
+        $is_admin = is_admin();
+        $ttl = $is_admin ? 60 : 300;
         $last = get_transient('apex_omega_heal_last');
-        if ($last) return;
-        set_transient('apex_omega_heal_last', 1, 1800);
+        if ($last && !$is_admin) return;
+        if ($last && $is_admin && (time() - (int)get_option('_apex_heal_last_ts', 0) < 60)) return;
+        set_transient('apex_omega_heal_last', 1, $ttl);
+        update_option('_apex_heal_last_ts', time(), false);
         // فقط در پیشخوان یا هر init، سبک و idempotent
         if (!wp_next_scheduled(self::CRON_HOOK)) {
             self::ensure_cron();
@@ -68,6 +72,15 @@ class Scheduler {
             wp_clear_scheduled_hook(self::CRON_HOOK);
             wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
         }
+    }
+
+    public static function ajax_heal_cron(): void {
+        check_ajax_referer('apex-omega-nonce', 'nonce');
+        if (!current_user_can('apex_manage_statistics')) wp_send_json_error(['msg'=>'دسترسی غیرمجاز']);
+        self::ensure_cron();
+        $next = wp_next_scheduled(self::CRON_HOOK);
+        if ($next) wp_send_json_success(['next'=> $next, 'human'=> get_date_from_gmt(gmdate('Y-m-d H:i:s', $next), 'Y-m-d H:i:s')]);
+        wp_send_json_error(['msg'=>'ترمیم ناموفق — Cron سرور را بررسی کنید.']);
     }
 
     public static function clear_cron(): void {
