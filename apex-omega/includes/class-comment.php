@@ -178,17 +178,55 @@ class CommentGuardian {
         return $en ?: 'user';
     }
 
+    // تمیز کردن عنوان خام (حذف "دانلود آهنگ ..." + اسم خواننده) — از متا کمک بگیر نه کپی عنوان
+    private static function clean_song_title(string $raw, string $artist): string {
+        $t = trim($raw);
+        // حذف پیشوندهای رایج
+        $prefixes = ['دانلود آهنگ ','دانلود موزیک ','دانلود ','آهنگ ','موزیک ','Download ','download ','دانلود رایگان '];
+        foreach ($prefixes as $pre) {
+            if (mb_stripos($t, $pre) === 0) {
+                $t = trim(mb_substr($t, mb_strlen($pre)));
+            }
+        }
+        // حذف نام خواننده از عنوان (هر جا بود)
+        if ($artist && mb_strlen($artist) > 2) {
+            // حذف دقیق
+            if (mb_stripos($t, $artist) !== false) {
+                $t = trim(str_ireplace($artist, '', $t));
+            }
+            // حذف نسخه بدون فاصله (مثلاً "همایون شجریانبازگشت زال" — نادر ولی)
+        }
+        // حذف جداکننده‌های باقی‌مانده از ابتدا/انتها
+        $t = trim($t, " -–—|:	
+ ");
+        $t = preg_replace('/^[\-–—|:\s]+/u','', $t);
+        $t = preg_replace('/[\-–—|:\s]+$/u','', $t);
+        // اگر هنوز "دانلود" مانده بود
+        $t = preg_replace('/^دانلود\s*/u','', $t);
+        $t = trim($t);
+        // اگر تمیزکاری همه را پاک کرد (مثلاً عنوان فقط "همایون شجریان" بود)، برگشت به خام بدون پیشوند
+        if (!$t || mb_strlen($t) < 2) {
+            $t = trim(str_ireplace('دانلود آهنگ','', $raw));
+            $t = trim(str_ireplace('دانلود','', $t));
+            $t = trim($t, " -–—|:");
+        }
+        // حذف گیومه‌های باقی‌مانده
+        $t = trim($t, "«»"'‘’“”");
+        return $t ?: $raw;
+    }
+
     // تولید متن کامنت — AI مرتبط به خواننده + fallback فارسی per tier + خودمونی + تیکه ترانه + غلط تایپی ریز
     public static function generate_text(int $post_id, string $artist, string $title, int $weight, int $views): string {
-        $ai = self::generate_via_ai($artist, $title, $weight, $views);
-        $txt = $ai ?: self::fallback_text($weight, $views, $title);
-        // 15% یک تیکه از عنوان/ترانه را اضافه کن: "اون تیکه که میگه ..."
-        if (mt_rand(1,100) <= 15 && mb_strlen($title) > 3 && mb_strlen($title) < 40) {
+        $clean = self::clean_song_title($title, $artist);
+        $ai = self::generate_via_ai($artist, $clean, $weight, $views);
+        $txt = $ai ?: self::fallback_text($weight, $views, $clean);
+        // 15% یک تیکه از ترانه را اضافه کن — بدون گیومه «» یا ""، طبیعی مثل "اون تیکه که میگه درد دل منو بشنو خیلی دوس داشتم"
+        if (mt_rand(1,100) <= 15 && mb_strlen($clean) > 2 && mb_strlen($clean) < 40) {
             $lyric_addons = [
-                " اون تیکه که میگه «{$title}» خیلی دوس داشتم",
-                " مخصوصاً اونجا که میگه {$title} عااالیه",
-                " اون قسمتش که میگی {$title} دلم رفت",
-                " تیکه {$title} رو رو تکرارم",
+                " اون تیکه که میگه {$clean} خیلی دوس داشتم",
+                " مخصوصا اونجا که میگه {$clean} عااالیه",
+                " اون قسمتش که میگی {$clean} دلم رفت",
+                " تیکه {$clean} رو رو تکرارم",
             ];
             $txt .= $lyric_addons[array_rand($lyric_addons)];
         }
@@ -233,6 +271,7 @@ class CommentGuardian {
     }
 
     private static function generate_via_ai(string $artist, string $title, int $weight, int $views): ?string {
+        $clean = self::clean_song_title($title, $artist);
         $settings = AI_Helper::get_settings();
         if (empty($settings['api_key'])) return null;
         // لحن متنوع — نه همه + : 60% تحسین، 15% سلام+تعریف سایت/مدیر، 15% انتقاد ریز، 10% سوال/خنثی
@@ -251,9 +290,9 @@ class CommentGuardian {
         }
         $tier_label = $views < 10000 ? 'تازه' : ($views < 100000 ? 'متوسط' : ($views < 500000 ? 'محبوب' : 'ابرآهنگ'));
         $colloquial = (mt_rand(1,100) <= 70) ? 'خیلی خودمونی و محاوره‌ای مثل کامنت واقعی سایت‌های موسیقی ایرانی (نکس‌وان، رادیوجوان) — با کلمات عامیانه مثل دمت گرم، عشقی، حال کردم، پشمام' : $tone;
-        // 20% از AI بخواه تیکه ترانه را بگوید
-        $lyric_hint = (mt_rand(1,100) <= 20) ? ' و حتماً بگو "اون تیکه که میگه ... خیلی دوس داشتم" با اشاره به عنوان «{$title}»' : '';
-        $prompt = "تو یک شنوندهٔ ایرانی هستی. برای آهنگ «{$title}» از خوانندهٔ «{$artist}» (وزن {$weight}/100، دسته {$tier_label}، بازدید {$views}) یک کامنت فارسی طبیعی 1-2 جمله‌ای بنویس — لحن {$colloquial}{$lyric_hint}، بدون هشتگ و بدون انگلیسی، دقیقاً مرتبط به این خواننده/آهنگ باشد (نه کلی). گاهی یک غلط تایپی ریز طبیعی بگذار (مثل خییلی، دوس، عااالی). فقط متن کامنت را برگردان.";
+        // 20% از AI بخواه تیکه ترانه را بگوید — بدون گیومه
+        $lyric_hint = (mt_rand(1,100) <= 20) ? ' و حتماً بگو اون تیکه که میگه ' . $clean . ' خیلی دوس داشتم — با اشاره به ترانه ' . $clean : '';
+        $prompt = "تو یک شنوندهٔ ایرانی هستی. برای آهنگ " . $clean . " از خوانندهٔ " . $artist . " (وزن {$weight}/100، دسته {$tier_label}، بازدید {$views}) یک کامنت فارسی طبیعی 1-2 جمله‌ای بنویس — لحن {$colloquial}{$lyric_hint}، بدون هشتگ و بدون انگلیسی، اصلاً نگو دانلود آهنگ یا دانلود موزیک، فقط اسم ترانه را مثل " . $clean . " بگو، و هرگز از گیومه «» یا \"\" استفاده نکن، دقیقاً مرتبط باش. گاهی یک غلط تایپی ریز طبیعی بگذار (مثل خییلی، دوس، عااالی). فقط متن کامنت را برگردان.";
         $payload = [
             'model' => $settings['model'] ?: 'gpt-4o-mini',
             'messages' => [
