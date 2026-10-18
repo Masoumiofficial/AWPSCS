@@ -1,0 +1,66 @@
+=== APEX Ω — Advanced WordPress Statistics Control System ===
+Contributors: etehadwp
+Tags: statistics, views, kksr, ratings, scheduling, music
+Requires at least: 5.8
+Tested up to: 6.6
+Requires PHP: 7.4
+Stable tag: 1.0.0
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+
+مدیریت دقیق، امن و زمان‌بندی‌شده بازدید و امتیاز آهنگ‌ها با سازگاری کامل kk Star Ratings.
+
+== Description ==
+
+APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کنترل کامل در اختیار مدیر می‌گذارد:
+
+* کشف خودکار ساختار kk Star Ratings (بدون فرض کور کلید متا)
+* مدیریت `views` (Custom Field قالب) با حفظ سازگاری
+* متاباکس حرفه‌ای + ویرایش گروهی + پیش‌نمایش
+* موتور زمان‌بندی با سقف مطلق/درصد، توقف/ادامه/لغو، کنترل نوسان و هشدار کاهش بزرگ
+* تاریخچه کامل + بازگردانی
+* امن (capability, nonce, prepared, lock, transaction) + سبک + RTL فارسی
+* آگاه به محدودیت WP-Cron + پشتیبانی Cron واقعی
+
+= سازگاری =
+
+* قالب‌های موسیقی با فیلد `views`
+* kk Star Ratings 5.x (و قدیمی‌تر)
+* WP Rocket / LiteSpeed / W3TC
+
+== Installation ==
+
+1. پوشه `apex-omega` را در `wp-content/plugins` آپلود کنید.
+2. فعال کنید.
+3. به منوی «آمار پیشرفته» بروید.
+
+== Frequently Asked Questions ==
+
+= آیا بازدید واقعی را به‌عنوان رویداد تحلیلی ثبت می‌کند؟ =
+
+خیر. تغییرات APΞX با منبع `manual/scheduled` ثبت می‌شوند و از `real_vote` متمایز هستند. آمار واقعی اولیه در `_apex_real_views` آرشیو می‌شود.
+
+= پس از رسیدن به هدف، ادامه می‌دهد؟ =
+
+خیر. برنامه `completed` می‌شود و بدون دستور جدید ادامه نمی‌یابد.
+
+= WP-Cron دقیق است؟ =
+
+خیر، وابسته به بازدید است. Cron واقعی هر 5 دقیقه توصیه می‌شود.
+
+== Screenshots ==
+
+1. داشبورد فارسی با کارت‌های آماری و هشدارها
+2. متاباکس هر نوشته با پیش‌نمایش زمان‌بندی
+3. تاریخچه با بازگردانی
+4. ویرایش گروهی
+
+== Changelog ==
+
+= 1.0.0 =
+
+* انتشار اولیه — مدیریت views + kksr + زمان‌بندی + تاریخچه + امنیت + RTL
+
+== Upgrade Notice ==
+
+از 0 به 1.0.0: نصب تازه، جداول ساخته می‌شوند.

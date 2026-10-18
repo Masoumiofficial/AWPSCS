@@ -1,0 +1,39 @@
+/* APEX Ω — Admin RTL — Persian professional */
+body.rtl, .apex-wrap { direction: rtl; text-align: right; font-family: "Vazirmatn", "IRANSans", Tahoma, sans-serif; }
+.apex-wrap { max-width: 1200px; margin: 20px 0; }
+.apex-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 16px; margin: 16px 0; }
+.apex-card { background:#fff; border:1px solid #ccd0d4; border-radius:12px; padding:16px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+.apex-card h3 { margin:0 0 8px; font-size:14px; color:#50575e; }
+.apex-card .big { font-size:28px; font-weight:800; color:#1d2327; }
+.apex-card.apx-success { border-right:4px solid #00a32a; }
+.apex-card.apx-warning { border-right:4px solid #dba617; }
+.apex-card.apx-error { border-right:4px solid #d63638; }
+.apex-card.apx-info { border-right:4px solid #2271b1; }
+
+.apex-alert { padding:12px 16px; border-radius:8px; margin:12px 0; border:1px solid; }
+.apex-alert.warning { background:#fcf9e8; border-color:#e6c220; color:#5a4e00; }
+.apex-alert.error { background:#fcf0f1; border-color:#d63638; color:#6b0c0c; }
+.apex-alert.success { background:#f0f6fc; border-color:#2271b1; color:#0a3d62; }
+
+.apex-table { width:100%; border-collapse:collapse; background:#fff; }
+.apex-table th, .apex-table td { padding:10px 12px; border:1px solid #dcdcde; text-align:right; font-size:13px; }
+.apex-table th { background:#f6f7f7; font-weight:700; }
+.apex-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+.apex-badge.active { background:#e6f4ea; color:#137333; border:1px solid #a8dab5; }
+.apex-badge.paused { background:#fef7e0; color:#b05c00; border:1px solid #f2c57c; }
+.apex-badge.completed { background:#e8eaed; color:#444; border:1px solid #c0c0c0; }
+.apex-badge.needs_review { background:#fce8e6; color:#a50e0e; border:1px solid #f4a9a9; }
+.apex-badge.cancelled { background:#f1f3f4; color:#5f6368; }
+
+.apex-metabox-grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+@media (max-width:900px){ .apex-metabox-grid{grid-template-columns:1fr} }
+.apex-field { margin-bottom:12px; }
+.apex-field label { display:block; font-weight:600; margin-bottom:6px; }
+.apex-field input, .apex-field select { width:100%; max-width:100%; padding:6px 10px; border:1px solid #8c8f94; border-radius:6px; }
+.apex-field small { color:#646970; }
+.apex-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+.button-apex { background:#2271b1; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; }
+.button-apex:hover{ background:#135e96; }
+.button-apex.secondary{ background:#f6f7f7; color:#1d2327; border:1px solid #dcdcde; }
+.apex-preview-box { background:#fff; border:1px dashed #8c8f94; padding:12px; border-radius:8px; margin-top:10px; max-height:240px; overflow:auto; }
+.apex-hr { border:none; border-top:1px solid #dcdcde; margin:16px 0; }

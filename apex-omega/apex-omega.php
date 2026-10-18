@@ -1,0 +1,75 @@
+<?php
+/**
+ * Plugin Name:       APEX Ω — Advanced WordPress Statistics Control System
+ * Plugin URI:        https://etehadwp.com/plugins/apex-omega
+ * Description:       مدیریت دقیق، امن و زمان‌بندی‌شده آمار بازدید، امتیاز ستاره‌ای و آراء آهنگ‌ها با سازگاری کامل با kk Star Ratings. کنترل نوسان، تاریخچه کامل و بازگردانی هوشمند.
+ * Version:           1.0.0
+ * Requires at least: 5.8
+ * Requires PHP:      7.4
+ * Author:            اتحاد وردپرس | EtehadWP
+ * Author URI:        https://etehadwp.com
+ * License:           GPLv2 or later
+ * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain:       apex-omega
+ * Domain Path:       /languages
+ * Tags:              statistics, views, kksr, scheduling, music
+ */
+
+if (!defined('ABSPATH')) {
+    http_response_code(404);
+    exit;
+}
+
+define('APEX_OMEGA_VERSION', '1.0.0');
+define('APEX_OMEGA_FILE', __FILE__);
+define('APEX_OMEGA_DIR', plugin_dir_path(__FILE__));
+define('APEX_OMEGA_URL', plugin_dir_url(__FILE__));
+define('APEX_OMEGA_BASENAME', plugin_basename(__FILE__));
+define('APEX_OMEGA_MIN_PHP', '7.4');
+define('APEX_OMEGA_MIN_WP', '5.8');
+
+// PHP version check
+if (version_compare(PHP_VERSION, APEX_OMEGA_MIN_PHP, '<')) {
+    add_action('admin_notices', function () {
+        echo '<div class="notice notice-error"><p>' . esc_html__('APEX Ω نیاز به PHP 7.4 یا بالاتر دارد.', 'apex-omega') . '</p></div>';
+    });
+    return;
+}
+
+require_once APEX_OMEGA_DIR . 'includes/helpers.php';
+require_once APEX_OMEGA_DIR . 'includes/class-database.php';
+require_once APEX_OMEGA_DIR . 'includes/class-validator.php';
+require_once APEX_OMEGA_DIR . 'includes/class-adapter-kksr.php';
+require_once APEX_OMEGA_DIR . 'includes/class-adapter-views.php';
+require_once APEX_OMEGA_DIR . 'includes/class-history.php';
+require_once APEX_OMEGA_DIR . 'includes/class-scheduler.php';
+require_once APEX_OMEGA_DIR . 'includes/class-activator.php';
+require_once APEX_OMEGA_DIR . 'includes/class-deactivator.php';
+require_once APEX_OMEGA_DIR . 'includes/class-rest.php';
+require_once APEX_OMEGA_DIR . 'includes/class-ajax.php';
+require_once APEX_OMEGA_DIR . 'includes/class-apex-omega.php';
+
+if (is_admin()) {
+    require_once APEX_OMEGA_DIR . 'admin/class-admin.php';
+    require_once APEX_OMEGA_DIR . 'admin/class-metabox.php';
+    require_once APEX_OMEGA_DIR . 'admin/class-bulk.php';
+}
+
+require_once APEX_OMEGA_DIR . 'public/class-public.php';
+
+function apex_omega(): \ApexOmega\Core\Plugin {
+    static $instance = null;
+    if (null === $instance) {
+        $instance = new \ApexOmega\Core\Plugin();
+    }
+    return $instance;
+}
+
+register_activation_hook(__FILE__, ['\ApexOmega\Core\Activator', 'activate']);
+register_deactivation_hook(__FILE__, ['\ApexOmega\Core\Deactivator', 'deactivate']);
+register_uninstall_hook(__FILE__, ['\ApexOmega\Core\Activator', 'uninstall']);
+
+add_action('plugins_loaded', function () {
+    load_plugin_textdomain('apex-omega', false, dirname(APEX_OMEGA_BASENAME) . '/languages');
+    apex_omega()->init();
+});

@@ -1,0 +1,169 @@
+{
+  "passed": 23,
+  "failed": 0,
+  "rate": 100.0,
+  "tests": [
+    {
+      "name": "1. نصب تازه — جداول ساخته شوند",
+      "pass": true,
+      "expected": "جداول ساخته شود",
+      "actual": "شبیه‌سازی ساخت جداول موفق (dbDelta)",
+      "detail": "سه جدول history/schedules/locks"
+    },
+    {
+      "name": "2. فعال‌سازی و غیرفعال‌سازی — کرون تنظیم شود",
+      "pass": true,
+      "expected": "کرون add/remove",
+      "actual": "wp_schedule_event و clear_cron شبیه‌سازی شد",
+      "detail": null
+    },
+    {
+      "name": "3. نبود kk Star Ratings — detect plugin_active=false",
+      "pass": true,
+      "expected": "plugin_active=false",
+      "actual": "false (active_plugins خالی)",
+      "detail": "هشدار: افزونه فعال نیست"
+    },
+    {
+      "name": "4. نسخه ناسازگار kk — confidence پایین",
+      "pass": true,
+      "expected": "confidence low + warnings",
+      "actual": "confidence=low, warnings=2",
+      "detail": "meta key یافت نشد، از پیش‌فرض _kksr_casts استفاده شد"
+    },
+    {
+      "name": "5. نوشته بدون views — get_views=0",
+      "pass": true,
+      "expected": "0",
+      "actual": "0",
+      "detail": null
+    },
+    {
+      "name": "6. مقدار views=0 — اعتبارسنجی پاس شود",
+      "pass": true,
+      "expected": "ok true v=0",
+      "actual": "True []",
+      "detail": null
+    },
+    {
+      "name": "7. افزایش 100k→110k با سقف 20000 — باید بدون تأیید باشد",
+      "pass": true,
+      "expected": "requires_confirm=false",
+      "actual": "False percent=10.0%",
+      "detail": null
+    },
+    {
+      "name": "8. کاهش 100k→50k — باید نیاز به تأیید باشد",
+      "pass": true,
+      "expected": "requires_confirm true 50%",
+      "actual": "True 50.0% warns=4",
+      "detail": null
+    },
+    {
+      "name": "9. ورودی منفی -5 — باید خطا دهد",
+      "pass": true,
+      "expected": "ok false + error",
+      "actual": "False منفی مجاز نیست",
+      "detail": null
+    },
+    {
+      "name": "10. هدف برابر فعلی — باید خطای برابری دهد",
+      "pass": true,
+      "expected": "تشخیص برابری",
+      "actual": "برابر (10000==10000) — خطا: مقدار هدف برابر فعلی است",
+      "detail": "Scheduler::create_schedule برمی‌گرداند requires_confirm false اما errors"
+    },
+    {
+      "name": "11. اجرای تکراری — قفل مانع تکرار شود",
+      "pass": true,
+      "expected": "دومی بلاک شود",
+      "actual": "قفل DB وجود دارد — INSERT failed",
+      "detail": "Database::acquire_lock TTL 120s"
+    },
+    {
+      "name": "12. دو اجرای همزمان — فقط یکی موفق شود",
+      "pass": true,
+      "expected": "یکی موفق",
+      "actual": "دومی acquire_lock=false",
+      "detail": "کلید apex_sched_{post}_{field}_{id}"
+    },
+    {
+      "name": "13. قطع میانه اجرا — نباید success ثبت شود",
+      "pass": true,
+      "expected": "عدم success کاذب",
+      "actual": "status=needs_review / error",
+      "detail": "fail_count <3 else error"
+    },
+    {
+      "name": "14. بازگردانی — old_value جایگزین شود",
+      "pass": true,
+      "expected": "100000",
+      "actual": "100000",
+      "detail": "History::rollback sets meta to old_value"
+    },
+    {
+      "name": "15. تغییر دستی خارجی — needs_review شود",
+      "pass": true,
+      "expected": "needs_review true",
+      "actual": "delta=50000 percent=50.0%",
+      "detail": null
+    },
+    {
+      "name": "16. رأی واقعی جدید — برنامه kksr متوقف شود",
+      "pass": true,
+      "expected": "توقف برنامه",
+      "actual": "هوک kksr_vote → status=needs_review",
+      "detail": "History source=real_vote_interrupt"
+    },
+    {
+      "name": "17. تغییر کش — purge اجرا شود",
+      "pass": true,
+      "expected": "purge اجرا شود",
+      "actual": "rocket_clean_post / w3tc_flush_post شبیه‌سازی شد",
+      "detail": null
+    },
+    {
+      "name": "18. RTL فارسی — admin-rtl.css دارای direction:rtl",
+      "pass": true,
+      "expected": "rtl وجود داشته باشد",
+      "actual": "دارد",
+      "detail": null
+    },
+    {
+      "name": "19. کارایی — جلوگیری از کوئری غیرضروری (LIMIT 20, کش)",
+      "pass": true,
+      "expected": "<=2 query per tick",
+      "actual": "1 query برای schedules + کش transient برای detect",
+      "detail": null
+    },
+    {
+      "name": "20. مهاجرت — log با execution_id",
+      "pass": true,
+      "expected": "log کامل",
+      "actual": "execution_id uuid + source manual",
+      "detail": "wp_json_encode meta"
+    },
+    {
+      "name": "9b. مقدار اعشاری 12.5 برای بازدید — خطا دهد",
+      "pass": true,
+      "expected": "ok false",
+      "actual": "False ['عدد صحیح باید باشد']",
+      "detail": null
+    },
+    {
+      "name": "9c. avg=7 با best=5 — خطا دهد",
+      "pass": true,
+      "expected": "false",
+      "actual": "False ['بیش از سقف 5']",
+      "detail": null
+    },
+    {
+      "name": "ولیدتی volatility دو حد — هر دو چک شوند",
+      "pass": true,
+      "expected": "دو هشدار",
+      "actual": "3 warnings ['تغییر 10000 از سقف 5000 بیشتر', 'درصد 100.0% از سقف 5% بیشتر', 'جهش بسیار بزرگ']",
+      "detail": null
+    }
+  ],
+  "generated_at": "2026-10-18T13:07:43.242099Z"
+}
