@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Validator {
-    const MAX_VIEWS = 100000000; // 100M سقف منطقی
+    const MAX_VIEWS = 1500000; // 1.5M — سقف واقع‌گرایانه درخواست کاربر
     const MAX_CASTS = 10000000;
     const MAX_RATINGS_PER_VOTE = 5; // داخلی kk بر مبنای 5
 
@@ -98,11 +98,12 @@ class Validator {
         $abs_delta = abs($delta);
         $percent = $old > 0 ? ($abs_delta / $old * 100) : ($new > 0 ? 100 : 0);
 
-        if ($max_step !== null && $abs_delta > $max_step) {
+        // 0 یا خالی = بدون محدودیت (پیش‌فرض). این باگ قبلی بود که 0 باعث خطای 1249900% می‌شد
+        if ($max_step !== null && $max_step !== '' && (int)$max_step > 0 && $abs_delta > (int)$max_step) {
             $warnings[] = sprintf('تغییر %s از سقف مجاز هر اجرا (%s) بیشتر است.', number_format_i18n($abs_delta), number_format_i18n($max_step));
             $requires_confirm = true;
         }
-        if ($max_percent !== null && $percent > $max_percent) {
+        if ($max_percent !== null && $max_percent !== '' && (float)$max_percent > 0 && $percent > (float)$max_percent) {
             $warnings[] = sprintf('درصد تغییر %.1f%% از سقف مجاز (%.1f%%) بیشتر است.', $percent, $max_percent);
             $requires_confirm = true;
         }
@@ -113,8 +114,9 @@ class Validator {
             $requires_confirm = true;
         }
 
-        // جهش بسیار بزرگ (مثلاً ۵۰٪)
-        if ($percent >= 50 && $abs_delta > 1000) {
+        // جهش بسیار بزرگ (مثلاً ۵۰٪) — فقط وقتی مقدار فعلی معنادار است، نه برای پست‌های تازه با 1 بازدید
+        // باگ قبلی: 1→10000 را با 1249900% مسدود می‌کرد. الان old<100 را نادیده می‌گیریم
+        if ($percent >= 50 && $abs_delta > 1000 && $old >= 100) {
             $warnings[] = 'جهش بسیار بزرگ؛ لطفاً مقدار هدف را بازبینی کنید.';
             $requires_confirm = true;
         }
@@ -143,7 +145,8 @@ class Validator {
 
         if (isset($data['interval_seconds'])) {
             $iv = (int) $data['interval_seconds'];
-            if ($iv < 300) $errors[] = 'فاصله اجرا حداقل ۵ دقیقه (۳۰۰ ثانیه) است.';
+            if ($iv < 60) $errors[] = 'فاصله اجرا حداقل ۶۰ ثانیه است.';
+            elseif ($iv < 300) $errors[] = 'هشدار: فاصله کمتر از ۵ دقیقه فشار زیادی به سرور وارد می‌کند.';
             if ($iv > 2592000) $errors[] = 'فاصله اجرا حداکثر ۳۰ روز است.';
         }
 

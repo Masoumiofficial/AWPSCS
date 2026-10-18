@@ -3,7 +3,7 @@
  * Plugin Name:       APEX Ω — Advanced WordPress Statistics Control System
  * Plugin URI:        https://etehadwp.com/plugins/apex-omega
  * Description:       مدیریت دقیق، امن و زمان‌بندی‌شده آمار بازدید، امتیاز ستاره‌ای و آراء آهنگ‌ها با سازگاری کامل با kk Star Ratings. کنترل نوسان، تاریخچه کامل و بازگردانی هوشمند.
- * Version:           1.0.0
+ * Version:           1.8.5
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            اتحاد وردپرس | EtehadWP
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('APEX_OMEGA_VERSION', '1.0.0');
+define('APEX_OMEGA_VERSION', '1.8.5');
 define('APEX_OMEGA_FILE', __FILE__);
 define('APEX_OMEGA_DIR', plugin_dir_path(__FILE__));
 define('APEX_OMEGA_URL', plugin_dir_url(__FILE__));
@@ -43,6 +43,15 @@ require_once APEX_OMEGA_DIR . 'includes/class-adapter-kksr.php';
 require_once APEX_OMEGA_DIR . 'includes/class-adapter-views.php';
 require_once APEX_OMEGA_DIR . 'includes/class-history.php';
 require_once APEX_OMEGA_DIR . 'includes/class-scheduler.php';
+require_once APEX_OMEGA_DIR . 'includes/class-tier.php';
+require_once APEX_OMEGA_DIR . 'includes/class-analytics.php';
+require_once APEX_OMEGA_DIR . 'includes/class-export.php';
+require_once APEX_OMEGA_DIR . 'includes/class-ai.php';
+require_once APEX_OMEGA_DIR . 'includes/class-artist.php';
+require_once APEX_OMEGA_DIR . 'includes/class-provider.php';
+require_once APEX_OMEGA_DIR . 'includes/class-evergreen.php';
+require_once APEX_OMEGA_DIR . 'includes/class-autowatch.php';
+require_once APEX_OMEGA_DIR . 'includes/class-comment.php';
 require_once APEX_OMEGA_DIR . 'includes/class-activator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-deactivator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-rest.php';
@@ -72,4 +81,15 @@ register_uninstall_hook(__FILE__, ['\ApexOmega\Core\Activator', 'uninstall']);
 add_action('plugins_loaded', function () {
     load_plugin_textdomain('apex-omega', false, dirname(APEX_OMEGA_BASENAME) . '/languages');
     apex_omega()->init();
+    // مهاجرت 1.3.1 → 1.8.5: سقف 10M → 1.5M + پاکسازی حالت ساده/حرفه‌ای منسوخ + فعال‌سازی نگهبان خودکار
+    add_action('init', function() {
+        $stored = get_option(\ApexOmega\Core\TierManager::OPTION_TIERS, null);
+        if (is_array($stored) && !empty($stored)) {
+            $max = 0; foreach ($stored as $t) $max = max($max, (int)($t['views_max'] ?? 0));
+            if ($max > 1500000) {
+                update_option(\ApexOmega\Core\TierManager::OPTION_TIERS, \ApexOmega\Core\TierManager::default_tiers(), false);
+            }
+        }
+        if (get_option('apex_omega_ui_mode', null) !== null) delete_option('apex_omega_ui_mode');
+    }, 20);
 });

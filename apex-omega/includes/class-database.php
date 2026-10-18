@@ -21,6 +21,11 @@ class Database {
         return $wpdb->prefix . 'apex_omega_locks';
     }
 
+    public static function table_snapshots(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_snapshots';
+    }
+
     public static function create_tables(): void {
         global $wpdb;
         $charset = $wpdb->get_charset_collate();
@@ -107,9 +112,30 @@ class Database {
             KEY expires_at_gmt (expires_at_gmt)
         ) $charset;";
 
+        $snaps = self::table_snapshots();
+        $sql4 = "CREATE TABLE $snaps (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            execution_id VARCHAR(64) NOT NULL,
+            user_id BIGINT UNSIGNED NULL,
+            counts_json LONGTEXT NULL,
+            filters_json LONGTEXT NULL,
+            total_requested INT UNSIGNED NOT NULL DEFAULT 0,
+            total_applied INT UNSIGNED NOT NULL DEFAULT 0,
+            snapshot_json LONGTEXT NULL,
+            created_at DATETIME NOT NULL,
+            created_at_gmt DATETIME NOT NULL,
+            restored TINYINT(1) NOT NULL DEFAULT 0,
+            restored_at DATETIME NULL,
+            restored_at_gmt DATETIME NULL,
+            PRIMARY KEY (id),
+            KEY execution_id (execution_id),
+            KEY created_at_gmt (created_at_gmt)
+        ) $charset;";
+
         dbDelta($sql1);
         dbDelta($sql2);
         dbDelta($sql3);
+        dbDelta($sql4);
 
         update_option('apex_omega_db_version', self::VERSION);
     }
@@ -121,6 +147,7 @@ class Database {
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_history());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_schedules());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_locks());
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_snapshots());
         delete_option('apex_omega_db_version');
     }
 
@@ -171,5 +198,67 @@ class Database {
         $table = self::table_locks();
         $now_gmt = current_time('mysql', true);
         $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE expires_at_gmt < %s", $now_gmt));
+    }
+
+    // Snapshot helpers
+    public static function create_snapshot(string $exec_id, int $user_id, array $counts, array $filters, int $requested, int $applied, array $snapshot_data): int {
+        global $wpdb;
+        $table = self::table_snapshots();
+        $now = current_time('mysql');
+        $now_gmt = current_time('mysql', true);
+        $wpdb->insert($table, [
+            'execution_id' => $exec_id,
+            'user_id' => $user_id ?: null,
+            'counts_json' => wp_json_encode($counts, JSON_UNESCAPED_UNICODE),
+            'filters_json' => wp_json_encode($filters, JSON_UNESCAPED_UNICODE),
+            'total_requested' => $requested,
+            'total_applied' => $applied,
+            'snapshot_json' => wp_json_encode($snapshot_data, JSON_UNESCAPED_UNICODE),
+            'created_at' => $now,
+            'created_at_gmt' => $now_gmt,
+            'restored' => 0,
+        ]);
+        return (int) $wpdb->insert_id;
+    }
+
+    public static function get_last_snapshot(): ?array {
+        global $wpdb;
+        $table = self::table_snapshots();
+        $row = $wpdb->get_row("SELECT * FROM $table WHERE restored=0 ORDER BY id DESC LIMIT 1", ARRAY_A);
+        return $row ?: null;
+    }
+
+    public static function get_snapshot_by_exec(string $exec_id): ?array {
+        global $wpdb;
+        $table = self::table_snapshots();
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE execution_id=%s LIMIT 1", $exec_id), ARRAY_A);
+        return $row ?: null;
+    }
+
+    public static function mark_snapshot_restored(int $id): void {
+        global $wpdb;
+        $table = self::table_snapshots();
+        $wpdb->update($table, [
+            'restored' => 1,
+            'restored_at' => current_time('mysql'),
+            'restored_at_gmt' => current_time('mysql', true),
+        ], ['id' => $id]);
+    }
+
+    // Single transaction per post: update views + kksr atomically
+    public static function atomic_update_post_meta(int $post_id, array $meta_updates): bool {
+        global $wpdb;
+        $wpdb->query('START TRANSACTION');
+        try {
+            foreach ($meta_updates as $key => $value) {
+                update_post_meta($post_id, $key, $value);
+            }
+            $wpdb->query('COMMIT');
+            return true;
+        } catch (\Throwable $e) {
+            $wpdb->query('ROLLBACK');
+            error_log('[APEX Ω] atomic_update failed: ' . $e->getMessage());
+            return false;
+        }
     }
 }

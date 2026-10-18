@@ -101,7 +101,7 @@
               <td><code><?php echo esc_html($r['field_type']); ?></code></td>
               <td><?php echo esc_html(mb_strimwidth($r['old_value']??'',0,30,'…')); ?> → <?php echo esc_html(mb_strimwidth($r['new_value']??'',0,30,'…')); ?></td>
               <td><?php echo esc_html($r['source']); ?></td>
-              <td><button class="button apex-rollback" data-id="<?php echo esc_attr($r['id']); ?>">بازگردانی</button></td>
+              <td><button type="button" class="button apex-rollback" data-id="<?php echo esc_attr($r['id']); ?>">بازگردانی</button></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
@@ -126,8 +126,8 @@
               <td><?php echo esc_html($s['next_run_at'] ?? '—'); ?></td>
               <td><span class="apex-badge <?php echo esc_attr($s['status']); ?>"><?php echo esc_html($s['status']); ?></span></td>
               <td>
-                <button class="button apex-pause" data-id="<?php echo esc_attr($s['id']); ?>">توقف</button>
-                <button class="button apex-cancel" data-id="<?php echo esc_attr($s['id']); ?>">لغو</button>
+                <button type="button" class="button apex-pause" data-id="<?php echo esc_attr($s['id']); ?>">توقف</button>
+                <button type="button" class="button apex-cancel" data-id="<?php echo esc_attr($s['id']); ?>">لغو</button>
               </td>
             </tr>
           <?php endforeach; ?>
@@ -136,7 +136,9 @@
       <?php endif; ?>
       <?php
         $next_cron = wp_next_scheduled(\ApexOmega\Core\Scheduler::CRON_HOOK);
-        echo '<p><small>اجرای بعدی WP-Cron: ' . ($next_cron ? esc_html(get_date_from_gmt(gmdate('Y-m-d H:i:s', $next_cron), 'Y-m-d H:i:s')) : 'تنظیم نشده') . '</small></p>';
+        echo '<p><small>اجرای بعدی WP-Cron: ' . ($next_cron ? esc_html(get_date_from_gmt(gmdate('Y-m-d H:i:s', $next_cron), 'Y-m-d H:i:s')) : '⚠️ تنظیم نشده') . ' — <a href="#" id="apex-heal-cron" class="button button-small">ترمیم کرون</a> <span id="apex-heal-msg"></span></small></p>';
+        $heal_nonce = wp_create_nonce('apex-omega-nonce');
+        echo '<script>document.addEventListener("DOMContentLoaded",function(){var b=document.getElementById("apex-heal-cron");if(!b)return;b.addEventListener("click",function(e){e.preventDefault();b.disabled=true;b.textContent="در حال ترمیم…";fetch(ajaxurl,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"action=apex_heal_cron&nonce="+"' . $heal_nonce . '}).then(r=>r.json()).then(j=>{var m=document.getElementById("apex-heal-msg");if(j.success){m.textContent=" ✅ ترمیم شد — "+j.data.human;b.textContent="ترمیم شد";setTimeout(function(){location.reload();},1200);}else{m.textContent=" ❌ "+(j.data&&j.data.msg?j.data.msg:"خطا");b.disabled=false;b.textContent="ترمیم کرون";}}).catch(function(){document.getElementById("apex-heal-msg").textContent=" خطای شبکه";b.disabled=false;b.textContent="ترمیم کرون";});});});</script>';
       ?>
       <div class="apex-alert warning">
         <strong>WP-Cron:</strong> تضمین اجرای دقیق در ساعت مشخص را نمی‌دهد؛ وابسته به بازدید سایت است. برای دقت ثانیه‌ای، یک Cron واقعی هر ۵ دقیقه به <code>wp-cron.php?doing_wp_cron</code> تنظیم کنید. <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-help')); ?>">راهنما</a>

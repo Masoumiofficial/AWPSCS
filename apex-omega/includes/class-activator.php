@@ -53,9 +53,25 @@ class Activator {
         if ($remove_data) {
             Database::drop_tables(true);
             delete_option('apex_omega_settings');
+            delete_option('apex_omega_ai_settings');
+            delete_option('apex_omega_tiers');
+            delete_option('apex_omega_last_distribution');
+            delete_option('apex_omega_auto_tier');
+            delete_option('apex_omega_rhythm');
+            delete_option('apex_omega_evergreen');
+            delete_option('apex_omega_autowatch');
+            delete_option('apex_omega_autowatch_last_run');
+            delete_option('apex_omega_commentor');
+            delete_option('apex_omega_commentor_last_run');
+            delete_option('apex_omega_artist_weights');
+            delete_option('apex_omega_artist_taxonomy');
+            delete_option('apex_omega_artist_external_cache');
+            delete_option('apex_omega_provider_failures');
+            delete_option('apex_omega_ui_mode');
             // متای پست‌های مرتبط
             global $wpdb;
             $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key LIKE '_apex_%'");
+            $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_apex_%' OR option_name LIKE '_transient_timeout_apex_%'");
         } else {
             // حتی اگر حذف داده فعال نباشد، کرون را پاک کن اما جداول بماند برای بازگشت
             Scheduler::clear_cron();

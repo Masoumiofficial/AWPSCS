@@ -23,7 +23,7 @@
         <label>شناسه نوشته‌ها (با کاما جدا کنید)</label>
         <input type="text" name="apex_bulk_ids" value="<?php echo esc_attr(implode(',', $ids_arr)); ?>" placeholder="مثلاً 12,45,78">
       </div>
-      <button class="button">بارگذاری</button>
+      <button type="submit" class="button">بارگذاری</button>
     </form>
     <?php if ($posts): ?>
       <table class="apex-table" style="margin-top:12px;">
@@ -78,7 +78,7 @@
       </select>
     </div>
     <div class="apex-actions">
-      <button id="apex-bulk-apply" class="button-apex">اعمال گروهی</button>
+      <button type="button" id="apex-bulk-apply" class="button-apex">اعمال گروهی</button>
     </div>
     <div id="apex-bulk-result"></div>
     <div class="apex-alert warning" style="margin-top:12px;">

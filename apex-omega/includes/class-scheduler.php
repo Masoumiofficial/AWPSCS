@@ -7,28 +7,98 @@ class Scheduler {
     const CRON_HOOK = 'apex_omega_tick';
     const CRON_INTERVAL = 'apex_omega_five_min';
 
+    const WEEKLY_HOOK = 'apex_omega_weekly_report';
+    const SITE_HEALTH_HOOK = 'apex_omega_site_health';
+
     public static function init(): void {
         add_filter('cron_schedules', [__CLASS__, 'add_cron_schedules']);
         add_action(self::CRON_HOOK, [__CLASS__, 'tick']);
+        add_action(self::COMMENT_HOOK, ['\\ApexOmega\\Core\\CommentGuardian', 'tick']);
         // پاکسازی قفل‌های منقضی روزانه
         add_action('apex_omega_cleanup', [Database::class, 'cleanup_expired_locks']);
         if (!wp_next_scheduled('apex_omega_cleanup')) {
             wp_schedule_event(time(), 'daily', 'apex_omega_cleanup');
         }
+        // گزارش هفتگی
+        add_action(self::WEEKLY_HOOK, [__CLASS__, 'send_weekly_report']);
+        if (!wp_next_scheduled(self::WEEKLY_HOOK)) {
+            wp_schedule_event(time() + WEEK_IN_SECONDS, 'weekly', self::WEEKLY_HOOK);
+        }
+        // خودترمیم: اگر رویداد اصلی حذف یا تکی شده بود، دوباره بساز (مهم برای بعد از غیرفعال/فعال یا دستکاری WP Crontrol)
+        add_action('init', [__CLASS__, 'maybe_heal_cron'], 20);
+        add_action('admin_init', [__CLASS__, 'maybe_heal_cron'], 20);
+        // Site Health
+        add_filter('site_status_tests', [__CLASS__, 'register_site_health_tests']);
     }
+
+    public static function maybe_heal_cron(): void {
+        // در پیشخوان بدون تاخیر ترمیم کن؛ در فرانت حداکثر هر 5 دقیقه
+        $is_admin = is_admin();
+        $ttl = $is_admin ? 60 : 300;
+        $last = get_transient('apex_omega_heal_last');
+        if ($last && !$is_admin) return;
+        if ($last && $is_admin && (time() - (int)get_option('_apex_heal_last_ts', 0) < 60)) return;
+        set_transient('apex_omega_heal_last', 1, $ttl);
+        update_option('_apex_heal_last_ts', time(), false);
+        // فقط در پیشخوان یا هر init، سبک و idempotent
+        if (!wp_next_scheduled(self::CRON_HOOK)) {
+            self::ensure_cron();
+            return;
+        }
+        // اگر به‌اشتباه به‌صورت non-repeating ثبت شده (توسط WP Crontrol دستی)
+        $sched = wp_get_schedule(self::CRON_HOOK);
+        if ($sched !== self::CRON_INTERVAL) {
+            wp_clear_scheduled_hook(self::CRON_HOOK);
+            self::ensure_cron();
+        }
+    }
+
+    const COMMENT_INTERVAL = 'apex_omega_six_hours';
+    const COMMENT_HOOK = 'apex_omega_commentor_tick';
 
     public static function add_cron_schedules(array $schedules): array {
         $schedules[self::CRON_INTERVAL] = [
             'interval' => 300,
             'display' => __('هر ۵ دقیقه — APEX Ω', 'apex-omega'),
         ];
+        $schedules[self::COMMENT_INTERVAL] = [
+            'interval' => 21600,
+            'display' => __('هر ۶ ساعت — APEX Ω کامنت', 'apex-omega'),
+        ];
         return $schedules;
     }
 
     public static function ensure_cron(): void {
-        if (!wp_next_scheduled(self::CRON_HOOK)) {
+        $ts = wp_next_scheduled(self::CRON_HOOK);
+        if (!$ts) {
             wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+        } else {
+            $sched = wp_get_schedule(self::CRON_HOOK);
+            if ($sched !== self::CRON_INTERVAL) {
+                wp_clear_scheduled_hook(self::CRON_HOOK);
+                wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+            }
         }
+        // نگهبان کامنت — هر ۶ ساعت (۴ بار/روز) همهٔ پست‌ها
+        $ts_c = wp_next_scheduled(self::COMMENT_HOOK);
+        if (!$ts_c) {
+            wp_schedule_event(time() + 3600, self::COMMENT_INTERVAL, self::COMMENT_HOOK);
+        } else {
+            $sched_c = wp_get_schedule(self::COMMENT_HOOK);
+            if ($sched_c !== self::COMMENT_INTERVAL) {
+                wp_clear_scheduled_hook(self::COMMENT_HOOK);
+                wp_schedule_event(time() + 3600, self::COMMENT_INTERVAL, self::COMMENT_HOOK);
+            }
+        }
+    }
+
+    public static function ajax_heal_cron(): void {
+        check_ajax_referer('apex-omega-nonce', 'nonce');
+        if (!current_user_can('apex_manage_statistics')) wp_send_json_error(['msg'=>'دسترسی غیرمجاز']);
+        self::ensure_cron();
+        $next = wp_next_scheduled(self::CRON_HOOK);
+        if ($next) wp_send_json_success(['next'=> $next, 'human'=> get_date_from_gmt(gmdate('Y-m-d H:i:s', $next), 'Y-m-d H:i:s')]);
+        wp_send_json_error(['msg'=>'ترمیم ناموفق — Cron سرور را بررسی کنید.']);
     }
 
     public static function clear_cron(): void {
@@ -36,6 +106,70 @@ class Scheduler {
         if ($ts) wp_unschedule_event($ts, self::CRON_HOOK);
         $ts2 = wp_next_scheduled('apex_omega_cleanup');
         if ($ts2) wp_unschedule_event($ts2, 'apex_omega_cleanup');
+        $ts3 = wp_next_scheduled(self::WEEKLY_HOOK);
+        if ($ts3) wp_unschedule_event($ts3, self::WEEKLY_HOOK);
+        $ts4 = wp_next_scheduled('apex_omega_auto_tier_tick');
+        if ($ts4) wp_unschedule_event($ts4, 'apex_omega_auto_tier_tick');
+        $ts5 = wp_next_scheduled(self::COMMENT_HOOK);
+        if ($ts5) wp_unschedule_event($ts5, self::COMMENT_HOOK);
+    }
+
+    public static function send_weekly_report(): void {
+        $to = get_option('admin_email');
+        $counts = History::stats_summary();
+        $last = get_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, []);
+        $active = self::get_all_active(5);
+        $subject = 'APEX Ω — گزارش هفتگی: ' . get_bloginfo('name');
+        $body = "گزارش هفتگی APEX Ω\n";
+        $body .= "تاریخ: " . current_time('mysql') . "\n";
+        $body .= "کل تغییرات: {$counts['total_changes']} | امروز: {$counts['today_changes']} | فعال: {$counts['active_schedules']}\n";
+        if (!empty($last)) {
+            $body .= "آخرین توزیع: {$last['at']} — {$last['applied']} آهنگ — exec {$last['exec']}\n";
+            $body .= "دسته‌ها: " . wp_json_encode($last['counts'] ?? [], JSON_UNESCAPED_UNICODE) . "\n";
+        }
+        if ($active) {
+            $body .= "برنامه‌های فعال:\n";
+            foreach ($active as $s) $body .= " - #{$s['id']} پست {$s['post_id']} فیلد {$s['field_type']} مقصد {$s['target_value']}\n";
+        }
+        $body .= "\nمدیریت: " . admin_url('admin.php?page=apex-omega') . "\n";
+        wp_mail($to, $subject, $body);
+    }
+
+    public static function register_site_health_tests(array $tests): array {
+        $tests['direct']['apex_omega_cron'] = [
+            'label' => 'APEX Ω — زمان‌بندی',
+            'test'  => [__CLASS__, 'site_health_cron'],
+        ];
+        $tests['direct']['apex_omega_tables'] = [
+            'label' => 'APEX Ω — جداول دیتابیس',
+            'test'  => [__CLASS__, 'site_health_tables'],
+        ];
+        return $tests;
+    }
+    public static function site_health_cron(): array {
+        $next = wp_next_scheduled(self::CRON_HOOK);
+        $status = $next ? 'good' : 'critical';
+        return [
+            'label' => $next ? 'کرون APEX Ω فعال است' : 'کرون APEX Ω غیرفعال است',
+            'status' => $status,
+            'badge' => ['label'=>'APEX Ω','color'=>'blue'],
+            'description' => $next ? '<p>اجرای بعدی: '.esc_html(get_date_from_gmt(gmdate('Y-m-d H:i:s',$next),'Y-m-d H:i:s')).'</p>' : '<p>رویداد apex_omega_tick زمان‌بندی نشده. افزونه را غیرفعال/فعال کنید.</p>',
+            'actions' => $next ? '' : '<a href="'.esc_url(admin_url('admin.php?page=apex-omega')).'">رفتن به داشبورد</a>',
+            'test' => 'apex_omega_cron',
+        ];
+    }
+    public static function site_health_tables(): array {
+        global $wpdb;
+        $h = Database::table_history();
+        $exists = $wpdb->get_var("SHOW TABLES LIKE '$h'") === $h;
+        $status = $exists ? 'good' : 'critical';
+        return [
+            'label' => $exists ? 'جداول APEX Ω موجود است' : 'جدول تاریخچه APEX Ω یافت نشد',
+            'status' => $status,
+            'badge' => ['label'=>'APEX Ω','color'=>'blue'],
+            'description' => $exists ? '<p>جداول به‌درستی ساخته شده‌اند.</p>' : '<p>جدول '.$h.' وجود ندارد. افزونه را دوباره فعال کنید.</p>',
+            'test' => 'apex_omega_tables',
+        ];
     }
 
     /**
@@ -63,7 +197,10 @@ class Scheduler {
         $is_views = $data['field_type'] === 'views';
         $old_int = $is_views ? (int)$current : (int)$current; // برای سادگی
         $new_int = (int) $target;
-        $vol = Validator::check_volatility($old_int, $new_int, isset($data['max_step']) ? (int)$data['max_step'] : null, isset($data['max_percent_step']) ? (float)$data['max_percent_step'] : null);
+        // خالی یا 0 = بدون محدودیت؛ قبلاً 0 باعث باگ سقف 0 می‌شد
+        $max_step_for_check = (isset($data['max_step']) && $data['max_step'] !== '' && (int)$data['max_step'] > 0) ? (int)$data['max_step'] : null;
+        $max_percent_for_check = (isset($data['max_percent_step']) && $data['max_percent_step'] !== '' && (float)$data['max_percent_step'] > 0) ? (float)$data['max_percent_step'] : null;
+        $vol = Validator::check_volatility($old_int, $new_int, $max_step_for_check, $max_percent_for_check);
         $needs_confirm = $vol['requires_confirm'];
         $large_drop = $vol['delta'] < 0 && abs($vol['percent']) >= 20;
 
@@ -175,7 +312,7 @@ class Scheduler {
     }
 
     /**
-     * تابع اصلی تیک کرون
+     * تابع اصلی تیک کرون — هر 5 دقیقه (افزایش تدریجی + Evergreen)
      */
     public static function tick(): void {
         global $wpdb;
@@ -188,11 +325,21 @@ class Scheduler {
             'active', $now_gmt, $now_gmt, $now_gmt
         ), ARRAY_A);
 
-        if (!$rows) return;
-
-        foreach ($rows as $schedule) {
-            self::execute_schedule($schedule);
+        if ($rows) {
+            foreach ($rows as $schedule) {
+                self::execute_schedule($schedule);
+            }
         }
+        // نگهبان خودکار پست‌های تازه — هر 5 دقیقه چک کند (درخواست کاربر: پست‌های <10K)
+        if (class_exists('\\ApexOmega\\Core\\AutoWatch')) {
+            try { \ApexOmega\Core\AutoWatch::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] AutoWatch tick error: '.$e->getMessage()); }
+        }
+        // رشد مداوم Evergreen (برای تمام پست‌ها، روزانه و مداوم)
+        if (class_exists('\\ApexOmega\\Core\\Evergreen')) {
+            try { \ApexOmega\Core\Evergreen::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Evergreen tick error: '.$e->getMessage()); }
+        }
+        // 💬 نگهبان کامنت حالا هر ۶ ساعت جدا اجرا می‌شود (apex_omega_commentor_tick) — اینجا دیگر هر ۵ دقیقه صدا نزن
+        // (برای سازگاری اگر کسی دستی صدا زد، CommentGuardian خودش گیت ۶ساعته دارد)
     }
 
     /**
@@ -262,7 +409,7 @@ class Scheduler {
 
             // اعتبارسنجی نهایی قبل از نوشتن
             // بررسی سقف هر اجرا
-            if ($schedule['max_step'] !== null && $schedule['max_step'] !== '' && is_numeric($schedule['max_step'])) {
+            if ($schedule['max_step'] !== null && $schedule['max_step'] !== '' && is_numeric($schedule['max_step']) && (int)$schedule['max_step'] > 0) {
                 $max_step = (int) $schedule['max_step'];
                 $delta = abs((float)$next_value - (float)$current_raw);
                 if ($delta > $max_step) {
@@ -271,7 +418,7 @@ class Scheduler {
                     $next_value = (float)$current_raw + ($direction * $max_step);
                 }
             }
-            if ($schedule['max_percent_step'] !== null && $schedule['max_percent_step'] !== '' && is_numeric($schedule['max_percent_step'])) {
+            if ($schedule['max_percent_step'] !== null && $schedule['max_percent_step'] !== '' && is_numeric($schedule['max_percent_step']) && (float)$schedule['max_percent_step'] > 0) {
                 $max_percent = (float) $schedule['max_percent_step'];
                 $percent = (float)$current_raw != 0 ? abs(((float)$next_value - (float)$current_raw) / (float)$current_raw * 100) : 100;
                 if ($percent > $max_percent) {

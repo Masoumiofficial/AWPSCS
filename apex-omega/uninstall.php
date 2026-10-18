@@ -12,3 +12,5 @@ if ($remove) {
 // همیشه کرون را پاک کن
 wp_clear_scheduled_hook('apex_omega_tick');
 wp_clear_scheduled_hook('apex_omega_cleanup');
+wp_clear_scheduled_hook('apex_omega_weekly_report');
+wp_clear_scheduled_hook('apex_omega_auto_tier_tick');
