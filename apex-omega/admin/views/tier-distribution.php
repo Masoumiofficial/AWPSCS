@@ -32,7 +32,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
   <?php else: ?>
     <div class="apex-alert success" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <span>✨ <strong>GapGPT فعال (<?php echo esc_html($ai_set['model']); ?>)</strong></span>
-      <button id="apex-ai-suggest" class="button button-apex">✨ پیشنهاد AI برای دسته‌ها</button>
+      <button type="button" id="apex-ai-suggest" class="button button-apex">✨ پیشنهاد AI برای دسته‌ها</button>
     </div>
   <?php endif; ?>
 
@@ -57,16 +57,16 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
           </option>
         <?php endforeach; ?>
       </select>
-      <button id="apex-taxonomy-save" class="button button-apex secondary">ذخیره تاکسونومی</button>
+      <button type="button" id="apex-taxonomy-save" class="button button-apex secondary">ذخیره تاکسونومی</button>
       <span id="apex-taxonomy-result" style="color:#065f46;font-weight:700;"></span>
       <small style="width:100%;color:#92400e;">اگر قالب شما از `artist` یا `singer` استفاده نمی‌کند، اینجا دستی انتخاب کن (مثلاً `post_tag` یا `genre`). بعد از تغییر، صفحه را رفرش کن.</small>
     </div>
 
     <?php if ($artist_tax && !empty($artists)): ?>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button id="apex-artist-ai" class="button button-apex secondary">🤖 امتیازدهی خودکار با AI (GapGPT)</button>
-        <button id="apex-artist-ir" class="button button-apex secondary">🌐 امتیاز از سایت ایرانی (رادیوجوان/نکس1موزیک)</button>
-        <button id="apex-artist-save" class="button button-apex">💾 ذخیره وزن‌ها</button>
+        <button type="button" id="apex-artist-ai" class="button button-apex secondary">🤖 امتیازدهی خودکار با AI (GapGPT)</button>
+        <button type="button" id="apex-artist-ir" class="button button-apex secondary">🌐 امتیاز از سایت ایرانی (رادیوجوان/نکس1موزیک)</button>
+        <button type="button" id="apex-artist-save" class="button button-apex">💾 ذخیره وزن‌ها</button>
         <span style="margin-right:auto;color:#6b7280;font-size:12px;">وزن 0–100: 90+=الماس، 75+=پرطرفدار، ... 0–15=تازه — با قفل هوشمند (TTL=تعداد×۲ثانیه)</span>
       </div>
       <div style="max-height:320px;overflow:auto;margin-top:10px;border:1px solid #e5e7eb;border-radius:10px;">
@@ -120,7 +120,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <strong>مثال کنترل‌شده:</strong> محسن یگانه (وزن 96) + &quot;بهت قول میدم&quot; = <code>96×0.85 + 99×0.15 = 96.5 → الماس</code> | خواننده نوپا (وزن 18) + همین عنوان = <code>18×0.97 + 99×0.03 = 20.4 → تازه (سقف 45)</code> — هرگز جهش نمی‌کند.
     </div>
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-      <button id="apex-rhythm-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💾 ذخیره الگوی ریتم</button>
+      <button type="button" id="apex-rhythm-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💾 ذخیره الگوی ریتم</button>
       <span id="apex-rhythm-result" style="font-weight:700;"></span>
     </div>
     <small>💡 این الگو در پیش‌نمایش و اعمال و همچنین در AI/سایت ایرانی لحاظ می‌شود. با فیلتر <code>apex_omega_hit_pairs</code> جفت‌های هیت واقعی خودت را اضافه کن.</small>
@@ -129,9 +129,9 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
   <!-- نوار ابزار سریع -->
   <div class="apex-card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0;">
     <strong>ابزار سریع:</strong>
-    <button id="apex-preset-pyramid" class="button">🔺 هرم استاندارد</button>
-    <button id="apex-preset-equal" class="button">⚖️ مساوی</button>
-    <button id="apex-preset-clear" class="button">🧹 صفر</button>
+    <button type="button" id="apex-preset-pyramid" class="button">🔺 هرم استاندارد</button>
+    <button type="button" id="apex-preset-equal" class="button">⚖️ مساوی</button>
+    <button type="button" id="apex-preset-clear" class="button">🧹 صفر</button>
     <span style="margin-right:auto;"></span>
     <label>فیلتر دسته:
       <select id="apex-filter-cat" style="min-width:160px;">
@@ -170,9 +170,9 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         <div class="apex-tier-control">
           <label>تعداد در این دسته</label>
           <div class="apex-stepper">
-            <button class="apex-minus" data-tier="<?php echo esc_attr($t['id']); ?>">−</button>
+            <button type="button" class="apex-minus" data-tier="<?php echo esc_attr($t['id']); ?>">−</button>
             <input type="number" class="apex-tier-count" data-tier="<?php echo esc_attr($t['id']); ?>" value="0" min="0" max="<?php echo esc_attr($total_posts); ?>" step="1" placeholder="0">
-            <button class="apex-plus" data-tier="<?php echo esc_attr($t['id']); ?>">+</button>
+            <button type="button" class="apex-plus" data-tier="<?php echo esc_attr($t['id']); ?>">+</button>
           </div>
           <div class="apex-tier-slider-wrap">
             <input type="range" class="apex-tier-slider" data-tier="<?php echo esc_attr($t['id']); ?>" min="0" max="<?php echo esc_attr($total_posts); ?>" value="0">
@@ -190,8 +190,8 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <span style="margin-right:auto;color:#646970;" id="apex-preview-hint">تعدادها را پر کن → پیش‌نمایش → اعمال (با اسنپ‌شات و قابلیت بازگشت)</span>
     </div>
     <div class="apex-actions" style="margin:12px 0;">
-      <button id="apex-preview-tier" class="button-apex secondary">👁️ پیش‌نمایش</button>
-      <button id="apex-apply-tier" class="button-apex" style="background:#00a32a;">✅ اعمال خودکار</button>
+      <button type="button" id="apex-preview-tier" class="button-apex secondary">👁️ پیش‌نمایش</button>
+      <button type="button" id="apex-apply-tier" class="button-apex" style="background:#00a32a;">✅ اعمال خودکار</button>
       <label style="margin-right:12px;"><input type="checkbox" id="apex-auto-enable" <?php checked(!empty($auto['enabled'])); ?>> خودکار روزانه 03:00 (فقط آهنگ‌های 7+ روز قدیمی)</label>
     </div>
     <?php $evergreen = \ApexOmega\Core\Evergreen::get_settings(); $ever_enabled = !empty($evergreen['enabled']); ?>
@@ -241,38 +241,192 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <small>💡 خواننده تازه‌کار (وزن <30) → 500-3000، ویژه (≥85) → تا 1.6× بیشتر + Evergreen هر تیک صعودی. امتیاز هم همبسته (10-150 رأی، 3.3-5.0⭐).</small>
     </div>
     <script>
-    // فیکس فوری 1.6.1 — حتی اگر admin.js کش باشد، این هندلر کار می‌کند
+    // 🚀 فیکس جامع 1.6.2 — همه دکمه‌های توزیع هوشمند بدون وابستگی به کش/مینیفایر jQuery
     (function(){
+      function getNonce(){ return (window.ApexOmega&&ApexOmega.nonce) || document.querySelector('input[name="_wpnonce"]')?.value || document.querySelector('#_wpnonce')?.value || ''; }
+      function getAjax(){ return (window.ApexOmega&&ApexOmega.ajax_url) || '/wp-admin/admin-ajax.php'; }
+      function apexPost(action, extra){
+        var fd=new FormData(); fd.append('action',action); fd.append('_ajax_nonce',getNonce());
+        for(var k in extra){ if(extra.hasOwnProperty(k)) fd.append(k, extra[k]); }
+        return fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json());
+      }
+      function qs(id){ return document.getElementById(id); }
+      function collectCounts(){
+        var out={}; document.querySelectorAll('.apex-tier-count').forEach(function(el){ var k=el.dataset.tier; var v=parseInt(el.value||0); if(v>0||el.value!=='') out[k]=v; });
+        return out;
+      }
+      function bindOnce(id, handler){
+        var el=qs(id); if(!el || el.dataset.vanilla) return; el.dataset.vanilla='1';
+        el.addEventListener('click', function(e){ e.preventDefault(); e.stopImmediatePropagation(); handler(el,e); });
+      }
       function run(){
-        var btn=document.getElementById('apex-autowatch-save');
-        if(!btn || btn.dataset.bound) return;
-        btn.dataset.bound='1';
-        btn.addEventListener('click', function(e){
-          e.preventDefault();
-          var nonce=(window.ApexOmega&&ApexOmega.nonce)||document.querySelector('#_wpnonce')?.value||'';
-          var ajax=(window.ApexOmega&&ApexOmega.ajax_url)||'/wp-admin/admin-ajax.php';
-          var enabled=document.getElementById('apex-autowatch-enabled')?.checked?1:0;
-          var threshold=parseInt(document.getElementById('apex-autowatch-threshold')?.value)||10000;
-          var minv=parseInt(document.getElementById('apex-autowatch-min')?.value)||500;
-          var maxv=parseInt(document.getElementById('apex-autowatch-max')?.value)||10000;
-          var batch=parseInt(document.getElementById('apex-autowatch-batch')?.value)||20;
-          var recent=parseInt(document.getElementById('apex-autowatch-recent')?.value)||60;
-          var resEl=document.getElementById('apex-autowatch-result');
-          btn.disabled=true; btn.textContent='ذخیره…';
-          if(resEl) resEl.textContent='در حال ذخیره…';
-          var fd=new FormData();
-          fd.append('action','apex_save_autowatch'); fd.append('_ajax_nonce',nonce);
-          fd.append('enabled',enabled); fd.append('threshold',threshold); fd.append('min_views',minv);
-          fd.append('max_views',maxv); fd.append('batch',batch); fd.append('only_recent_days',recent);
-          fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(function(j){
-            if(j.success){ if(resEl) resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46'; }
-            else{ if(resEl) resEl.textContent='❌ '+(j.data?.message||'خطا'); if(resEl) resEl.style.color='#991b1b'; }
-          }).catch(function(err){ if(resEl) resEl.textContent='❌ خطا: '+err; if(resEl) resEl.style.color='#991b1b'; }).finally(function(){ btn.disabled=false; btn.textContent='💾 ذخیره نگهبان'; });
+        // Evergreen
+        bindOnce('apex-evergreen-save', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
+          var enabled=qs('apex-evergreen-enabled')?.checked?1:0, rate=parseFloat(qs('apex-evergreen-rate')?.value)||0.04, max=parseInt(qs('apex-evergreen-max')?.value)||1500000;
+          var resEl=qs('apex-evergreen-result'); if(resEl) resEl.textContent='در حال ذخیره…';
+          apexPost('apex_save_evergreen',{enabled:enabled,rate_percent:rate,max_views:max}).then(function(j){
+            if(j.success){ if(resEl){resEl.textContent='✅ ذخیره شد — '+(j.data.settings.enabled?'فعال':'غیرفعال')+' — نرخ '+j.data.settings.rate_percent+'%'; resEl.style.color='#065f46';}}
+            else if(resEl){resEl.textContent='❌ '+(j.data.message||'خطا'); resEl.style.color='#991b1b';}
+          }).catch(function(err){ if(resEl){resEl.textContent='❌ خطا: '+err; resEl.style.color='#991b1b';}}).finally(function(){ btn.disabled=false; btn.textContent=o; });
         });
+        // Autowatch
+        bindOnce('apex-autowatch-save', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
+          var enabled=qs('apex-autowatch-enabled')?.checked?1:0, threshold=parseInt(qs('apex-autowatch-threshold')?.value)||10000, minv=parseInt(qs('apex-autowatch-min')?.value)||500, maxv=parseInt(qs('apex-autowatch-max')?.value)||10000, batch=parseInt(qs('apex-autowatch-batch')?.value)||20, recent=parseInt(qs('apex-autowatch-recent')?.value)||60;
+          var resEl=qs('apex-autowatch-result'); if(resEl) resEl.textContent='در حال ذخیره…';
+          apexPost('apex_save_autowatch',{enabled:enabled,threshold:threshold,min_views:minv,max_views:maxv,batch:batch,only_recent_days:recent}).then(function(j){
+            if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46';}}
+            else if(resEl){resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b';}
+          }).catch(function(err){ if(resEl){resEl.textContent='❌ خطا: '+err; resEl.style.color='#991b1b';}}).finally(function(){ btn.disabled=false; btn.textContent='💾 ذخیره نگهبان'; });
+        });
+        // Rhythm
+        bindOnce('apex-rhythm-save', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
+          var ar=(parseInt(qs('apex-rhythm-artist-ratio')?.value)||85)/100, th=parseInt(qs('apex-rhythm-threshold')?.value)||30, cap=parseInt(qs('apex-rhythm-cap')?.value)||45, pair=qs('apex-rhythm-pair')?.checked?1:0;
+          var resEl=qs('apex-rhythm-result'); if(resEl) resEl.textContent='در حال ذخیره…';
+          apexPost('apex_save_rhythm',{artist_ratio:ar,unknown_threshold:th,unknown_cap:cap,require_pair:pair}).then(function(j){
+            if(j.success){ if(resEl) resEl.textContent='✅ '+j.data.message; resEl.style.color='#065f46';}
+            else if(resEl){resEl.textContent='❌ '+(j.data.message||'خطا'); resEl.style.color='#991b1b';}
+          }).catch(function(err){ if(resEl) resEl.textContent='❌ '+err; }).finally(function(){ btn.disabled=false; btn.textContent='💾 ذخیره الگوی ریتم';});
+        });
+        // Taxonomy
+        bindOnce('apex-taxonomy-save', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
+          var tax=qs('apex-artist-taxonomy')?.value||'';
+          var resEl=qs('apex-taxonomy-result');
+          apexPost('apex_save_artist_taxonomy',{taxonomy:tax}).then(function(j){
+            if(j.success){ if(resEl) resEl.textContent='✅ '+j.data.message+' — '+j.data.taxonomy; resEl.style.color='#065f46'; setTimeout(()=>location.reload(),700); }
+            else if(resEl){resEl.textContent='❌ '+j.data.message; resEl.style.color='#991b1b';}
+          }).catch(e=>{ if(resEl) resEl.textContent='❌ '+e;}).finally(()=>{ btn.disabled=false; btn.textContent=o;});
+        });
+        // Artist save / AI / IR
+        bindOnce('apex-artist-save', function(btn){
+          var weights={}; document.querySelectorAll('.apex-artist-weight').forEach(function(el){ weights[el.dataset.tid]=el.value; });
+          btn.textContent='ذخیره…'; var resEl=qs('apex-artist-result');
+          // weights as object needs special handling: use FormData with array notation
+          var fd=new FormData(); fd.append('action','apex_save_artist_weights'); fd.append('_ajax_nonce',getNonce());
+          for(var tid in weights) fd.append('weights['+tid+']', weights[tid]);
+          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(function(j){
+            if(j.success){ if(resEl) resEl.innerHTML='<div class="apex-alert success">ذخیره شد ('+j.data.count+' آرتیست)</div>';}
+            else if(resEl) resEl.innerHTML='<div class="apex-alert error">'+(j.data.message||'خطا')+'</div>';
+          }).catch(e=>{ if(resEl) resEl.innerHTML='<div class="apex-alert error">❌ '+e+'</div>';}).finally(()=>btn.textContent='💾 ذخیره وزن‌ها');
+        });
+        bindOnce('apex-artist-ai', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='AI در حال امتیازدهی…'; var resEl=qs('apex-artist-result');
+          apexPost('apex_auto_artist_ai',{}).then(function(j){
+            if(j.success){ Object.keys(j.data.weights||{}).forEach(function(tid){ var w=j.data.weights[tid]; var inp=document.querySelector('.apex-artist-weight[data-tid="'+tid+'"]'); if(inp) inp.value=w; var sl=document.querySelector('.apex-artist-slider[data-tid="'+tid+'"]'); if(sl) sl.value=w; }); if(resEl) resEl.innerHTML='<div class="apex-alert success">✅ AI امتیاز داد: '+(Object.keys(j.data.weights||{}).length)+' آرتیست</div>';}
+            else if(resEl) resEl.innerHTML='<div class="apex-alert error">'+(j.data.message||'خطا')+'</div>';
+          }).catch(e=>{ if(resEl) resEl.innerHTML='<div class="apex-alert error">❌ '+e+'</div>';}).finally(()=>{btn.disabled=false; btn.textContent=o;});
+        });
+        bindOnce('apex-artist-ir', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال خواندن از سایت ایرانی…'; var resEl=qs('apex-artist-result');
+          apexPost('apex_auto_artist_ir',{}).then(function(j){
+            if(j.success){ Object.keys(j.data.weights||{}).forEach(function(tid){ var w=j.data.weights[tid]; var inp=document.querySelector('.apex-artist-weight[data-tid="'+tid+'"]'); if(inp) inp.value=w; var sl=document.querySelector('.apex-artist-slider[data-tid="'+tid+'"]'); if(sl) sl.value=w; }); if(resEl) resEl.innerHTML='<div class="apex-alert success">🌐 از سایت ایرانی امتیاز گرفته شد: '+(Object.keys(j.data.weights||{}).length)+'</div>';}
+            else if(resEl) resEl.innerHTML='<div class="apex-alert error">'+(j.data.message||'خطا')+'</div>';
+          }).catch(e=>{ if(resEl) resEl.innerHTML='<div class="apex-alert error">❌ '+e+'</div>';}).finally(()=>{btn.disabled=false; btn.textContent=o;});
+        });
+        // AI save/test/suggest
+        bindOnce('apex-ai-save', function(btn){
+          var o=btn.textContent; btn.textContent='ذخیره…';
+          apexPost('apex_ai_save',{api_key:qs('apex-ai-key')?.value||'',model:qs('apex-ai-model')?.value||'gpt-4o-mini',endpoint:qs('apex-ai-endpoint')?.value||''}).then(function(j){
+            if(j.success) alert('ذخیره شد (رمزنگاری با AUTH_KEY)'); else alert(j.data.message||'خطا');
+          }).finally(()=>btn.textContent=o);
+        });
+        bindOnce('apex-ai-test', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='تست…'; var resEl=qs('apex-ai-test-result'); if(resEl) resEl.textContent='در حال تست…';
+          apexPost('apex_test_ai',{}).then(function(j){
+            if(j.success){ if(resEl) resEl.textContent='✅ '+j.data.message; if(resEl) resEl.style.color='#065f46';}
+            else if(resEl){resEl.textContent='❌ '+(j.data.message||'خطا'); resEl.style.color='#991b1b';}
+          }).catch(function(err){ if(resEl){resEl.textContent='❌ '+err; resEl.style.color='#991b1b';}}).finally(()=>{ btn.disabled=false; btn.textContent=o;});
+        });
+        bindOnce('apex-ai-suggest', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال پرسش از AI…'; var box=qs('apex-tier-preview-box');
+          apexPost('apex_ai_suggest',{}).then(function(res){
+            if(res.success && res.data.suggestion){
+              Object.keys(res.data.suggestion).forEach(function(k){ var v=res.data.suggestion[k]; var inp=document.querySelector('.apex-tier-count[data-tier="'+k+'"]'); if(inp) inp.value=v; var sl=document.querySelector('.apex-tier-slider[data-tier="'+k+'"]'); if(sl) sl.value=v; });
+              // trigger update totals if jQuery present
+              if(window.jQuery) jQuery('.apex-tier-count').first().trigger('input');
+              if(box) box.innerHTML='<div class="apex-alert success">✨ پیشنهاد AI اعمال شد ('+res.data.source+')</div>';
+            } else {
+              var msg=res.data?.message||'خطا'; if(box) box.innerHTML='<div class="apex-alert error">'+msg+'</div>';
+              if(res.data?.fallback){ Object.keys(res.data.fallback).forEach(function(k){ var v=res.data.fallback[k]; var inp=document.querySelector('.apex-tier-count[data-tier="'+k+'"]'); if(inp) inp.value=v; });}
+            }
+          }).catch(e=>{ if(box) box.innerHTML='<div class="apex-alert error">❌ '+e+'</div>';}).finally(()=>{ btn.disabled=false; btn.textContent=o;});
+        });
+        // Presets
+        bindOnce('apex-preset-pyramid', function(){
+          var total=(window.ApexOmega&&ApexOmega.total_posts)||parseInt(document.querySelector('.apex-hero-stats .big')?.textContent.replace(/,/g,'')||'0');
+          if(!total){ alert('تعداد کل آثار 0 است'); return;}
+          var perc={tier_1:0.02,tier_2:0.04,tier_3:0.10,tier_4:0.14,tier_5:0.20,tier_6:0.25,tier_7:0.25}; var sum=0, out={};
+          Object.keys(perc).forEach(function(k){ var c=Math.round(total*perc[k]); out[k]=c; sum+=c; var inp=document.querySelector('.apex-tier-count[data-tier="'+k+'"]'); if(inp) inp.value=c; var sl=document.querySelector('.apex-tier-slider[data-tier="'+k+'"]'); if(sl) sl.value=c;});
+          out['tier_7']+= total - sum; var last=document.querySelector('.apex-tier-count[data-tier="tier_7"]'); if(last) last.value=out['tier_7']; var sl2=document.querySelector('.apex-tier-slider[data-tier="tier_7"]'); if(sl2) sl2.value=out['tier_7'];
+          if(window.jQuery) jQuery('.apex-tier-count').first().trigger('input');
+        });
+        bindOnce('apex-preset-equal', function(){
+          var total=(window.ApexOmega&&ApexOmega.total_posts)||0; if(!total) return; var per=Math.floor(total/7); var rem=total - per*7;
+          ['tier_1','tier_2','tier_3','tier_4','tier_5','tier_6','tier_7'].forEach(function(k){ var v=per; if(rem>0){v++; rem--;} var inp=document.querySelector('.apex-tier-count[data-tier="'+k+'"]'); if(inp) inp.value=v; var sl=document.querySelector('.apex-tier-slider[data-tier="'+k+'"]'); if(sl) sl.value=v;});
+          if(window.jQuery) jQuery('.apex-tier-count').first().trigger('input');
+        });
+        bindOnce('apex-preset-clear', function(){
+          document.querySelectorAll('.apex-tier-count,.apex-tier-slider').forEach(function(el){ el.value=0;}); if(window.jQuery) jQuery('.apex-tier-count').first().trigger('input'); var b=qs('apex-tier-preview-box'); if(b) b.textContent='صفر شد.'; var d=qs('apex-tier-details-box'); if(d) d.style.display='none';
+        });
+        // Preview / Apply
+        bindOnce('apex-preview-tier', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال پیش‌نمایش…';
+          var counts=collectCounts(); if(Object.keys(counts).length===0){ alert('حداقل یک دسته را پر کن'); btn.disabled=false; btn.textContent=o; return; }
+          var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any', aware=qs('apex-artist-aware')?.checked?1:0;
+          var fd=new FormData(); fd.append('action','apex_preview_tier'); fd.append('_ajax_nonce',getNonce());
+          for(var k in counts) fd.append('counts['+k+']', counts[k]); fd.append('category',cat); fd.append('post_type',pt); fd.append('artist_aware',aware);
+          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(function(res){
+            var box=qs('apex-tier-preview-box');
+            if(res.success){
+              var html='<div class="apex-alert success">تعداد درخواستی: '+res.data.total_requested+' | موجود: '+res.data.total_available+'</div>';
+              html+='<table class="apex-table"><tr><th>دسته</th><th>تعداد</th><th>میانگین بازدید</th><th>میانگین رأی</th></tr>';
+              for(var kk in res.data.summary){ var s=res.data.summary[kk]; html+='<tr><td>'+(s.icon||'')+' '+(s.label||kk)+'</td><td>'+s.count+'</td><td>'+s.avg_views+'</td><td>'+s.avg_rating+'</td></tr>';}
+              html+='</table>';
+              if(box) box.innerHTML=html;
+            } else if(box) box.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
+          }).catch(function(err){ var box=qs('apex-tier-preview-box'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+err+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
+        });
+        bindOnce('apex-apply-tier', function(btn){
+          if(!confirm('این عملیات تمام آثار انتخاب‌شده را بازنویسی می‌کند (با تاریخچه + اسنپ‌شات). ادامه؟')) return;
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال اعمال…';
+          var counts=collectCounts(); var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any', aware=qs('apex-artist-aware')?.checked?1:0, autoEn=qs('apex-auto-enable')?.checked?1:0;
+          var fd=new FormData(); fd.append('action','apex_apply_tier'); fd.append('_ajax_nonce',getNonce());
+          for(var k in counts) fd.append('counts['+k+']', counts[k]); fd.append('category',cat); fd.append('post_type',pt); fd.append('artist_aware',aware); fd.append('auto_enable',autoEn);
+          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(function(res){
+            var box=qs('apex-tier-result');
+            if(res.success){
+              if(box) box.innerHTML='<div class="apex-alert success">✅ '+res.data.applied+' آهنگ توزیع شد. شناسه: '+res.data.execution_id+'</div>';
+              if(res.data.details && res.data.details.length){
+                var dbox=qs('apex-tier-details-box'); if(dbox) dbox.style.display='block';
+                var tbody=document.querySelector('#apex-result-table tbody'); if(tbody){ tbody.innerHTML=''; res.data.details.forEach(function(d){ var tr=document.createElement('tr'); tr.innerHTML='<td>'+d.post_title+' #'+d.post_id+'</td><td>'+d.tier+'</td><td>'+d.old_views+' → '+d.new_views+'</td><td>'+d.old_casts+' → '+d.new_casts+'</td><td>'+d.old_avg+' → '+d.new_avg+'</td>'; tbody.appendChild(tr);});}
+              }
+              setTimeout(()=>location.reload(),2200);
+            } else if(box) box.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
+          }).catch(function(err){ var box=qs('apex-tier-result'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+err+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
+        });
+        // Undo
+        bindOnce('apex-undo-tier', function(btn){
+          if(!confirm('بازگردانی آخرین توزیع؟')) return;
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال بازگردانی…';
+          var exec=btn.dataset.exec||''; var resEl=qs('apex-undo-result');
+          apexPost('apex_undo_tier',{execution_id:exec}).then(function(j){
+            if(j.success){ if(resEl) resEl.textContent='✅ بازگردانی شد: '+j.data.restored+' آهنگ'; setTimeout(()=>location.reload(),800);}
+            else if(resEl){resEl.textContent='❌ '+(j.data.message||'خطا'); resEl.style.color='#991b1b';}
+          }).catch(e=>{ if(resEl) resEl.textContent='❌ '+e;}).finally(()=>{ btn.disabled=false; btn.textContent=o;});
+        });
+        // rhythm live %
+        var ratio=qs('apex-rhythm-artist-ratio'); if(ratio && !ratio.dataset.vanilla){
+          ratio.dataset.vanilla='1';
+          ratio.addEventListener('input', function(){ var v=parseInt(this.value||85); var a=qs('apex-rhythm-artist-val'); if(a) a.textContent=v+'%'; var t=qs('apex-rhythm-title-val'); if(t) t.textContent=(100-v)+'%';});
+        }
       }
       if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',run); else run();
-      // تلاش مجدد بعد از لود admin.js
-      setTimeout(run,800);
+      setTimeout(run,600);
+      // نمایش خطای نانس اگر خالی بود
+      setTimeout(function(){ if(!getNonce()){ var warn=document.createElement('div'); warn.className='apex-alert warning'; warn.innerHTML='⚠️ <strong>نشانه امنیتی یافت نشد</strong> — اگر دکمه‌ها کار نکردند، صفحه را با Ctrl+Shift+R رفرش کن یا کش را خالی کن. (ApexOmega.nonce خالی است)'; var hero=document.querySelector('.apex-wrap'); if(hero) hero.prepend(warn); }},1200);
     })();
     </script>
     <div id="apex-tier-preview-box" class="apex-preview-box" style="min-height:90px;">هنوز پیش‌نمایشی نیست.</div>
@@ -295,7 +449,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <div class="apex-field"><label>مدل</label><input type="text" id="apex-ai-model" value="<?php echo esc_attr($ai_set['model']); ?>"></div>
       <div class="apex-field"><label>API Key</label><input type="password" id="apex-ai-key" value="<?php echo $is_ai ? '••••••••' : ''; ?>" placeholder="sk-..."></div>
       <div class="apex-field" style="display:flex;align-items:end;gap:8px;flex-wrap:wrap;">
-        <button id="apex-ai-save" class="button button-apex">💾 ذخیره</button>
+        <button type="button" id="apex-ai-save" class="button button-apex">💾 ذخیره</button>
         <button id="apex-ai-test" class="button button-apex secondary" type="button">🔌 تست اتصال</button>
         <span id="apex-ai-test-result" style="font-weight:700;"></span>
       </div>
@@ -307,7 +461,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <h4>آخرین توزیع: <?php echo esc_html($last['at'] ?? '—'); ?> — <?php echo esc_html($last['applied'] ?? 0); ?> آهنگ — <code><?php echo esc_html(substr($last['exec'] ?? '',0,8)); ?></code> — قفل TTL: <?php echo isset($last['counts']) ? esc_html(apex_omega_lock_ttl(array_sum((array)$last['counts']))) . 'ثانیه' : '—'; ?></h4>
       <small><?php echo esc_html(wp_json_encode($last['counts'] ?? [], JSON_UNESCAPED_UNICODE)); ?></small>
       <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-        <button id="apex-undo-tier" class="button button-apex secondary" data-exec="<?php echo esc_attr($last['exec'] ?? ''); ?>" style="background:#fef2f2; border-color:#fca5a5; color:#991b1b;">↩️ بازگردانی آخرین توزیع (Undo)</button>
+        <button type="button" id="apex-undo-tier" class="button button-apex secondary" data-exec="<?php echo esc_attr($last['exec'] ?? ''); ?>" style="background:#fef2f2; border-color:#fca5a5; color:#991b1b;">↩️ بازگردانی آخرین توزیع (Undo)</button>
         <span id="apex-undo-result" style="font-weight:700;"></span>
       </div>
       <?php if (!empty($last_snap) && $last_snap['restored'] == 0): ?>

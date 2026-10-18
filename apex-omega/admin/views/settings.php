@@ -49,6 +49,6 @@
       </div>
     </div>
 
-    <p><button name="apex_save_settings" value="1" class="button button-primary">ذخیره تنظیمات</button></p>
+    <p><button type="submit" name="apex_save_settings" value="1" class="button button-primary">ذخیره تنظیمات</button></p>
   </form>
 </div>

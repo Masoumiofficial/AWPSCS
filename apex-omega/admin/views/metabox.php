@@ -71,7 +71,7 @@
               <td><?php echo esc_html(mb_strimwidth($h['old_value'] ?? '',0,20,'…')); ?></td>
               <td><?php echo esc_html(mb_strimwidth($h['new_value'] ?? '',0,20,'…')); ?></td>
               <td><?php echo esc_html($h['source']); ?></td>
-              <td><button class="button apex-rollback" data-id="<?php echo esc_attr($h['id']); ?>">بازگردانی</button></td>
+              <td><button type="button" class="button apex-rollback" data-id="<?php echo esc_attr($h['id']); ?>">بازگردانی</button></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
@@ -172,9 +172,9 @@
               <td><span class="apex-badge <?php echo esc_attr($sc['status']); ?>"><?php echo esc_html($sc['status']); ?></span><?php if($sc['last_error']): ?><br><small><?php echo esc_html($sc['last_error']); ?></small><?php endif; ?></td>
               <td><?php echo esc_html($sc['next_run_at'] ?? '—'); ?></td>
               <td>
-                <?php if($sc['status']==='active'): ?><button class="button apex-pause" data-id="<?php echo esc_attr($sc['id']); ?>">توقف</button><?php endif; ?>
-                <?php if($sc['status']==='paused'): ?><button class="button apex-resume" data-id="<?php echo esc_attr($sc['id']); ?>">ادامه</button><?php endif; ?>
-                <button class="button apex-cancel" data-id="<?php echo esc_attr($sc['id']); ?>">لغو</button>
+                <?php if($sc['status']==='active'): ?><button type="button" class="button apex-pause" data-id="<?php echo esc_attr($sc['id']); ?>">توقف</button><?php endif; ?>
+                <?php if($sc['status']==='paused'): ?><button type="button" class="button apex-resume" data-id="<?php echo esc_attr($sc['id']); ?>">ادامه</button><?php endif; ?>
+                <button type="button" class="button apex-cancel" data-id="<?php echo esc_attr($sc['id']); ?>">لغو</button>
               </td>
             </tr>
           <?php endforeach; ?>

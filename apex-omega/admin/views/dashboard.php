@@ -101,7 +101,7 @@
               <td><code><?php echo esc_html($r['field_type']); ?></code></td>
               <td><?php echo esc_html(mb_strimwidth($r['old_value']??'',0,30,'…')); ?> → <?php echo esc_html(mb_strimwidth($r['new_value']??'',0,30,'…')); ?></td>
               <td><?php echo esc_html($r['source']); ?></td>
-              <td><button class="button apex-rollback" data-id="<?php echo esc_attr($r['id']); ?>">بازگردانی</button></td>
+              <td><button type="button" class="button apex-rollback" data-id="<?php echo esc_attr($r['id']); ?>">بازگردانی</button></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
@@ -126,8 +126,8 @@
               <td><?php echo esc_html($s['next_run_at'] ?? '—'); ?></td>
               <td><span class="apex-badge <?php echo esc_attr($s['status']); ?>"><?php echo esc_html($s['status']); ?></span></td>
               <td>
-                <button class="button apex-pause" data-id="<?php echo esc_attr($s['id']); ?>">توقف</button>
-                <button class="button apex-cancel" data-id="<?php echo esc_attr($s['id']); ?>">لغو</button>
+                <button type="button" class="button apex-pause" data-id="<?php echo esc_attr($s['id']); ?>">توقف</button>
+                <button type="button" class="button apex-cancel" data-id="<?php echo esc_attr($s['id']); ?>">لغو</button>
               </td>
             </tr>
           <?php endforeach; ?>

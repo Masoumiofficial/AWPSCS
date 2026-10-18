@@ -14,7 +14,6 @@ class Ajax {
             'apex_cancel_schedule',
             'apex_rollback',
             'apex_bulk_apply',
-            'apex_tier_save',
             'apex_preview_tier',
             'apex_apply_tier',
             'apex_undo_tier',

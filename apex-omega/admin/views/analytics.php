@@ -42,13 +42,13 @@ $tiers = \ApexOmega\Core\TierManager::get_tiers();
       <h3>📥 صادرات / 📤 واردات</h3>
       <p><small>پشتیبان‌گیری از وزن آرتیست‌ها و تاریخچه — CSV/JSON</small></p>
       <div class="apex-actions">
-        <button id="apex-export-artist" class="button button-apex secondary">📥 وزن آرتیست CSV</button>
-        <button id="apex-export-history" class="button button-apex secondary">📥 تاریخچه CSV</button>
-        <button id="apex-export-tiers" class="button button-apex secondary">📥 تیره JSON</button>
+        <button type="button" id="apex-export-artist" class="button button-apex secondary">📥 وزن آرتیست CSV</button>
+        <button type="button" id="apex-export-history" class="button button-apex secondary">📥 تاریخچه CSV</button>
+        <button type="button" id="apex-export-tiers" class="button button-apex secondary">📥 تیره JSON</button>
       </div>
       <hr class="apex-hr">
-      <div class="apex-field"><label>واردات وزن آرتیست (CSV جای‌گذاری)</label><textarea id="apex-import-artist-csv" rows="4" placeholder="term_id,name,slug,count,weight,tier_hint ..."></textarea><button id="apex-import-artist-btn" class="button" style="margin-top:6px;">📤 وارد کردن</button> <span id="apex-import-artist-res"></span></div>
-      <div class="apex-field" style="margin-top:10px;"><label>واردات تیره (JSON)</label><textarea id="apex-import-tiers-json" rows="3" placeholder='[{"id":"tier_1",...}]'></textarea><button id="apex-import-tiers-btn" class="button" style="margin-top:6px;">📤 وارد کردن تیره</button> <span id="apex-import-tiers-res"></span></div>
+      <div class="apex-field"><label>واردات وزن آرتیست (CSV جای‌گذاری)</label><textarea id="apex-import-artist-csv" rows="4" placeholder="term_id,name,slug,count,weight,tier_hint ..."></textarea><button type="button" id="apex-import-artist-btn" class="button" style="margin-top:6px;">📤 وارد کردن</button> <span id="apex-import-artist-res"></span></div>
+      <div class="apex-field" style="margin-top:10px;"><label>واردات تیره (JSON)</label><textarea id="apex-import-tiers-json" rows="3" placeholder='[{"id":"tier_1",...}]'></textarea><button type="button" id="apex-import-tiers-btn" class="button" style="margin-top:6px;">📤 وارد کردن تیره</button> <span id="apex-import-tiers-res"></span></div>
       <div id="apex-analytics-result" style="margin-top:10px;"></div>
     </div>
   </div>

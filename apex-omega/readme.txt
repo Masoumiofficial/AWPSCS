@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.6.1
+Stable tag: 1.6.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 1.6.2 =
+* 🚀 حسابرسی کامل همه دکمه‌ها — درخواست 2026-10-18: تمام 15+ دکمهٔ توزیع هوشمند که کار نمی‌کردند فیکس شدند: type=button برای همهٔ دکمه‌های Ajax (جلوگیری از submit ناخواسته)، getNonce/getAjax قوی با fallback به _wpnonce/hidden + ajaxurl، هندلر جامع vanilla مستقل از کش/minify jQuery برای پیش‌نمایش/اعمال/پریست‌ها/هرم/مساوی/صفر/±/AI/ذخیره تاکسونومی/ذخیره آرتیست/AI+IR/Evergreen/AutoWatch/Rhythm/Undo + نمایش هشدار نانس خالی + فیکس pause/resume/cancel/rollback با پیام خطای واضح + حذف اکشن نامعتبر apex_tier_save.
 
 = 1.6.1 =
 * 🐛 فیکس «ذخیره نگهبان» — کلیک هیچ اتفاقی نمی‌افتاد: دکمه type=button + هندلر inline مستقل از کش admin.js + nonce fallback — الان با هر کش/مینیفایر کار می‌کند. همچنین Evergreen همین فیکس.
