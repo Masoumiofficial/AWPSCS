@@ -33,6 +33,7 @@ class Ajax {
             'apex_save_rhythm',
             'apex_save_autowatch',
             'apex_save_commentor',
+            'apex_run_commentor_now',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -133,6 +134,9 @@ class Ajax {
                 break;
             case 'apex_save_commentor':
                 self::save_commentor();
+                break;
+            case 'apex_run_commentor_now':
+                self::run_commentor_now();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -573,5 +577,10 @@ class Ajax {
         $data = array_filter($data, function($v){ return $v !== null; });
         \ApexOmega\Core\CommentGuardian::save_settings($data);
         wp_send_json_success(['message'=>'نگهبان کامنت ذخیره شد','settings'=>\ApexOmega\Core\CommentGuardian::get_settings()]);
+    }
+    private static function run_commentor_now(): void {
+        $res = \ApexOmega\Core\CommentGuardian::run_manual();
+        $last = get_option('apex_omega_commentor_last_run', []);
+        wp_send_json_success(['message'=>'اجرای نگهبان کامنت انجام شد','last'=>$last,'debug'=>$res]);
     }
 }

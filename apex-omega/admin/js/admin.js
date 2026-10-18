@@ -217,6 +217,17 @@ jQuery(function($){
       else $('#apex-commentor-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
     }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💬 ذخیره نگهبان کامنت'));
   });
+  $(document).on('click','#apex-commentor-run',function(e){
+    e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('در حال اجرا…');
+    $('#apex-commentor-result').text('⏳ در حال اجرای نگهبان…').css('color','#6b7280');
+    $.post(getAjax(),{action:'apex_run_commentor_now',_ajax_nonce:getNonce()},function(res){
+      if(res.success){
+        const l=res.data.last||{}; const d=res.data.debug||{};
+        $('#apex-commentor-result').html('✅ اجرا شد: '+(l.posts||0)+' پست → '+(l.comments||0)+' کامنت <br><small>'+JSON.stringify(d.log||'')+'</small>').css('color','#065f46');
+        if((l.posts||0)>0) setTimeout(()=>location.reload(),1500);
+      } else $('#apex-commentor-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
+    }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('▶️ اجرای فوری (تست)'));
+  });
   // rhythm — live % update
   $(document).on('input','#apex-rhythm-artist-ratio',function(){ const v=parseInt($(this).val()||85); $('#apex-rhythm-artist-val').text(v+'%'); $('#apex-rhythm-title-val').text((100-v)+'%'); });
   $(document).on('click','#apex-rhythm-save',function(e){

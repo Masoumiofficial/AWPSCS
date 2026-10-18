@@ -260,6 +260,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         <label>هر تیک چند پست:<br><input type="number" id="apex-commentor-batch" min="5" max="50" step="1" value="<?php echo esc_attr($commentor['batch']); ?>" style="width:100%;"></label>
         <label>فقط پست‌های چند روز اخیر:<br><input type="number" id="apex-commentor-recent" min="0" max="365" step="1" value="<?php echo esc_attr($commentor['only_recent_days']); ?>" style="width:100%;"> <small>0=همه</small></label>
         <button type="button" id="apex-commentor-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💬 ذخیره نگهبان کامنت</button>
+        <button type="button" id="apex-commentor-run" class="button button-apex secondary" style="background:#fff;color:#7c3aed;border-color:#7c3aed;">▶️ اجرای فوری (تست)</button>
       </div>
       <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
         <small style="color:#6b7280;">هر <code>apex_omega_tick</code> (5 دقیقه) تا <span id="apex-commentor-batch-hint"><?php echo esc_html($commentor['batch']); ?></span> پست چک می‌شود — cooldown 24ساعته هر پست.</small>
@@ -317,6 +318,14 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
             if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46';}}
             else if(resEl){resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b';}
           }).catch(function(err){ if(resEl){resEl.textContent='❌ خطا: '+err; resEl.style.color='#991b1b';}}).finally(function(){ btn.disabled=false; btn.textContent='💬 ذخیره نگهبان کامنت'; });
+        });
+        bindOnce('apex-commentor-run', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال اجرا…';
+          var resEl=qs('apex-commentor-result'); if(resEl) resEl.textContent='⏳ در حال اجرای نگهبان…';
+          apexPost('apex_run_commentor_now',{}).then(function(j){
+            if(j.success){ if(resEl){ var l=j.data.last||{}; resEl.innerHTML='✅ اجرا شد: '+(l.posts||0)+' پست → '+(l.comments||0)+' کامنت'; resEl.style.color='#065f46'; if(l.posts>0) setTimeout(()=>location.reload(),1200);} }
+            else if(resEl){ resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b'; }
+          }).catch(function(err){ if(resEl){resEl.textContent='❌ خطا: '+err; resEl.style.color='#991b1b';}}).finally(function(){ btn.disabled=false; btn.textContent='▶️ اجرای فوری (تست)'; });
         });
         // Rhythm
         bindOnce('apex-rhythm-save', function(btn){

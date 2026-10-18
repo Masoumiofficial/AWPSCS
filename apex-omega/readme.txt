@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.7.3
+Stable tag: 1.7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,7 +57,7 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 
 == Changelog ==
 
-= 1.7.3 =
+= 1.7.4 =
 * 🗣️ لحن کامنت ۱۰۰٪ خودمونی — مثل نکس‌وان/رادیوجوان: «پشمام، دمت گرم، عشقی، حال کردم»، گاهی سلام اول+تعریف مدیر/سایت، گاهی تیکه ترانه «اون تیکه که میگه ... خیلی دوس داشتم»، غلط تایپی ریز طبیعی (خییلی/دوس/عااالی) 12% + محاوره 70% — همه جوانب انسانی شد.
 
 = 1.7.2 =

@@ -25,7 +25,7 @@ class CommentGuardian {
             'daily_growth' => 2,   // هر روز برای پرطرفدار 1-3 تا اضافه
             'max_per_post' => 60,  // سقف کل کامنت هر پست حتی الماس
             'batch' => 20,         // هر تیک چند پست چک شود
-            'only_recent_days' => 60, // فقط پست‌های 60 روز اخیر (0=همه)
+            'only_recent_days' => 0, // فقط پست‌های 60 روز اخیر (0=همه)
             'cooldown_hours' => 24,
         ];
         $saved = get_option(self::OPTION, []);
@@ -373,8 +373,16 @@ class CommentGuardian {
         return $txt;
     }
 
+    public static function run_manual(): array {
+        ob_start();
+        $before = get_option('apex_omega_commentor_last_run', []);
+        self::tick(true);
+        $after = get_option('apex_omega_commentor_last_run', []);
+        $log = ob_get_clean();
+        return ['before'=>$before,'after'=>$after,'log'=>$log];
+    }
     // تیک هر 5 دقیقه — پست‌های کم‌بازدید و پرطرفدار
-    public static function tick(): void {
+    public static function tick(bool $verbose = false): void {
         if (!self::is_enabled()) return;
         $s = self::get_settings();
         $threshold = (int)$s['threshold'];
@@ -409,7 +417,16 @@ class CommentGuardian {
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
         $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff, $batch), ARRAY_A);
-        if (empty($rows)) return;
+        if ($verbose) echo "candidates:".count($rows)." | threshold:{$threshold} max_per:{$max_per_post} recent:{$recent_days} cooldown:{$cooldown_cutoff}\n";
+        if (empty($rows)) {
+            if ($verbose) {
+                // دلیل یاب
+                $total_posts = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+                $with_cooldown = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key=%s AND meta_value >= %s", self::META_LAST, $cooldown_cutoff));
+                echo "total_posts:{$total_posts} with_cooldown:{$with_cooldown} | no candidates\n";
+            }
+            return;
+        }
 
         $exec = apex_omega_generate_uuid();
         $done_posts = 0;
