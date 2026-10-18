@@ -32,6 +32,7 @@ class Ajax {
             'apex_import_artist_csv',
             'apex_import_tiers_json',
             'apex_save_evergreen',
+            'apex_save_rhythm',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -126,6 +127,9 @@ class Ajax {
                 break;
             case 'apex_save_evergreen':
                 self::save_evergreen();
+                break;
+            case 'apex_save_rhythm':
+                self::save_rhythm();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -529,5 +533,18 @@ class Ajax {
         ];
         \ApexOmega\Core\Evergreen::save_settings($data);
         wp_send_json_success(['message'=>'تنظیمات Evergreen ذخیره شد','settings'=>\ApexOmega\Core\Evergreen::get_settings()]);
+    }
+    private static function save_rhythm(): void {
+        $data = [
+            'artist_ratio' => isset($_POST['artist_ratio']) ? (float)$_POST['artist_ratio'] : null,
+            'title_ratio' => isset($_POST['title_ratio']) ? (float)$_POST['title_ratio'] : null,
+            'unknown_threshold' => isset($_POST['unknown_threshold']) ? (int)$_POST['unknown_threshold'] : null,
+            'unknown_cap' => isset($_POST['unknown_cap']) ? (int)$_POST['unknown_cap'] : null,
+            'require_pair' => isset($_POST['require_pair']) ? !empty($_POST['require_pair']) : null,
+        ];
+        // filter nulls
+        $data = array_filter($data, function($v){ return $v !== null; });
+        \ApexOmega\Core\ArtistManager::save_rhythm_settings($data);
+        wp_send_json_success(['message'=>'الگوی ریتم ذخیره شد','settings'=>\ApexOmega\Core\ArtistManager::get_rhythm_settings()]);
     }
 }

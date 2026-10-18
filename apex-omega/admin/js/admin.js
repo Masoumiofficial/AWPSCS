@@ -217,6 +217,16 @@ jQuery(function($){
       else $('#apex-evergreen-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
     }).fail(function(xhr){ $('#apex-evergreen-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره Evergreen'));
   });
+  // rhythm — live % update
+  $(document).on('input','#apex-rhythm-artist-ratio',function(){ const v=parseInt($(this).val()||85); $('#apex-rhythm-artist-val').text(v+'%'); $('#apex-rhythm-title-val').text((100-v)+'%'); });
+  $(document).on('click','#apex-rhythm-save',function(e){
+    e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('ذخیره…');
+    const artist_ratio= (parseInt($('#apex-rhythm-artist-ratio').val())||85)/100, threshold=parseInt($('#apex-rhythm-threshold').val())||30, cap=parseInt($('#apex-rhythm-cap').val())||45, pair=$('#apex-rhythm-pair').is(':checked')?1:0;
+    $.post(Apex.ajax_url,{action:'apex_save_rhythm',_ajax_nonce:getNonce(),artist_ratio:artist_ratio,unknown_threshold:threshold,unknown_cap:cap,require_pair:pair},function(res){
+      if(res.success) $('#apex-rhythm-result').text('✅ '+res.data.message+' — '+Math.round(res.data.settings.artist_ratio*100)+'/'+Math.round(res.data.settings.title_ratio*100)+' — سقف '+res.data.settings.unknown_cap).css('color','#065f46');
+      else $('#apex-rhythm-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
+    }).fail(function(xhr){ $('#apex-rhythm-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره الگوی ریتم'));
+  });
   // undo last distribution
   $(document).on('click','#apex-undo-tier',function(e){
     e.preventDefault(); if(!confirm('بازگردانی آخرین توزیع؟ تمام آهنگ‌های توزیع‌شده به مقادیر قبلی برمی‌گردند (قابل بازگردانی نیست).')) return;

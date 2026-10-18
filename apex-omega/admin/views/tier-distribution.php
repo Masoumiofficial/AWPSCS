@@ -113,6 +113,35 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
     <?php endif; ?>
   </div>
 
+
+  <!-- الگوی ریتم حرفه‌ای — اولویت خواننده (درخواست شما) -->
+  <?php $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings(); ?>
+  <div class="apex-card apex-pro-only" style="margin-top:14px; border-top:4px solid #7c3aed; background:#f5f3ff;">
+    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h3 style="margin:0;">🎛️ الگوی ریتم حرفه‌ای — اولویت  با  اسم خواننده</h3>
+        <small style="color:#6b7280;">خواننده نوپا حتی با عنوان &quot;بهت قول میدم&quot; هرگز یک‌شبه ملیونی نمی‌شود — مو لای درزش نمی‌رود. عنوان فقط وقتی اعتبار دارد که جفت خواننده+عنوان تایید شود.</small>
+      </div>
+      <span class="apex-badge" style="background:#7c3aed;color:#fff;">قابل کنترل کامل</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px;">
+      <label>نسبت وزن خواننده (%):<br><input type="range" id="apex-rhythm-artist-ratio" min="50" max="95" step="5" value="<?php echo esc_attr((int)($rhythm['artist_ratio']*100)); ?>" style="width:100%;"> <strong id="apex-rhythm-artist-val"><?php echo (int)($rhythm['artist_ratio']*100); ?>%</strong> <small style="color:#6b7280;">عنوان: <span id="apex-rhythm-title-val"><?php echo (int)($rhythm['title_ratio']*100); ?>%</span></small></label>
+      <label>آستانه نوپا:<br><input type="number" id="apex-rhythm-threshold" min="15" max="50" value="<?php echo esc_attr($rhythm['unknown_threshold']); ?>" style="width:100%;"> <small style="color:#6b7280;">خواننده با وزن کمتر از این = نوپا (عنوان تقریبا نادیده)</small></label>
+      <label>سقف نوپا (حتی با هیت):<br><input type="number" id="apex-rhythm-cap" min="30" max="65" value="<?php echo esc_attr($rhythm['unknown_cap']); ?>" style="width:100%;"> <small style="color:#6b7280;">وزن نهایی نوپا از این بیشتر نمی‌شود — مثلا 45 ≈ دسته 4</small></label>
+      <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #ddd;border-radius:10px;padding:10px;align-self:end;">
+        <input type="checkbox" id="apex-rhythm-pair" <?php checked($rhythm['require_pair'], true); ?>> <span><strong>جفت خواننده+عنوان الزامی</strong><br><small>اگر تیک باشد، عنوان تکراریِ نوپا اعتبار ندارد</small></span>
+      </label>
+    </div>
+    <div style="margin-top:10px; background:#fff; border:1px dashed #7c3aed; border-radius:10px; padding:10px; font-size:13px; color:#4c1d95;">
+      <strong>مثال کنترل‌شده:</strong> محسن یگانه (وزن 96) + &quot;بهت قول میدم&quot; = <code>96×0.85 + 99×0.15 = 96.5 → الماس</code> | خواننده نوپا (وزن 18) + همین عنوان = <code>18×0.97 + 99×0.03 = 20.4 → تازه (سقف 45)</code> — هرگز جهش نمی‌کند.
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button id="apex-rhythm-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💾 ذخیره الگوی ریتم</button>
+      <span id="apex-rhythm-result" style="font-weight:700;"></span>
+    </div>
+    <small>💡 این الگو در پیش‌نمایش و اعمال و همچنین در AI/سایت ایرانی لحاظ می‌شود. با فیلتر <code>apex_omega_hit_pairs</code> جفت‌های هیت واقعی خودت را اضافه کن.</small>
+  </div>
+
   <!-- نوار ابزار سریع -->
   <div class="apex-card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0;">
     <strong>ابزار سریع:</strong>

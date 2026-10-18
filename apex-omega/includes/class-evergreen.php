@@ -40,12 +40,23 @@ class Evergreen {
         return !empty($s['enabled']);
     }
 
-    // اجرا روی هر تیک 5دقیقه‌ای
+    // اجرا روی هر تیک 5دقیقه‌ای — با ریتم تیره‌محور (Tier-aware)
     public static function tick(): void {
         if (!self::is_enabled()) return;
         $s = self::get_settings();
-        $rate = (float)$s['rate_percent'];
+        $base_rate = (float)$s['rate_percent'];
         $max = (int)$s['max_views'];
+        // ضریب تیره: الماس سریع‌تر، تازه کندتر — طبیعی و قابل کنترل
+        $tier_multipliers = apply_filters('apex_omega_evergreen_tier_multipliers', [
+            'tier_1' => 1.35, // الماس 35% سریع‌تر
+            'tier_2' => 1.22,
+            'tier_3' => 1.10,
+            'tier_4' => 1.00,
+            'tier_5' => 0.90,
+            'tier_6' => 0.78,
+            'tier_7' => 0.65, // تازه خیلی کند
+            '' => 0.95, // بدون تیره
+        ]);
         // برای جلوگیری از فشار، فقط 30 پست در هر تیک (چرخشی)
         global $wpdb;
         $offset = (int) get_transient('apex_evergreen_offset') ?: 0;
@@ -73,12 +84,23 @@ class Evergreen {
             $cur_views = Adapter_Views::get_views($pid);
             if ($cur_views >= $max) continue;
             if ($cur_views < 100) $cur_views = 100; // حداقل
+            $tier = get_post_meta($pid, TierManager::META_TIER, true);
+            $mult = isset($tier_multipliers[$tier]) ? (float)$tier_multipliers[$tier] : (float)($tier_multipliers[''] ?? 1.0);
+            $rate = $base_rate * $mult;
+            // سقف تیره: اگر تیره دارد، از سقف تیره فراتر نرو (دقیق‌تر از سقف کلی)
+            $tier_cap = null;
+            if ($tier) {
+                $tiers = TierManager::get_tiers();
+                foreach ($tiers as $tt) if ($tt['id'] === $tier) { $tier_cap = (int)$tt['views_max']; break; }
+            }
+            $effective_max = $tier_cap ? min($max, $tier_cap) : $max;
+            if ($cur_views >= $effective_max) continue;
             // رشد تصادفی ±30% حول rate
             $jitter = 0.7 + (mt_rand(0,60)/100); // 0.7 - 1.3
             $inc = max(1, (int) round($cur_views * $rate / 100 * $jitter));
             $new_views = $cur_views + $inc;
-            if ($new_views > $max) $new_views = $max;
-            // امتیاز هم کمی رشد کند (0.1 * رشد بازدید نسبی)
+            if ($new_views > $effective_max) $new_views = $effective_max;
+            // امتیاز هم کمی رشد کند
             $stats = Adapter_KKSR::get_stats($pid);
             $new_casts = $stats['casts'];
             $new_avg = $stats['avg'];
@@ -86,9 +108,8 @@ class Evergreen {
                 $cast_inc = max(0, (int) round($inc / 800)); // هر 800 بازدید ≈ 1 رأی جدید
                 if ($cast_inc > 0) {
                     $new_casts = $stats['casts'] + $cast_inc;
-                    // میانگین کمی به سمت بالا (آهنگ پرطرفدار)
                     if ($new_avg < 5.0) {
-                        $new_avg = min(5.0, round($new_avg + (mt_rand(0,2)/100), 1)); // +0.00 تا +0.02
+                        $new_avg = min(5.0, round($new_avg + (mt_rand(0,2)/100), 1));
                     }
                 }
             }
@@ -109,13 +130,12 @@ class Evergreen {
                 $wpdb->query('ROLLBACK');
                 continue;
             }
-            // لاگ سبک (بدون شلوغی تاریخچه: فقط هر 12 تیک ≈ هر ساعت)
+            // لاگ سبک (هر 12 تیک ≈ هر ساعت)
             $tick_count = (int) get_option('apex_evergreen_tick_count', 0);
             if ($tick_count % 12 === 0) {
-                History::log($pid, 'views', $cur_views, $new_views, 'evergreen', $user_id, $exec, null, ['rate'=>$rate,'inc'=>$inc]);
+                History::log($pid, 'views', $cur_views, $new_views, 'evergreen', $user_id, $exec, null, ['rate'=>$rate,'inc'=>$inc,'tier'=>$tier,'mult'=>$mult]);
             }
         }
-        // شمارنده تیک
         $tc = (int) get_option('apex_evergreen_tick_count', 0);
         update_option('apex_evergreen_tick_count', $tc+1, false);
     }
