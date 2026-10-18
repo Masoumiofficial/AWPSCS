@@ -1,5 +1,6 @@
 jQuery(function($){
   const Apex = window.ApexOmega || {};
+  function esc(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m];}); }
   function getNonce(){ return Apex.nonce || ''; }
   function toGmt(localStr){ if(!localStr) return ''; const d=new Date(localStr); return d.toISOString().slice(0,19).replace('T',' '); }
 
@@ -63,26 +64,6 @@ jQuery(function($){
       $('.apex-slider-hint[data-tier="'+tier+'"]').text('حداکثر پویا: '+ newMax.toLocaleString('fa-IR') + ' — باقی‌مانده کل: ' + remaining.toLocaleString('fa-IR'));
     });
   }
-  function applyUIMode(){
-    const isPro = $('#apex-ui-mode-toggle').is(':checked');
-    if(isPro){
-      $('.apex-pro-only').show();
-      $('.apex-wrap').attr('data-ui-mode','pro');
-    } else {
-      $('.apex-pro-only').hide();
-      $('.apex-wrap').attr('data-ui-mode','simple');
-    }
-  }
-  // init UI mode
-  applyUIMode();
-  $(document).on('change','#apex-ui-mode-toggle',function(){
-    const mode = $(this).is(':checked') ? 'pro' : 'simple';
-    applyUIMode();
-    $.post(Apex.ajax_url,{action:'apex_save_ui_mode',_ajax_nonce:getNonce(),mode:mode},function(res){
-      // no reload needed
-    });
-  });
-
   // stepper
   $(document).on('click','.apex-plus',function(){ const t=$(this).data('tier'); const $in=$('.apex-tier-count[data-tier="'+t+'"]'); let v=parseInt($in.val()||0); $in.val(v+1).trigger('input'); updateTierTotals(); });
   $(document).on('click','.apex-minus',function(){ const t=$(this).data('tier'); const $in=$('.apex-tier-count[data-tier="'+t+'"]'); let v=parseInt($in.val()||0); if(v>0) $in.val(v-1).trigger('input'); updateTierTotals(); });
@@ -119,7 +100,7 @@ jQuery(function($){
         Object.keys(res.data.summary).forEach(k=>{ const s=res.data.summary[k]; html+='<tr><td>'+s.icon+' '+s.label+'</td><td>'+s.count+'</td><td>'+s.avg_views.toLocaleString('fa-IR')+'</td><td>'+s.avg_rating+' ('+s.avg_casts+') '+'</td><td>'+s.total_views.toLocaleString('fa-IR')+'</td></tr>'; });
         html+='</table>';
         html+='<div style="margin-top:10px;max-height:220px;overflow:auto;"><strong>نمونه‌ها (3 اول هر دسته):</strong><ul>';
-        Object.keys(res.data.preview).forEach(k=>{ const arr=res.data.preview[k]; const t=res.data.tiers[k]; html+='<li><strong>'+t.icon+' '+t.label+':</strong> '; html+= arr.slice(0,3).map(it=> it.post_title+' → '+it.views.toLocaleString('fa-IR')+' بازدید، '+it.avg+'⭐ ('+it.casts+')').join(' | '); html+='</li>'; });
+        Object.keys(res.data.preview).forEach(k=>{ const arr=res.data.preview[k]; const t=res.data.tiers[k]; html+='<li><strong>'+t.icon+' '+t.label+':</strong> '; html+= arr.slice(0,3).map(it=> esc(it.post_title)+' → '+it.views.toLocaleString('fa-IR')+' بازدید، '+esc(it.avg)+'⭐ ('+esc(it.casts)+')').join(' | '); html+='</li>'; });
         html+='</ul></div>';
         $('#apex-tier-preview-box').html(html);
         $('#apex-preview-hint').text('پیش‌نمایش آماده — اگر اوکیه «اعمال خودکار» بزن (اسنپ‌شات ذخیره می‌شود)');
@@ -143,7 +124,7 @@ jQuery(function($){
           const $tbody=$('#apex-result-table tbody'); $tbody.empty();
           res.data.details.forEach(d=>{
             const tierLabel = $('.apex-tier-card[data-tier="'+d.tier+'"] h3').text() || d.tier;
-            $tbody.append('<tr><td><a href="'+d.edit_url+'" target="_blank">'+ (d.post_title||d.post_id) +'</a> <small>#'+d.post_id+'</small></td><td>'+tierLabel+'</td><td>'+d.old_views.toLocaleString('fa-IR')+' → <strong>'+d.new_views.toLocaleString('fa-IR')+'</strong></td><td>'+d.old_casts+' → <strong>'+d.new_casts+'</strong></td><td>'+d.old_avg+' → <strong>'+d.new_avg+'</strong></td></tr>');
+            $tbody.append('<tr><td><a href="'+esc(d.edit_url)+'" target="_blank">'+ esc(d.post_title||d.post_id) +'</a> <small>#'+esc(d.post_id)+'</small></td><td>'+esc(tierLabel)+'</td><td>'+Number(d.old_views).toLocaleString('fa-IR')+' → <strong>'+Number(d.new_views).toLocaleString('fa-IR')+'</strong></td><td>'+esc(d.old_casts)+' → <strong>'+esc(d.new_casts)+'</strong></td><td>'+esc(d.old_avg)+' → <strong>'+esc(d.new_avg)+'</strong></td></tr>');
           });
           // also append to preview box summary
         }
@@ -159,7 +140,7 @@ jQuery(function($){
     $.post(Apex.ajax_url,{action:'apex_ai_suggest',_ajax_nonce:getNonce()},function(res){
       if(res.success && res.data.suggestion){
         Object.keys(res.data.suggestion).forEach(k=>{ const v=res.data.suggestion[k]; $('.apex-tier-count[data-tier="'+k+'"]').val(v); $('.apex-tier-slider[data-tier="'+k+'"]').val(v); });
-        updateTierTotals(); $('#apex-tier-preview-box').html('<div class="apex-alert success">✨ پیشنهاد AI اعمال شد ('+res.data.source+'): '+ (res.data.explanation? res.data.explanation.substring(0,300):'') +'</div>');
+        updateTierTotals(); $('#apex-tier-preview-box').html('<div class="apex-alert success">✨ پیشنهاد AI اعمال شد ('+esc(res.data.source)+'): '+ esc(res.data.explanation? res.data.explanation.substring(0,300):'') +'</div>');
       } else { let msg=res.data.message||'خطا'; if(res.data.fallback) msg+=' — از هرم پیش‌فرض استفاده شد'; $('#apex-tier-preview-box').html('<div class="apex-alert error">'+msg+'</div>'); if(res.data.fallback){ Object.keys(res.data.fallback).forEach(k=>{ $('.apex-tier-count[data-tier="'+k+'"]').val(res.data.fallback[k]); $('.apex-tier-slider[data-tier="'+k+'"]').val(res.data.fallback[k]); }); updateTierTotals(); } }
     }).fail(function(xhr){ $('#apex-tier-preview-box').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('✨ پیشنهاد AI'));
   });

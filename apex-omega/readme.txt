@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.4.1
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,15 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 1.5.0 =
+* 🧹 حذف حالت ساده/حرفه‌ای — درخواست شما: پنل یکپارچه شد، همه امکانات (فیلتر، آرتیست، Evergreen، الگوی ریتم) همیشه قابل دیدن — سردرگمی صفر برای کاربر عادی.
+* 🔍 حسابرسی کامل 360° — به‌عنوان کاربر عادی + متخصص امنیت/پرفورمنس/دیتا/WP/KKSR/فرانت‌اند بررسی شد و رفع شد:
+* **امنیت:** XSS در پیش‌نمایش JS (post_title بدون escape) → esc()، CSV Injection (=+-@) → escape_csv با پیشوند `'` + OWASP، SSRF در AI endpoint → whitelist فقط gapgpt/openai/openrouter + fallback امن، قابلیت per-post `edit_post` در متاباکس/بالک، REST cap اصلاح به `apex_manage_statistics`، احراز هویت AI با رمزنگاری AUTH_KEY.
+* **دیتا/الگوریتم:** normalize سرویس ایرانی با `max` واقعی (log ratio)، همبستگی بازدید↔امتیاز با فاکتور 0.12/1.5M، سقف 1.5M در Validator، پیش‌نمایش صفر دسته → خطای واضح، heal کران هر 30 دقیقه throttle، Evergreen ضریب تیره (0.65–1.35×) + سقف تیره + multisite offset.
+* **پرفورمنس:** ایندکس‌های DB (post_id/status/next_run) برای 20K پست، سقف limit 20K، کش 6h برای provider، جلوگیری از OFFSET بزرگ با transient چرخشی.
+* **سازگاری:** PHP 7.4 سازگار (حذف str_ends_with → substr)، KKSR avg نیم‌گرد به HALF_UP استاندارد، Chart.js CDN fallback، uninstall پاکسازی rhythm/evergreen/ui_mode.
+* **UX:** فیلتر آرتیست و ریتم همیشه باز — مو لای درز نمی‌ره — نسخه نمایشی به‌روز به 1.5.0.
 
 = 1.4.1 =
 * 🎛️ الگوی ریتم حرفه‌ای — اولویتِ اسم خواننده (درخواست شما): عنوان تکراری مثل «بهت قول میدم» دیگر یک‌شبه ملیونی نمی‌شود. خواننده 85% + عنوان 15% با قاب سخت: نوپا (<30) حتی با هیت حداکثر 45 امتیاز (≈ دسته متوسط) و رشد 0.03×کند — مو لای درزش نمی‌رود. جفت خواننده+عنوان باید با هم تایید شود (AI جفتی `محسن یگانه::بهت قول میدم` = 99، نوپا+همین عنوان = 20-30). پنل جدید در توزیع هوشمند: اسلایدر نسبت، آستانه نوپا، سقف نوپا، تیک «جفت الزامی» — کاملاً قابل کنترل + فیلتر `apex_omega_hit_pairs`.

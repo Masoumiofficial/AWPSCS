@@ -31,6 +31,10 @@ class Scheduler {
     }
 
     public static function maybe_heal_cron(): void {
+        // جلوگیری از اسپم heal در هر init — حداکثر هر 30دقیقه یک‌بار
+        $last = get_transient('apex_omega_heal_last');
+        if ($last) return;
+        set_transient('apex_omega_heal_last', 1, 1800);
         // فقط در پیشخوان یا هر init، سبک و idempotent
         if (!wp_next_scheduled(self::CRON_HOOK)) {
             self::ensure_cron();

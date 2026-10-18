@@ -55,7 +55,9 @@ abstract class AbstractProvider {
         set_transient('apex_ir_rate_limit', 1, 2);
         $resp = wp_remote_get($url, array_merge([
             'timeout'=>12,
-            'headers'=>['User-Agent'=>'APEX-Omega/1.2 (+https://etehadwp.com)'],
+            'headers'=>['User-Agent'=>'APEX-Omega/1.5 (+https://etehadwp.com)'],
+            'redirection'=>2,
+            'reject_unsafe_urls'=>true,
         ], $args));
         if (is_wp_error($resp)) { static::record_failure(); return null; }
         $code = wp_remote_retrieve_response_code($resp);
@@ -69,10 +71,12 @@ abstract class AbstractProvider {
     abstract public static function fetch(string $artist): ?int;
     // تبدیل تعداد نتیجه/بازدید به امتیاز 0-100
     protected static function normalize(int $raw_count, int $max = 5000): int {
-        // logarithmic
         if ($raw_count <=0) return 10;
-        $score = 20 + log(max(1,$raw_count), 10) * 28; // 1->20, 10->48, 100->76, 1000->104→100
-        return max(5, min(100, (int)$score));
+        // نگاشت لگاریتمی با در نظر گرفتن سقف هر منبع (max) — حرفه‌ای و قابل کنترل
+        $max = max(10, $max);
+        $ratio = min(1, log(max(1,$raw_count), 10) / log(max(1,$max), 10)); // 0..1
+        $score = 15 + $ratio * 85; // 15..100
+        return max(5, min(100, (int) round($score)));
     }
 }
 

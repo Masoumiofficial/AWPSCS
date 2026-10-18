@@ -151,8 +151,11 @@ class TierManager {
         $avg = min(max($avg, (float)$tier['avg_min']), (float)$tier['avg_max']);
         $avg = min($avg, $best);
 
+        // همبستگی بازدید↔امتیاز: هر 10K بازدید ≈ +0.02 میانگین نهفته (نامحسوس)
+        $views_factor = min(0.15, max(0, ($views - 10000) / 1500000 * 0.12)); // 0..0.12
+        $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
+        $avg = round($avg, 1);
         // محاسبه ratings سازگار
-        $ratings = $avg * $casts / $best * 5;
 
         return [
             'views' => $views,
@@ -211,6 +214,7 @@ class TierManager {
         }
 
         // Paging: WP_Query with posts_per_page max 2000 per batch to avoid memory
+        $limit = max(0, min(20000, $limit)); // سقف 20K — محافظ منابع
         if ($limit <= 5000) {
             $args = $base_args;
             $args['posts_per_page'] = (int)$limit;
@@ -250,6 +254,9 @@ class TierManager {
         $eligible_ids = self::get_eligible_post_ids($filters);
         $total_available = count($eligible_ids);
 
+        if ($total_requested === 0) {
+            return ['success'=>false,'message'=>'هیچ دسته‌ای انتخاب نشده — حداقل یک کادر را پر کنید.','total_requested'=>0,'total_available'=>$total_available];
+        }
         if ($total_requested > $total_available) {
             return [
                 'success' => false,

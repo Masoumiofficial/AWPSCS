@@ -175,7 +175,7 @@ class Adapter_KKSR {
         // محاسبه میانگین دقیق
         $avg = 0;
         if ($casts > 0 && $ratings > 0) {
-            $avg = round(($ratings / $casts) / 5 * $best, 1, PHP_ROUND_HALF_DOWN);
+            $avg = round(($ratings / $casts) / 5 * $best, 1, PHP_ROUND_HALF_UP);
             // محدودسازی
             $avg = min(max($avg, 0), $best);
         } elseif (is_numeric($avg_raw) && $avg_raw !== '') {
@@ -208,7 +208,7 @@ class Adapter_KKSR {
         // محاسبه avg اگر داده نشد
         if ($avg === null) {
             if ($casts > 0) {
-                $avg = round(($ratings / $casts) / 5 * $best, 1, PHP_ROUND_HALF_DOWN);
+                $avg = round(($ratings / $casts) / 5 * $best, 1, PHP_ROUND_HALF_UP);
                 $avg = min(max($avg, 0), $best);
             } else {
                 $avg = 0;
@@ -257,7 +257,7 @@ class Adapter_KKSR {
             $errors[] = 'تعداد رأی صفر است اما مجموع امتیاز یا میانگین غیرصفر ثبت شده.';
         }
         if ($casts > 0) {
-            $expected_avg = round(($ratings / $casts) / 5 * $best, 1, PHP_ROUND_HALF_DOWN);
+            $expected_avg = round(($ratings / $casts) / 5 * $best, 1, PHP_ROUND_HALF_UP);
             if (abs($expected_avg - $avg) > 0.15) {
                 $errors[] = sprintf('ناسازگاری: میانگین مورد انتظار %s است اما %s وارد شده (اختلاف بیش از ۰٫۱۵).', $expected_avg, $avg);
             }

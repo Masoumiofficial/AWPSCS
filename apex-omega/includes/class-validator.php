@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Validator {
-    const MAX_VIEWS = 100000000; // 100M سقف منطقی
+    const MAX_VIEWS = 1500000; // 1.5M — سقف واقع‌گرایانه درخواست کاربر
     const MAX_CASTS = 10000000;
     const MAX_RATINGS_PER_VOTE = 5; // داخلی kk بر مبنای 5
 
@@ -145,7 +145,8 @@ class Validator {
 
         if (isset($data['interval_seconds'])) {
             $iv = (int) $data['interval_seconds'];
-            if ($iv < 300) $errors[] = 'فاصله اجرا حداقل ۵ دقیقه (۳۰۰ ثانیه) است.';
+            if ($iv < 60) $errors[] = 'فاصله اجرا حداقل ۶۰ ثانیه است.';
+            elseif ($iv < 300) $errors[] = 'هشدار: فاصله کمتر از ۵ دقیقه فشار زیادی به سرور وارد می‌کند.';
             if ($iv > 2592000) $errors[] = 'فاصله اجرا حداکثر ۳۰ روز است.';
         }
 

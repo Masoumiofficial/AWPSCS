@@ -39,7 +39,7 @@ class Rest {
     }
 
     public static function can_manage(): bool {
-        return apex_omega_user_can_manage() && current_user_can('manage_options');
+        return apex_omega_user_can_manage(); // apex_manage_statistics یا manage_options — بدون نیاز به هر دو
     }
 
     public static function preview(\WP_REST_Request $req) {

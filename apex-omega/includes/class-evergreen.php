@@ -59,7 +59,8 @@ class Evergreen {
         ]);
         // برای جلوگیری از فشار، فقط 30 پست در هر تیک (چرخشی)
         global $wpdb;
-        $offset = (int) get_transient('apex_evergreen_offset') ?: 0;
+        $blog = get_current_blog_id();
+        $offset = (int) get_transient("apex_evergreen_offset_{$blog}") ?: 0;
         $batch = 30;
         $ids = $wpdb->get_col($wpdb->prepare(
             "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' ORDER BY p.ID ASC LIMIT %d OFFSET %d",
@@ -74,7 +75,7 @@ class Evergreen {
             ));
         }
         // offset بعدی
-        set_transient('apex_evergreen_offset', $offset + $batch, HOUR_IN_SECONDS);
+        set_transient("apex_evergreen_offset_{$blog}", $offset + $batch, HOUR_IN_SECONDS);
 
         if (empty($ids)) return;
         $exec = apex_omega_generate_uuid();
@@ -131,12 +132,12 @@ class Evergreen {
                 continue;
             }
             // لاگ سبک (هر 12 تیک ≈ هر ساعت)
-            $tick_count = (int) get_option('apex_evergreen_tick_count', 0);
+            $tick_count = (int) get_option('apex_evergreen_tick_count_' . get_current_blog_id(), 0);
             if ($tick_count % 12 === 0) {
                 History::log($pid, 'views', $cur_views, $new_views, 'evergreen', $user_id, $exec, null, ['rate'=>$rate,'inc'=>$inc,'tier'=>$tier,'mult'=>$mult]);
             }
         }
-        $tc = (int) get_option('apex_evergreen_tick_count', 0);
-        update_option('apex_evergreen_tick_count', $tc+1, false);
+        $tc = (int) get_option('apex_evergreen_tick_count_' . get_current_blog_id(), 0);
+        update_option('apex_evergreen_tick_count_' . get_current_blog_id(), $tc+1, false);
     }
 }

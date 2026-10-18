@@ -25,7 +25,6 @@ class Ajax {
             'apex_save_artist_taxonomy',
             'apex_auto_artist_ai',
             'apex_auto_artist_ir',
-            'apex_save_ui_mode',
             'apex_export_artist_csv',
             'apex_export_history_csv',
             'apex_export_tiers_json',
@@ -107,9 +106,6 @@ class Ajax {
             case 'apex_undo_tier':
                 self::undo_tier();
                 break;
-            case 'apex_save_ui_mode':
-                self::save_ui_mode();
-                break;
             case 'apex_export_artist_csv':
                 self::export_artist_csv();
                 break;
@@ -139,6 +135,7 @@ class Ajax {
     private static function save_manual(): void {
         $post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;
         if (!$post_id || !get_post($post_id)) wp_send_json_error(['message'=>'نوشته نامعتبر'], 400);
+        if (!current_user_can('edit_post', $post_id) && !apex_omega_user_can_manage()) wp_send_json_error(['message'=>'دسترسی ویرایش نوشته ندارید'], 403);
 
         // قفل
         $lock_key = "apex_manual_{$post_id}";
@@ -334,6 +331,7 @@ class Ajax {
 
         foreach ($post_ids as $pid) {
             if (!get_post($pid)) { $errors[] = "نوشته $pid یافت نشد."; continue; }
+            if (!current_user_can('edit_post', $pid) && !apex_omega_user_can_manage()) { $errors[] = "دسترسی ویرایش پست $pid ندارید."; continue; }
             if ($field === 'views') {
                 [$ok, $errs, $v] = Validator::validate_views($value);
                 if (!$ok) { $errors[] = "پست $pid: " . implode(' ', $errs); continue; }
@@ -493,12 +491,6 @@ class Ajax {
         $exec = sanitize_text_field($_POST['execution_id'] ?? '');
         $res = \ApexOmega\Core\TierManager::undo_last_distribution($exec ?: null);
         if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res, 400);
-    }
-    private static function save_ui_mode(): void {
-        $mode = sanitize_text_field($_POST['mode'] ?? 'simple');
-        if (!in_array($mode, ['simple','pro'], true)) $mode='simple';
-        update_option('apex_omega_ui_mode', $mode, false);
-        wp_send_json_success(['mode'=>$mode]);
     }
     private static function export_artist_csv(): void {
         $csv = \ApexOmega\Core\Exporter::export_artist_csv();

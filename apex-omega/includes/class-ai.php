@@ -37,6 +37,14 @@ class AI_Helper {
         return $merged;
     }
 
+    private static function is_allowed_endpoint(string $url): bool {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (!$host) return false;
+        $allowed = ['api.gapgpt.app','api.openai.com','gapgpt.app','openrouter.ai'];
+        $host = strtolower($host);
+        foreach ($allowed as $a) if ($host === $a || substr($host, -strlen('.'.$a)) === '.'.$a) return true;
+        return false;
+    }
     public static function save_settings(array $data): void {
         $cur = self::get_settings();
         $raw_key = $data['api_key'] ?? '';
@@ -56,7 +64,7 @@ class AI_Helper {
             'provider' => sanitize_text_field($data['provider'] ?? $cur['provider']),
             'api_key' => $to_store,
             'model' => sanitize_text_field($data['model'] ?? $cur['model']),
-            'endpoint' => esc_url_raw($data['endpoint'] ?? $cur['endpoint']),
+            'endpoint' => (function() use ($data,$cur){ $ep = esc_url_raw($data['endpoint'] ?? $cur['endpoint']); if (!self::is_allowed_endpoint($ep)) $ep = 'https://api.gapgpt.app/v1/chat/completions'; return $ep; })(),
         ];
         // اگر کلید خالی آمد، قبلی را نگه دار (برای امنیت فرم)
         if ($to_store === '' && !empty($cur['api_key_raw'])) {

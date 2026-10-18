@@ -7,37 +7,21 @@ $ai_set = \ApexOmega\Core\AI_Helper::get_settings();
 $is_ai = \ApexOmega\Core\AI_Helper::is_configured();
 $artist_tax = \ApexOmega\Core\ArtistManager::detect_artist_taxonomy();
 $artists = $artist_tax ? \ApexOmega\Core\ArtistManager::get_all_artists($artist_tax, 80) : [];
-$ui_mode = get_option('apex_omega_ui_mode', 'simple');
 $available_taxes = \ApexOmega\Core\ArtistManager::get_available_taxonomies();
 $saved_tax = get_option(\ApexOmega\Core\ArtistManager::OPTION_TAXONOMY, '');
 $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
 ?>
-<div class="wrap apex-wrap" data-ui-mode="<?php echo esc_attr($ui_mode); ?>">
+<div class="wrap apex-wrap">
   <div class="apex-hero">
     <div>
       <h1 style="margin:0;font-size:26px;">🚀 توزیع هوشمند دسته‌ای</h1>
-      <p style="margin:6px 0 0;color:#50575e;">بدون انتخاب تکی — فقط بگو هر دسته چند آهنگ داشته باشد، بقیه خودکار و منطقی تنظیم می‌شود. <strong>کاملاً خودکار + آرتیست‌محور + Evergreen — v1.4.0 (سقف 1.5M واقع‌گرایانه)</strong></p>
+      <p style="margin:6px 0 0;color:#50575e;">بدون انتخاب تکی — فقط بگو هر دسته چند آهنگ داشته باشد، بقیه خودکار و منطقی تنظیم می‌شود. <strong>کاملاً خودکار + آرتیست‌محور + Evergreen — v1.5.0 (بدون حالت ساده/حرفه‌ای — الگوی ریتم + Evergreen تیره‌محور)</strong></p>
     </div>
     <div class="apex-hero-stats">
       <div><span class="big"><?php echo esc_html(number_format_i18n($total_posts)); ?></span><small>آهنگ منتشرشده</small></div>
       <div><span class="big" id="apex-total-selected">0</span><small>انتخاب‌شده</small></div>
       <div><span class="big" id="apex-remaining" data-total="<?php echo esc_attr($total_posts); ?>"><?php echo esc_html($total_posts); ?></span><small>باقی‌مانده</small></div>
     </div>
-  </div>
-
-  <!-- حالت ساده / حرفه‌ای -->
-  <div class="apex-card" style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-right:4px solid #7c3aed;">
-    <div>
-      <strong>حالت نمایش:</strong>
-      <span class="apex-badge <?php echo $ui_mode==='simple'?'active':'paused'; ?>">ساده</span>
-      <span class="apex-badge <?php echo $ui_mode==='pro'?'active':'paused'; ?>">حرفه‌ای</span>
-      <small style="margin-right:10px;color:#6b7280;">ساده: فقط تعدادها و پیش‌نمایش — حرفه‌ای: فیلتر، آرتیست، اسلایدر دقیق، جزئیات فنی</small>
-    </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer; background:#f3f4f6;border:1px solid #e5e7eb;border-radius:999px;padding:6px 14px;">
-      <span>ساده</span>
-      <input type="checkbox" id="apex-ui-mode-toggle" <?php checked($ui_mode,'pro'); ?>>
-      <span>حرفه‌ای</span>
-    </label>
   </div>
 
   <?php if (!$is_ai): ?>
@@ -53,7 +37,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
   <?php endif; ?>
 
   <!-- بخش آرتیست -->
-  <div class="apex-card apex-pro-only" style="margin-top:14px; border-top:4px solid #f59e0b;">
+  <div class="apex-card" style="margin-top:14px; border-top:4px solid #f59e0b;">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <h3 style="margin:0;">🎤 توزیع بر اساس محبوبیت آرتیست</h3>
       <label style="background:#fef3c7;border:1px solid #f59e0b;border-radius:999px;padding:6px 14px;font-weight:800;cursor:pointer;">
@@ -116,7 +100,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
 
   <!-- الگوی ریتم حرفه‌ای — اولویت خواننده (درخواست شما) -->
   <?php $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings(); ?>
-  <div class="apex-card apex-pro-only" style="margin-top:14px; border-top:4px solid #7c3aed; background:#f5f3ff;">
+  <div class="apex-card" style="margin-top:14px; border-top:4px solid #7c3aed; background:#f5f3ff;">
     <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;">
       <div>
         <h3 style="margin:0;">🎛️ الگوی ریتم حرفه‌ای — اولویت  با  اسم خواننده</h3>
@@ -149,7 +133,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
     <button id="apex-preset-equal" class="button">⚖️ مساوی</button>
     <button id="apex-preset-clear" class="button">🧹 صفر</button>
     <span style="margin-right:auto;"></span>
-    <label class="apex-pro-only">فیلتر دسته:
+    <label>فیلتر دسته:
       <select id="apex-filter-cat" style="min-width:160px;">
         <option value="all">همه دسته‌ها</option>
         <?php $cats=get_categories(['hide_empty'=>false]); foreach($cats as $c): ?>
@@ -274,6 +258,6 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
   <?php endif; ?>
 
   <div class="apex-alert success">
-    <strong>قابلیت‌های 1.4.0: Evergreen + سقف 1.5M + منبع‌های جدید mybia2music/ganja2music/rezmusic + تشخیص عنوان هیت («بهت قول میدم») | پیش‌تر 1.2.2:</strong> اسنپ‌شات کامل قبل از هر توزیع (قابل Undo) — تراکنش یکپارچه هر پست (views+kksr همزمان) — قفل هوشمند <code>TTL = تعداد × ۲ ثانیه</code> — paging برای >۵۰۰۰ آهنگ — رمزنگاری کلید API با <code>AUTH_KEY</code> — تست اتصال GapGPT — انتخاب دستی تاکسونومی — حالت ساده/حرفه‌ای — جدول نتایج دقیق پس از اعمال — فیلتر ۷ روزه برای توزیع خودکار (هر آهنگ حداکثر هفته‌ای یک‌بار عوض می‌شود) — گزارش هفتگی ایمیلی و چک سلامت سایت.
+    <strong>قابلیت‌های 1.5.0: حذف حالت ساده/حرفه‌ای، XSS/CSV/SSRF فیکس، همبستگی بازدید↔امتیاز، Evergreen تیره‌محور، الگوی ریتم حرفه‌ای | پیش‌تر 1.4.0: Evergreen + سقف 1.5M + منبع‌های جدید mybia2music/ganja2music/rezmusic + تشخیص عنوان هیت («بهت قول میدم») | پیش‌تر 1.2.2:</strong> اسنپ‌شات کامل قبل از هر توزیع (قابل Undo) — تراکنش یکپارچه هر پست (views+kksr همزمان) — قفل هوشمند <code>TTL = تعداد × ۲ ثانیه</code> — paging برای >۵۰۰۰ آهنگ — رمزنگاری کلید API با <code>AUTH_KEY</code> — تست اتصال GapGPT — انتخاب دستی تاکسونومی — حالت ساده/حرفه‌ای — جدول نتایج دقیق پس از اعمال — فیلتر ۷ روزه برای توزیع خودکار (هر آهنگ حداکثر هفته‌ای یک‌بار عوض می‌شود) — گزارش هفتگی ایمیلی و چک سلامت سایت.
   </div>
 </div>

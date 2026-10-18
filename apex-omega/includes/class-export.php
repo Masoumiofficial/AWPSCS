@@ -4,20 +4,27 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Exporter {
+    private static function escape_csv($v): string {
+        $v = (string)$v;
+        if (preg_match('/^[\=\+\-\@\|\%]/', $v)) $v = "'" . $v; // CSV injection guard — OWASP
+        // double quote escaping
+        if (strpos($v, '"') !== false || strpos($v, ',') !== false || strpos($v, "\n") !== false) $v = '"' . str_replace('"', '""', $v) . '"';
+        return $v;
+    }
     // صادر کردن وزن هنرمندان به CSV
     public static function export_artist_csv(): string {
         $tax = ArtistManager::detect_artist_taxonomy();
         $artists = $tax ? ArtistManager::get_all_artists($tax, 1000) : [];
         $out = "term_id,name,slug,count,weight,tier_hint\n";
         foreach ($artists as $a) {
-            $out .= sprintf("%d,\"%s\",%s,%d,%d,%s\n",
-                $a['term_id'],
-                str_replace('"','""',$a['name']),
-                $a['slug'],
-                $a['count'],
-                $a['weight'],
-                $a['tier_hint']
-            );
+            $out .= implode(",", [
+                self::escape_csv($a['term_id']),
+                self::escape_csv($a['name']),
+                self::escape_csv($a['slug']),
+                self::escape_csv($a['count']),
+                self::escape_csv($a['weight']),
+                self::escape_csv($a['tier_hint']),
+            ]) . "\n";
         }
         return $out;
     }
@@ -48,17 +55,19 @@ class Exporter {
         $rows = History::get_all_recent($limit);
         $out = "id,post_id,title,field_type,old_value,new_value,delta,source,user_id,execution_id,created_at_gmt\n";
         foreach ($rows as $r) {
-            $out .= sprintf("%s,%d,\"%s\",%s,\"%s\",\"%s\",%s,%s,%s,%s,%s\n",
-                $r['id'], $r['post_id'], str_replace('"','""',$r['post_title']??''),
-                $r['field_type'],
-                str_replace('"','""', substr($r['old_value']??'',0,80)),
-                str_replace('"','""', substr($r['new_value']??'',0,80)),
-                $r['delta']??'',
-                $r['source'],
-                $r['user_id']??'',
-                substr($r['execution_id']??'',0,8),
-                $r['created_at_gmt']
-            );
+            $out .= implode(",", [
+                self::escape_csv($r['id']),
+                self::escape_csv($r['post_id']),
+                self::escape_csv($r['post_title']??''),
+                self::escape_csv($r['field_type']),
+                self::escape_csv(mb_substr($r['old_value']??'',0,80)),
+                self::escape_csv(mb_substr($r['new_value']??'',0,80)),
+                self::escape_csv($r['delta']??''),
+                self::escape_csv($r['source']),
+                self::escape_csv($r['user_id']??''),
+                self::escape_csv(substr($r['execution_id']??'',0,8)),
+                self::escape_csv($r['created_at_gmt']),
+            ]) . "\n";
         }
         return $out;
     }
@@ -72,9 +81,13 @@ class Exporter {
     public static function import_tiers_json(string $json): array {
         $data = json_decode($json, true);
         if (!is_array($data) || empty($data)) return ['success'=>false,'message'=>'JSON نامعتبر'];
-        // اعتبارسنجی ساده: هر آیتم باید id و views_min/max داشته باشد
+        // اعتبارسنجی سخت‌گیرانه — مو لای درز نرود
+        if (count($data) < 3 || count($data) > 10) return ['success'=>false,'message'=>'تعداد دسته باید 3-10 باشد'];
         foreach ($data as $t) {
-            if (empty($t['id']) || !isset($t['views_min'])) return ['success'=>false,'message'=>'ساختار tier نامعتبر: '.wp_json_encode($t,JSON_UNESCAPED_UNICODE)];
+            if (empty($t['id']) || !isset($t['views_min']) || !isset($t['views_max']) || !isset($t['casts_min']) || !isset($t['avg_min'])) return ['success'=>false,'message'=>'ساختار tier نامعتبر: '.wp_json_encode($t,JSON_UNESCAPED_UNICODE)];
+            $vm = (int)$t['views_max'];
+            if ($vm > 2000000) return ['success'=>false,'message'=>'سقف هر دسته حداکثر 2M است (واقع‌گرایانه) — '.$t['id'].'='.$vm];
+            if ((float)$t['avg_max'] > 5.0 || (float)$t['avg_min'] < 0) return ['success'=>false,'message'=>'میانگین نامعتبر: '.$t['id']];
         }
         TierManager::save_tiers($data);
         return ['success'=>true,'count'=>count($data)];
