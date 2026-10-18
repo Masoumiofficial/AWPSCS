@@ -15,28 +15,85 @@ class AI_Helper {
         ];
         $saved = get_option(self::OPTION_KEY, []);
         if (!is_array($saved)) $saved = [];
-        return wp_parse_args($saved, $defaults);
+        $merged = wp_parse_args($saved, $defaults);
+        // decrypt api_key if encrypted
+        if (!empty($merged['api_key'])) {
+            $dec = apex_omega_decrypt($merged['api_key']);
+            // if decrypt returns same string but it was plain legacy, keep it
+            // detect new format: enc1: or b64:
+            if (strpos($merged['api_key'], 'enc1:') === 0 || strpos($merged['api_key'], 'b64:') === 0) {
+                $merged['api_key_raw'] = $merged['api_key'];
+                $merged['api_key'] = $dec;
+            } else {
+                // legacy plain: keep as is, but also provide raw for display
+                $merged['api_key_raw'] = $merged['api_key'];
+            }
+            // masked for UI
+            $merged['api_key_masked'] = $merged['api_key'] ? '••••••••' : '';
+        } else {
+            $merged['api_key_masked'] = '';
+            $merged['api_key_raw'] = '';
+        }
+        return $merged;
     }
 
     public static function save_settings(array $data): void {
         $cur = self::get_settings();
+        $raw_key = $data['api_key'] ?? '';
+        // handle masked UI value
+        if ($raw_key === '••••••••' || $raw_key === '') {
+            if (empty($data['api_key']) || $data['api_key'] === '••••••••') {
+                $raw_key = $cur['api_key'];
+            }
+        }
+        // encrypt before save
+        $to_store = $raw_key !== '' ? apex_omega_encrypt(sanitize_text_field($raw_key)) : '';
+        // if key is already encrypted format coming from external, don't double encrypt
+        if ($raw_key !== '' && (strpos($raw_key, 'enc1:')===0 || strpos($raw_key, 'b64:')===0)) {
+            $to_store = $raw_key;
+        }
         $new = [
             'provider' => sanitize_text_field($data['provider'] ?? $cur['provider']),
-            'api_key' => sanitize_text_field($data['api_key'] ?? ''),
+            'api_key' => $to_store,
             'model' => sanitize_text_field($data['model'] ?? $cur['model']),
             'endpoint' => esc_url_raw($data['endpoint'] ?? $cur['endpoint']),
         ];
         // اگر کلید خالی آمد، قبلی را نگه دار (برای امنیت فرم)
-        if ($new['api_key'] === '' && $cur['api_key'] !== '') {
-            $new['api_key'] = $cur['api_key'];
+        if ($to_store === '' && !empty($cur['api_key_raw'])) {
+            $new['api_key'] = $cur['api_key_raw'];
         }
-        if ($new['api_key'] === '••••••••') $new['api_key'] = $cur['api_key'];
         update_option(self::OPTION_KEY, $new, false);
     }
 
     public static function is_configured(): bool {
         $s = self::get_settings();
         return !empty($s['api_key']) && !empty($s['endpoint']);
+    }
+
+    public static function test_connection(): array {
+        $s = self::get_settings();
+        if (empty($s['api_key'])) return ['success'=>false,'message'=>'کلید GapGPT تنظیم نشده'];
+        $payload = [
+            'model' => $s['model'] ?: 'gpt-4o-mini',
+            'messages' => [
+                ['role'=>'system','content'=>'You are a test. Reply with single word: ok'],
+                ['role'=>'user','content'=>'ping'],
+            ],
+            'max_tokens'=>5,
+            'temperature'=>0,
+        ];
+        $resp = wp_remote_post($s['endpoint'], [
+            'headers'=>['Authorization'=>'Bearer '.$s['api_key'],'Content-Type'=>'application/json'],
+            'body'=>wp_json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'timeout'=>12,
+        ]);
+        if (is_wp_error($resp)) return ['success'=>false,'message'=>'خطا: '.$resp->get_error_message()];
+        $code = wp_remote_retrieve_response_code($resp);
+        $body = wp_remote_retrieve_body($resp);
+        if ($code === 200) return ['success'=>true,'message'=>'اتصال موفق — GapGPT پاسخ داد','code'=>$code];
+        $data = json_decode($body,true);
+        $msg = $data['error']['message'] ?? $data['message'] ?? substr($body,0,300);
+        return ['success'=>false,'message'=>'کد '.$code.': '.$msg,'code'=>$code,'raw'=>substr($body,0,800)];
     }
 
     /**

@@ -155,12 +155,13 @@ class TierManager {
     }
 
     /**
-     * دریافت پست‌های واجد شرایط
+     * دریافت پست‌های واجد شرایط — با paging برای >5000 و فیلتر 7 روزه
      */
     public static function get_eligible_post_ids(array $filters = []): array {
         $post_type = $filters['post_type'] ?? 'any';
         $category = $filters['category'] ?? '';
-        $limit = $filters['limit'] ?? 5000;
+        $limit = isset($filters['limit']) ? (int)$filters['limit'] : 5000;
+        $exclude_recent_days = isset($filters['exclude_recent_days']) ? (int)$filters['exclude_recent_days'] : 0;
 
         if ($post_type === 'any') {
             $post_types = get_post_types(['public'=>true], 'names');
@@ -169,10 +170,9 @@ class TierManager {
             $post_types = [$post_type];
         }
 
-        $args = [
+        $base_args = [
             'post_type' => $post_types,
             'post_status' => 'publish',
-            'posts_per_page' => (int)$limit,
             'fields' => 'ids',
             'orderby' => 'date',
             'order' => 'DESC',
@@ -181,20 +181,48 @@ class TierManager {
             'update_post_term_cache' => false,
         ];
         if ($category && $category !== 'all') {
-            $args['cat'] = (int)$category;
-            // پشتیبانی دسته سفارشی
+            $base_args['cat'] = (int)$category;
             if (!is_numeric($category)) {
-                $args['tax_query'] = [[
+                $base_args['tax_query'] = [[
                     'taxonomy' => 'category',
                     'field' => 'slug',
                     'terms' => sanitize_text_field($category),
                 ]];
-                unset($args['cat']);
+                unset($base_args['cat']);
             }
         }
+        // فیلتر 7 روزه: فقط پست‌هایی که _apex_tier_applied_at قدیمی‌تر از N روز است یا خالی است
+        if ($exclude_recent_days > 0) {
+            $cutoff = gmdate('Y-m-d H:i:s', time() - $exclude_recent_days * DAY_IN_SECONDS);
+            $base_args['meta_query'] = [
+                'relation' => 'OR',
+                ['key'=>'_apex_tier_applied_at','compare'=>'NOT EXISTS'],
+                ['key'=>'_apex_tier_applied_at','value'=>$cutoff,'compare'=>'<','type'=>'DATETIME'],
+            ];
+        }
 
-        $q = new \WP_Query($args);
-        return $q->posts ?: [];
+        // Paging: WP_Query with posts_per_page max 2000 per batch to avoid memory
+        if ($limit <= 5000) {
+            $args = $base_args;
+            $args['posts_per_page'] = (int)$limit;
+            $q = new \WP_Query($args);
+            return $q->posts ?: [];
+        }
+        // large limit: batch
+        $collected = [];
+        $batch = 1000;
+        $pages = (int) ceil($limit / $batch);
+        for ($p=1; $p <= $pages; $p++) {
+            $args = $base_args;
+            $args['posts_per_page'] = $batch;
+            $args['paged'] = $p;
+            $q = new \WP_Query($args);
+            if (empty($q->posts)) break;
+            $collected = array_merge($collected, $q->posts);
+            if (count($collected) >= $limit) break;
+            if (count($q->posts) < $batch) break;
+        }
+        return array_slice($collected, 0, $limit);
     }
 
     /**
@@ -293,47 +321,126 @@ class TierManager {
     }
 
     /**
-     * اجرای واقعی توزیع
+     * اجرای واقعی توزیع — با اسنپ‌شات، قفل هوشمند و تراکنش یکپارچه
      */
     public static function apply_distribution(array $counts_per_tier, array $filters = [], string $mode = 'overwrite'): array {
         $preview = self::preview_distribution($counts_per_tier, $filters);
         if (empty($preview['success'])) return $preview;
 
         $best = (int) get_option('kksr_stars', 5);
+        if ($best < 1) $best = 5;
         $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();
+        $total_req = (int) $preview['total_requested'];
+        $ttl = apex_omega_lock_ttl($total_req, 30, 600, 2);
+
+        // master lock for whole distribution
+        $master_lock = 'apex_tier_master';
+        if (!Database::acquire_lock($master_lock, $ttl)) {
+            return ['success'=>false,'message'=>'توزیع دیگری در حال اجراست. لطفاً '. $ttl .' ثانیه صبر کنید.','ttl'=>$ttl];
+        }
+
+        // Prepare snapshot: collect old values for all selected posts before any write
+        $snapshot_rows = [];
+        foreach ($preview['preview'] as $tier_id => $items) {
+            foreach ($items as $item) {
+                $pid = (int)$item['post_id'];
+                $old_views = Adapter_Views::get_views($pid);
+                $old_kksr = Adapter_KKSR::get_stats($pid);
+                $snapshot_rows[] = [
+                    'post_id' => $pid,
+                    'post_title' => $item['post_title'] ?? (string)$pid,
+                    'tier' => $tier_id,
+                    'old_views' => $old_views,
+                    'new_views' => $item['views'],
+                    'old_casts' => $old_kksr['casts'],
+                    'old_avg' => $old_kksr['avg'],
+                    'old_ratings' => $old_kksr['ratings'],
+                    'best' => $best,
+                    'new_casts' => $item['casts'],
+                    'new_avg' => $item['avg'],
+                    'new_ratings' => $item['ratings'],
+                ];
+            }
+        }
+
         $applied = 0;
         $errors = [];
+        $details = [];
 
         foreach ($preview['preview'] as $tier_id => $items) {
             foreach ($items as $item) {
                 $pid = (int)$item['post_id'];
                 if (!get_post($pid)) { $errors[] = "پست $pid یافت نشد"; continue; }
 
-                // قفل
+                // قفل per-post با TTL هوشمند
                 $lock = "apex_tier_{$pid}";
-                if (!Database::acquire_lock($lock, 10)) { $errors[] = "پست $pid قفل است"; continue; }
+                if (!Database::acquire_lock($lock, max(15, min(120, $ttl)))) { $errors[] = "پست $pid قفل است"; continue; }
 
                 $old_views = Adapter_Views::get_views($pid);
                 $old_kksr = Adapter_KKSR::get_stats($pid);
+                $detect = Adapter_KKSR::detect();
 
-                // نوشتن
-                $ok1 = Adapter_Views::set_views($pid, (int)$item['views'], 'tier_distribution', $exec);
-                $ok2 = Adapter_KKSR::set_stats($pid, (int)$item['casts'], (float)$item['ratings'], (float)$item['avg'], 'tier_distribution', $exec);
-
-                if ($ok1 && $ok2) {
+                // Single transaction per post: views + kksr + tier meta atomically
+                global $wpdb;
+                $wpdb->query('START TRANSACTION');
+                try {
+                    // views
+                    update_post_meta($pid, Adapter_Views::META_KEY, (int)$item['views']);
+                    $real_snapshot = get_post_meta($pid, '_apex_real_views', true);
+                    if ($real_snapshot === '') {
+                        update_post_meta($pid, '_apex_real_views', $old_views);
+                        update_post_meta($pid, '_apex_real_views_captured_at', current_time('mysql', true));
+                    }
+                    update_post_meta($pid, '_apex_managed_views', (int)$item['views']);
+                    update_post_meta($pid, '_apex_views_last_source', 'tier_distribution');
+                    update_post_meta($pid, '_apex_views_last_exec', $exec);
+                    // kksr
+                    update_post_meta($pid, $detect['meta_casts'], (int)$item['casts']);
+                    update_post_meta($pid, $detect['meta_ratings'], (float)$item['ratings']);
+                    update_post_meta($pid, $detect['meta_avg'], (float)$item['avg']);
+                    wp_cache_delete($pid, 'post_meta');
+                    // tier meta
                     update_post_meta($pid, self::META_TIER, $tier_id);
                     update_post_meta($pid, '_apex_tier_applied_at', current_time('mysql', true));
+                    $wpdb->query('COMMIT');
+                    $ok = true;
+                } catch (\Throwable $e) {
+                    $wpdb->query('ROLLBACK');
+                    error_log('[APEX Ω] tier atomic fail: '.$e->getMessage());
+                    $ok = false;
+                }
+
+                if ($ok) {
                     // تاریخچه
                     History::log($pid, 'views', $old_views, $item['views'], 'tier_distribution', $user_id, $exec, null, ['tier'=>$tier_id]);
-                    History::log($pid, 'kksr_combined', wp_json_encode(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg']], JSON_UNESCAPED_UNICODE), wp_json_encode(['casts'=>$item['casts'],'avg'=>$item['avg']], JSON_UNESCAPED_UNICODE), 'tier_distribution', $user_id, $exec, null, ['tier'=>$tier_id, 'best'=>$best]);
+                    History::log($pid, 'kksr_combined', wp_json_encode(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings']], JSON_UNESCAPED_UNICODE), wp_json_encode(['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings']], JSON_UNESCAPED_UNICODE), 'tier_distribution', $user_id, $exec, null, ['tier'=>$tier_id, 'best'=>$best]);
+                    do_action('apex_omega_views_updated', $pid, $old_views, (int)$item['views'], 'tier_distribution', $exec);
+                    do_action('apex_omega_kksr_updated', $pid, $old_kksr, ['casts'=>(int)$item['casts'],'ratings'=>(float)$item['ratings'],'avg'=>(float)$item['avg'],'best'=>$best], 'tier_distribution', $exec);
                     $applied++;
+                    $details[] = [
+                        'post_id' => $pid,
+                        'post_title' => $item['post_title'] ?? (string)$pid,
+                        'edit_url' => get_edit_post_link($pid),
+                        'tier' => $tier_id,
+                        'old_views' => $old_views,
+                        'new_views' => $item['views'],
+                        'old_casts' => $old_kksr['casts'],
+                        'new_casts' => $item['casts'],
+                        'old_avg' => $old_kksr['avg'],
+                        'new_avg' => $item['avg'],
+                    ];
                 } else {
-                    $errors[] = "خطا در پست $pid";
+                    $errors[] = "خطا در پست $pid (تراکنش ناموفق)";
                 }
                 Database::release_lock($lock);
             }
         }
+
+        // ذخیره اسنپ‌شات برای Undo
+        try {
+            Database::create_snapshot($exec, $user_id, $counts_per_tier, $filters, $total_req, $applied, $snapshot_rows);
+        } catch (\Throwable $e) { error_log('[APEX Ω] snapshot fail: '.$e->getMessage()); }
 
         // ذخیره آخرین توزیع
         update_option(self::OPTION_LAST_DISTRIBUTION, [
@@ -342,13 +449,14 @@ class TierManager {
             'applied' => $applied,
             'exec' => $exec,
             'at' => current_time('mysql', true),
+            'errors' => $errors,
         ], false);
 
-        // اگر حالت خودکار فعال است، زمان بعدی را تنظیم کن
-        $auto = get_option('apex_omega_auto_tier', []);
-        if (!empty($auto['enabled'])) {
+        if (!empty(get_option('apex_omega_auto_tier', [])['enabled'])) {
             self::schedule_auto();
         }
+
+        Database::release_lock($master_lock);
 
         return [
             'success' => true,
@@ -356,7 +464,52 @@ class TierManager {
             'errors' => $errors,
             'execution_id' => $exec,
             'summary' => $preview['summary'],
+            'details' => $details,
+            'snapshot_id' => $exec,
+            'ttl_used' => $ttl,
         ];
+    }
+
+    /**
+     * بازگردانی اسنپ‌شات (Undo آخرین توزیع)
+     */
+    public static function undo_last_distribution(?string $exec_id = null): array {
+        $snap = $exec_id ? Database::get_snapshot_by_exec($exec_id) : Database::get_last_snapshot();
+        if (!$snap) return ['success'=>false,'message'=>'اسنپ‌شاتی برای بازگردانی یافت نشد'];
+        if ((int)$snap['restored'] === 1) return ['success'=>false,'message'=>'این توزیع قبلاً بازگردانی شده است'];
+        $data = json_decode($snap['snapshot_json'], true);
+        if (!is_array($data) || empty($data)) return ['success'=>false,'message'=>'داده اسنپ‌شات نامعتبر است'];
+        $restored = 0;
+        $errors = [];
+        $restore_exec = apex_omega_generate_uuid();
+        foreach ($data as $row) {
+            $pid = (int)($row['post_id'] ?? 0);
+            if (!$pid || !get_post($pid)) { $errors[]="پست $pid یافت نشد"; continue; }
+            $lock = "apex_undo_{$pid}";
+            if (!Database::acquire_lock($lock, 15)) { $errors[]="پست $pid قفل است"; continue; }
+            global $wpdb;
+            $wpdb->query('START TRANSACTION');
+            try {
+                // restore views
+                update_post_meta($pid, Adapter_Views::META_KEY, (int)$row['old_views']);
+                // restore kksr
+                $detect = Adapter_KKSR::detect();
+                update_post_meta($pid, $detect['meta_casts'], (int)$row['old_casts']);
+                update_post_meta($pid, $detect['meta_ratings'], (float)$row['old_ratings']);
+                update_post_meta($pid, $detect['meta_avg'], (float)$row['old_avg']);
+                update_post_meta($pid, self::META_TIER, '');
+                $wpdb->query('COMMIT');
+                History::log($pid, 'views', $row['new_views'], $row['old_views'], 'tier_undo', get_current_user_id(), $restore_exec, null, ['undo_of'=>$snap['execution_id']]);
+                History::log($pid, 'kksr_combined', wp_json_encode(['casts'=>$row['new_casts'],'avg'=>$row['new_avg']], JSON_UNESCAPED_UNICODE), wp_json_encode(['casts'=>$row['old_casts'],'avg'=>$row['old_avg']], JSON_UNESCAPED_UNICODE), 'tier_undo', get_current_user_id(), $restore_exec, null, ['undo_of'=>$snap['execution_id']]);
+                $restored++;
+            } catch (\Throwable $e) {
+                $wpdb->query('ROLLBACK');
+                $errors[]="پست $pid: ".$e->getMessage();
+            }
+            Database::release_lock($lock);
+        }
+        Database::mark_snapshot_restored((int)$snap['id']);
+        return ['success'=>true,'restored'=>$restored,'errors'=>$errors,'restore_exec'=>$restore_exec,'original_exec'=>$snap['execution_id']];
     }
 
     public static function schedule_auto(): void {

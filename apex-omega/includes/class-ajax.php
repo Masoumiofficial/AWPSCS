@@ -17,11 +17,15 @@ class Ajax {
             'apex_tier_save',
             'apex_preview_tier',
             'apex_apply_tier',
+            'apex_undo_tier',
             'apex_ai_suggest',
             'apex_ai_save',
+            'apex_test_ai',
             'apex_save_artist_weights',
+            'apex_save_artist_taxonomy',
             'apex_auto_artist_ai',
             'apex_auto_artist_ir',
+            'apex_save_ui_mode',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -86,6 +90,18 @@ class Ajax {
                 break;
             case 'apex_auto_artist_ir':
                 self::auto_artist_ir();
+                break;
+            case 'apex_test_ai':
+                self::test_ai();
+                break;
+            case 'apex_save_artist_taxonomy':
+                self::save_artist_taxonomy();
+                break;
+            case 'apex_undo_tier':
+                self::undo_tier();
+                break;
+            case 'apex_save_ui_mode':
+                self::save_ui_mode();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -433,5 +449,28 @@ class Ajax {
         $res = \ApexOmega\Core\ArtistManager::auto_weight_via_external();
         if (!empty($res['success'])) wp_send_json_success($res);
         wp_send_json_error($res, 400);
+    }
+}
+    private static function test_ai(): void {
+        $res = \ApexOmega\Core\AI_Helper::test_connection();
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res, 400);
+    }
+    private static function save_artist_taxonomy(): void {
+        $tax = sanitize_text_field($_POST['taxonomy'] ?? '');
+        if ($tax === '__auto__') $tax = '';
+        update_option(\ApexOmega\Core\ArtistManager::OPTION_TAXONOMY, $tax, false);
+        // bust detect cache: just report
+        wp_send_json_success(['message'=>'تاکسونومی ذخیره شد','taxonomy'=>$tax ?: 'خودکار']);
+    }
+    private static function undo_tier(): void {
+        $exec = sanitize_text_field($_POST['execution_id'] ?? '');
+        $res = \ApexOmega\Core\TierManager::undo_last_distribution($exec ?: null);
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res, 400);
+    }
+    private static function save_ui_mode(): void {
+        $mode = sanitize_text_field($_POST['mode'] ?? 'simple');
+        if (!in_array($mode, ['simple','pro'], true)) $mode='simple';
+        update_option('apex_omega_ui_mode', $mode, false);
+        wp_send_json_success(['mode'=>$mode]);
     }
 }

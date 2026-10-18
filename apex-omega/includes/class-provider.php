@@ -8,19 +8,60 @@ if (!defined('ABSPATH')) exit;
  * هر provider باید fetch(string $artist_name): ?int برگرداند (0-100) یا null اگر نیافت
  */
 abstract class AbstractProvider {
+    const FAIL_OPTION = 'apex_omega_provider_failures';
+    const FAIL_THRESHOLD = 3;
+    const FAIL_COOLDOWN = DAY_IN_SECONDS; // 24h
+
+    protected static function provider_key(): string {
+        return strtolower((new \ReflectionClass(static::class))->getShortName());
+    }
+
+    protected static function record_failure(): void {
+        $opt = get_option(self::FAIL_OPTION, []);
+        $k = static::provider_key();
+        $opt[$k] = $opt[$k] ?? ['count'=>0,'last'=>0];
+        $opt[$k]['count'] = (int)$opt[$k]['count'] + 1;
+        $opt[$k]['last'] = time();
+        update_option(self::FAIL_OPTION, $opt, false);
+    }
+    protected static function record_success(): void {
+        $opt = get_option(self::FAIL_OPTION, []);
+        $k = static::provider_key();
+        if (isset($opt[$k])) { $opt[$k]['count']=0; $opt[$k]['last']=0; update_option(self::FAIL_OPTION,$opt,false); }
+    }
+    public static function is_in_cooldown(): bool {
+        $opt = get_option(self::FAIL_OPTION, []);
+        $k = static::provider_key();
+        if (empty($opt[$k])) return false;
+        if ((int)$opt[$k]['count'] < self::FAIL_THRESHOLD) return false;
+        $elapsed = time() - (int)$opt[$k]['last'];
+        if ($elapsed < self::FAIL_COOLDOWN) return true;
+        // cooldown passed, reset
+        $opt[$k]['count']=0; update_option(self::FAIL_OPTION,$opt,false);
+        return false;
+    }
+    public static function reset_failures(): void {
+        delete_option(self::FAIL_OPTION);
+    }
+
     // کش داخلی
     protected static function cached_get(string $url, array $args = []) {
         $key = 'apex_ir_'.md5($url);
         $cached = get_transient($key);
         if ($cached !== false) return $cached;
+        // rate-limit: max 1 req per 2 sec
+        $last_req = get_transient('apex_ir_rate_limit');
+        if ($last_req) usleep(400000); // 0.4s gentle throttle
+        set_transient('apex_ir_rate_limit', 1, 2);
         $resp = wp_remote_get($url, array_merge([
             'timeout'=>12,
-            'headers'=>['User-Agent'=>'APEX-Omega/1.1 (+https://etehadwp.com)'],
+            'headers'=>['User-Agent'=>'APEX-Omega/1.2 (+https://etehadwp.com)'],
         ], $args));
-        if (is_wp_error($resp)) return null;
+        if (is_wp_error($resp)) { static::record_failure(); return null; }
         $code = wp_remote_retrieve_response_code($resp);
-        if ($code !== 200) return null;
+        if ($code !== 200) { static::record_failure(); return null; }
         $body = wp_remote_retrieve_body($resp);
+        static::record_success();
         set_transient($key, $body, 6 * HOUR_IN_SECONDS);
         return $body;
     }
@@ -41,6 +82,7 @@ abstract class AbstractProvider {
  */
 class RadioJavanProvider extends AbstractProvider {
     public static function fetch(string $artist): ?int {
+        if (static::is_in_cooldown()) return null;
         $q = urlencode($artist);
         $url = "https://www.radiojavan.com/search?q={$q}";
         $html = self::cached_get($url);
@@ -59,6 +101,7 @@ class RadioJavanProvider extends AbstractProvider {
  */
 class Next1MusicProvider extends AbstractProvider {
     public static function fetch(string $artist): ?int {
+        if (static::is_in_cooldown()) return null;
         $q = urlencode($artist);
         $url = "https://next1music.ir/?s={$q}";
         $html = self::cached_get($url);

@@ -11,10 +11,18 @@ class ArtistManager {
     const OPTION_CACHE = 'apex_omega_artist_external_cache';
     const META_WEIGHT = '_apex_artist_weight';
 
+    const OPTION_TAXONOMY = 'apex_omega_artist_taxonomy';
+
     /**
-     * تشخیص تاکسونومی آرتیست: artist, singer, hanarmand, khanandeh, performer
+     * تشخیص تاکسونومی آرتیست: اول انتخاب دستی کاربر، سپس حدس خودکار
      */
     public static function detect_artist_taxonomy(): ?string {
+        $manual = get_option(self::OPTION_TAXONOMY, '');
+        if (!empty($manual)) {
+            $all = get_taxonomies([], 'names');
+            if (isset($all[$manual])) return $manual;
+            // اگر دستی پاک شده یا نامعتبر، fallback به حدس
+        }
         $all = get_taxonomies([], 'names');
         $candidates = ['artist','artists','singer','singers','khanandeh','khanande','hanarmand','performer','performers','music_artist'];
         foreach ($candidates as $c) {
@@ -28,10 +36,30 @@ class ArtistManager {
         foreach (['post_tag','genre'] as $maybe) {
             if (isset($all[$maybe])) {
                 $cnt = wp_count_terms($maybe, ['hide_empty'=>false]);
-                if ($cnt > 5 && $cnt < 500) return $maybe;
+                if (!is_wp_error($cnt) && $cnt > 5 && $cnt < 500) return $maybe;
             }
         }
         return null;
+    }
+
+    public static function get_available_taxonomies(): array {
+        $all = get_taxonomies(['public'=>true], 'objects');
+        // also include non-public but assigned to post
+        $all2 = get_taxonomies([], 'objects');
+        $merged = array_merge($all, $all2);
+        $out = [];
+        foreach ($merged as $tax => $obj) {
+            if (empty($tax) || isset($out[$tax])) continue;
+            $cnt = wp_count_terms($tax, ['hide_empty'=>false]);
+            if (is_wp_error($cnt)) $cnt = 0;
+            $out[$tax] = [
+                'name' => $tax,
+                'label' => $obj->label ?? $tax,
+                'count' => $cnt,
+                'public' => !empty($obj->public),
+            ];
+        }
+        return $out;
     }
 
     public static function get_artist_taxonomies(): array {

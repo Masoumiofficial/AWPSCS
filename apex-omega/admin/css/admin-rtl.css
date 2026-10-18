@@ -67,3 +67,13 @@ body.rtl, .apex-wrap { direction: rtl; text-align: right; font-family: "Vazirmat
 .apex-tier-slider-wrap{ margin-top:8px; }
 .apex-tier-slider{ width:100%; accent-color:var(--tier-color); }
 .apex-tier-preview-mini{ margin-top:8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:6px 8px; color:#14532d; }
+
+/* 1.2.2 — Simple/Pro mode */
+.apex-wrap[data-ui-mode="simple"] .apex-pro-only { display:none !important; }
+.apex-wrap[data-ui-mode="pro"] .apex-pro-only { display:block; }
+#apex-ui-mode-toggle { accent-color:#7c3aed; }
+.apex-slider-hint{ display:block; margin-top:4px; font-size:11px; }
+#apex-tier-details-box{ animation: apexFadeIn .3s ease; }
+@keyframes apexFadeIn{ from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+#apex-result-table th{ background:#f3f4f6; position:sticky; top:0; }
+#apex-result-table tr:nth-child(even){ background:#f9fafb; }

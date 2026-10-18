@@ -5,6 +5,20 @@ if (!defined('ABSPATH')) exit;
 
 class Plugin {
     public function init(): void {
+        // مایگریشن بی‌دردسر برای 1.2.2: اگر جدول اسنپ‌شات نیست، بساز (بدون نیاز به غیرفعال/فعال)
+        add_action('admin_init', function(){
+            global $wpdb;
+            $t = Database::table_snapshots();
+            if ($wpdb->get_var("SHOW TABLES LIKE '$t'") !== $t) {
+                Database::create_tables();
+            }
+            // مایگریشن کلید قدیمی plain به رمزنگاری‌شده (یک‌بار)
+            $ai_opt = get_option(\ApexOmega\Core\AI_Helper::OPTION_KEY, []);
+            if (is_array($ai_opt) && !empty($ai_opt['api_key']) && strpos($ai_opt['api_key'],'enc1:')!==0 && strpos($ai_opt['api_key'],'b64:')!==0) {
+                $ai_opt['api_key'] = apex_omega_encrypt($ai_opt['api_key']);
+                update_option(\ApexOmega\Core\AI_Helper::OPTION_KEY, $ai_opt, false);
+            }
+        }, 5);
         Scheduler::init();
         Adapter_KKSR::register_display_filters();
 
@@ -35,9 +49,10 @@ class Plugin {
     public function run_auto_tier(): void {
         $auto = get_option('apex_omega_auto_tier', []);
         if (empty($auto['enabled']) || empty($auto['counts'])) return;
-        // فقط روی آثار جدید یا بدون تیره؟ برای سادگی: فقط آثار بدون _apex_tier یا قدیمی‌تر از 7 روز
-        \ApexOmega\Core\TierManager::apply_distribution($auto['counts'], $auto['filters'] ?? ['category'=>'all','post_type'=>'any']);
-        error_log('[APEX Ω] auto tier distribution executed');
+        $filters = $auto['filters'] ?? ['category'=>'all','post_type'=>'any'];
+        $filters['exclude_recent_days'] = 7;
+        \ApexOmega\Core\TierManager::apply_distribution($auto['counts'], $filters);
+        error_log('[APEX Ω] auto tier distribution executed (7-day filter)');
     }
 
     public function on_kksr_vote($post_id, $rating): void {
