@@ -32,6 +32,7 @@ class Ajax {
             'apex_import_tiers_json',
             'apex_save_evergreen',
             'apex_save_rhythm',
+            'apex_save_autowatch',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -126,6 +127,9 @@ class Ajax {
                 break;
             case 'apex_save_rhythm':
                 self::save_rhythm();
+                break;
+            case 'apex_save_autowatch':
+                self::save_autowatch();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -538,5 +542,18 @@ class Ajax {
         $data = array_filter($data, function($v){ return $v !== null; });
         \ApexOmega\Core\ArtistManager::save_rhythm_settings($data);
         wp_send_json_success(['message'=>'الگوی ریتم ذخیره شد','settings'=>\ApexOmega\Core\ArtistManager::get_rhythm_settings()]);
+    }
+    private static function save_autowatch(): void {
+        $data = [
+            'enabled' => isset($_POST['enabled']) ? !empty($_POST['enabled']) : null,
+            'threshold' => isset($_POST['threshold']) ? (int)$_POST['threshold'] : null,
+            'min_views' => isset($_POST['min_views']) ? (int)$_POST['min_views'] : null,
+            'max_views' => isset($_POST['max_views']) ? (int)$_POST['max_views'] : null,
+            'batch' => isset($_POST['batch']) ? (int)$_POST['batch'] : null,
+            'only_recent_days' => isset($_POST['only_recent_days']) ? (int)$_POST['only_recent_days'] : null,
+        ];
+        $data = array_filter($data, function($v){ return $v !== null; });
+        \ApexOmega\Core\AutoWatch::save_settings($data);
+        wp_send_json_success(['message'=>'نگهبان ذخیره شد','settings'=>\ApexOmega\Core\AutoWatch::get_settings()]);
     }
 }

@@ -214,6 +214,32 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       </div>
       <small>⏰ اجرا در <code>apex_omega_tick</code> هر ۵ دقيقه (Real-Cron). نیاز به بازدید سایت ندارد اگر سرور کرون دارد (یا WP-Cron با ترافیک).</small>
     </div>
+    <?php $autowatch = \ApexOmega\Core\AutoWatch::get_settings(); $aw_enabled = !empty($autowatch['enabled']); $aw_last = get_option('apex_omega_autowatch_last_run', []); ?>
+    <div class="apex-card" style="margin:12px 0; background:#fff7ed; border:1px solid #f97316; border-right:4px solid #f97316;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h4 style="margin:0;color:#9a3412;">👀 نگهبان خودکار پست‌های تازه — هر چند دقیقه چک هوشمند  ✅ جدید v1.6.0</h4>
+          <small style="color:#7c2d12;">پست‌های جدید اسکریپت که زیر 10K بازدید (یا صفر) هستند، خودکار شارژ می‌شوند تا سایت ضایع نباشد — تازه‌کار 500-10K، ویژه‌ها بیشتر + هر تیک رشد اصولی. کاملاً خودکار.</small>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #f97316;border-radius:999px;padding:6px 14px;font-weight:800;cursor:pointer;">
+          <input type="checkbox" id="apex-autowatch-enabled" <?php checked($aw_enabled,true); ?>> فعال
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;align-items:end;">
+        <label>آستانه تازه (بازدید کمتر از):<br><input type="number" id="apex-autowatch-threshold" min="1000" max="50000" step="1000" value="<?php echo esc_attr($autowatch['threshold']); ?>" style="width:100%;"></label>
+        <label>حداقل شارژ:<br><input type="number" id="apex-autowatch-min" min="100" max="5000" step="100" value="<?php echo esc_attr($autowatch['min_views']); ?>" style="width:100%;"></label>
+        <label>حداکثر شارژ:<br><input type="number" id="apex-autowatch-max" min="1000" max="50000" step="1000" value="<?php echo esc_attr($autowatch['max_views']); ?>" style="width:100%;"></label>
+        <label>هر تیک چند پست:<br><input type="number" id="apex-autowatch-batch" min="5" max="50" step="1" value="<?php echo esc_attr($autowatch['batch']); ?>" style="width:100%;"></label>
+        <label>فقط پست‌های چند روز اخیر:<br><input type="number" id="apex-autowatch-recent" min="0" max="365" step="1" value="<?php echo esc_attr($autowatch['only_recent_days']); ?>" style="width:100%;"> <small>0=همه</small></label>
+        <button id="apex-autowatch-save" class="button button-apex" style="background:#ea580c;border-color:#ea580c;">💾 ذخیره نگهبان</button>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+        <small style="color:#6b7280;">هر <code>apex_omega_tick</code> (5 دقیقه) تا <span id="apex-autowatch-batch-hint"><?php echo esc_html($autowatch['batch']); ?></span> پست کم‌بازدید چک می‌شود — با cooldown 24ساعته هر پست دوباره شارژ نمی‌شود.</small>
+        <span id="apex-autowatch-result" style="font-weight:700;"></span>
+        <?php if (!empty($aw_last['at'])): ?><small style="color:#065f46;">آخرین اجرا: <?php echo esc_html($aw_last['at']); ?> — <?php echo esc_html($aw_last['done']); ?> پست شارژ شد <code><?php echo esc_html(substr($aw_last['exec']??'',0,8)); ?></code></small><?php endif; ?>
+      </div>
+      <small>💡 خواننده تازه‌کار (وزن <30) → 500-3000، ویژه (≥85) → تا 1.6× بیشتر + Evergreen هر تیک صعودی. امتیاز هم همبسته (10-150 رأی، 3.3-5.0⭐).</small>
+    </div>
     <div id="apex-tier-preview-box" class="apex-preview-box" style="min-height:90px;">هنوز پیش‌نمایشی نیست.</div>
     <div id="apex-tier-result"></div>
     <!-- جدول نتایج دقیق پس از اعمال -->

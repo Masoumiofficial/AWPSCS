@@ -198,6 +198,15 @@ jQuery(function($){
       else $('#apex-evergreen-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
     }).fail(function(xhr){ $('#apex-evergreen-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره Evergreen'));
   });
+  // autowatch
+  $(document).on('click','#apex-autowatch-save',function(e){
+    e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('ذخیره…');
+    const enabled=$('#apex-autowatch-enabled').is(':checked')?1:0, threshold=parseInt($('#apex-autowatch-threshold').val())||10000, minv=parseInt($('#apex-autowatch-min').val())||500, maxv=parseInt($('#apex-autowatch-max').val())||10000, batch=parseInt($('#apex-autowatch-batch').val())||20, recent=parseInt($('#apex-autowatch-recent').val())||60;
+    $.post(Apex.ajax_url,{action:'apex_save_autowatch',_ajax_nonce:getNonce(),enabled:enabled,threshold:threshold,min_views:minv,max_views:maxv,batch:batch,only_recent_days:recent},function(res){
+      if(res.success) $('#apex-autowatch-result').text('✅ '+res.data.message+' — آستانه '+res.data.settings.threshold).css('color','#065f46');
+      else $('#apex-autowatch-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
+    }).fail(function(xhr){ $('#apex-autowatch-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره نگهبان'));
+  });
   // rhythm — live % update
   $(document).on('input','#apex-rhythm-artist-ratio',function(){ const v=parseInt($(this).val()||85); $('#apex-rhythm-artist-val').text(v+'%'); $('#apex-rhythm-title-val').text((100-v)+'%'); });
   $(document).on('click','#apex-rhythm-save',function(e){

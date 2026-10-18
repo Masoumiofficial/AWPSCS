@@ -297,6 +297,10 @@ class Scheduler {
                 self::execute_schedule($schedule);
             }
         }
+        // نگهبان خودکار پست‌های تازه — هر 5 دقیقه چک کند (درخواست کاربر: پست‌های <10K)
+        if (class_exists('\\ApexOmega\\Core\\AutoWatch')) {
+            try { \ApexOmega\Core\AutoWatch::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] AutoWatch tick error: '.$e->getMessage()); }
+        }
         // رشد مداوم Evergreen (برای تمام پست‌ها، روزانه و مداوم)
         if (class_exists('\\ApexOmega\\Core\\Evergreen')) {
             try { \ApexOmega\Core\Evergreen::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Evergreen tick error: '.$e->getMessage()); }
