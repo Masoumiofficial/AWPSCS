@@ -99,32 +99,75 @@ class CommentGuardian {
         return $target;
     }
 
-    // نام ایرانی انگلیسی‌نویسی — 200+200 — ترکیب اسم 1 + فامیل 5
+    // نام ایرانی — 85% فارسی + 15% انگلیسی، با تنوع (امیر، امیررضا، amir، amir78، امیر کوچولو)
     public static function generate_name(): array {
-        // 200 نام کوچک ایرانی (مذکر+مونث) transliterated
-        $first = ['Ali','Reza','Hossein','Mohammad','Amir','Amirhossein','Amirali','Amirreza','Arad','Arash','Aria','Arian','Arman','Arsam','Arshia','Arta','Artin','Arvin','Arya','Ashkan','Babak','Bahram','Behdad','Behnam','Behzad','Behrad','Borna','Danial','Daniel','Dariush','Ehsan','Erfan','Esmaeil','Farhad','Farbod','Farzad','Farshad','Foad','Hamed','Hamid','Hassan','Hesam','Hirad','Hooman','Hossein','Hadi','Iman','Iman','Javad','Kamyar','Kaveh','Kasra','Keivan','Kian','Kiarash','Koroush','Mahdi','Mahyar','Mani','Manouchehr','Mansour','Masoud','Mehran','Mehrdad','Mehrshad','Mehdi','Mehrad','Milad','Mohammadreza','Mohsen','Mojtaba','Morteza','Nima','Navid','Omid','Parsa','Parham','Payam','Pedram','Pejman','Pouya','Pouria','Ramin','Rasoul','Reza','Saeed','Sajjad','Saleh','Saman','Soroush','Sam','Sepehr','Shahab','Shahin','Shahram','Shayan','Shervin','Sina','Soheil','Taha','Vahid','Yasin','Yousef','Younes','Zakaria','Sara','Sahar','Negin','Yasaman','Yasamin','Yalda','Yeganeh','Yasna','Yas','Yasmin','Yasna','Yas','Yas','Yas','Yas','Zahra','Zeinab','Fatemeh','Maryam','Mahsa','Mitra','Mina','Mona','Narges','Nasrin','Nastaran','Neda','Negar','Niloufar','Parisa','Parmida','Pardis','Pegah','Reyhaneh','Raha','Roxana','Rojan','Rosa','Sadaf','Samira','Sanaz','Sareh','Setareh','Shadi','Shaghayegh','Shima','Shirin','Tara','Taraneh','Tina','Yasaman','Yasmin','Yasna','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas','Yas'];
-        // برای اطمینان 200 تا — اگر کمتر بود، تکرار هوشمند
-        // 200 فامیل ایرانی transliterated
-        $last = ['Ahmadi','Hosseini','Karimi','Moradi','Yeganeh','Mousavi','Hashemi','Jafari','Najafi','Rezai','Rezayi','Mohammadi','Hosseinzadeh','Karimzadeh','Moradizadeh','Ahmadizadeh','Hashemizadeh','Jafarzadeh','Kazemi','Rahimi','Rahmani','Bahrami','Ghasemi','Sadeghi','Salehi','Soltani','Farahani','Fazeli','Ebrahimi','Hassani','Haidari','Heydari','Alizadeh','Amiri','Amirzadeh','Arsalan','Azadi','Azimi','Bagheri','Bakhtiari','Barzegar','Bayat','Beheshti','Dadashi','Danesh','Daneshvar','Davoudi','Dehghani','Ebadati','Ebadi','Eskandari','Fallah','Fallahi','Fattahi','Gholami','Ghanbari','Ghorbani','Hajizadeh','Hamidi','Haqqi','Jamali','Jalali','Javan','Kargar','Kashani','Kermani','Khademi','Khalili','Khandani','Khosravi','Kiani','Mahmoudi','Majidi','Maleki','Mansouri','Marandi','Mazaheri','Mehrabi','Mirzaei','Moazeni','Moeini','Moghadam','Mohseni','Mokhtari','Molavi','Montazeri','Movahed','Naderi','Naghavi','Nasiri','Nazari','Nematollahi','Niknam','Nikzad','Noori','Omidvar','Paknejad','Panahi','Parhizkar','Parsa','Pourmohammadi','Qasemi','Qolizadeh','Raeisi','Rafiei','Ranjbar','Rashidi','Rostami','Rouhani','Safari','Sahraei','Sajjadi','Salari','Salmani','Sarlak','Sattari','Sayad','Shahbazi','Shahi','Shahsavari','Sharifi','Shojaei','Soleimani','Tabatabaei','Taheri','Tajik','Tavakoli','Tehrani','Vahidi','Yazdi','Yousefi','Zamanian','Zare','Zareei','Zarepour','Zarrabi','Zolfaghari','Abbasi','Abdi','Akbari','Akbarzadeh','Alavi','Alipour','Ansari','Arab','Arabi','Asadi','Asgari','Ashrafi','Ataei','Attari','Aziz','Azizi','Bahadori','Babaei','Badiei','Bagherzadeh','Bakhtari','Bani','Behrouzi','Bostan','Chavoshi','Darvishi','Dehghan','Esmaili','Esmaeili','Faraji','Fathi','Fotouhi','Goudarzi','Hadadi','Haghighi','Hakim','Hakimi','Hamzeh','Hedayat','Imani','Irani','Jabari','Jahangiri','Javadi','Kabiri','Kamal','Karampour','Khorshidi','Kord','Latif','Lotfi','Madani','Mahdavi','Makhmalbaf','Malek','Miri','Mofidi','Moghimi','Mohammadi','Moradian','Momtaz','Nabavi','Nadimi','Naeemi','Naji','Nouri','Pahlavan','Parvizi','Pashaei','Pooya','Pourali','Pourreza','Qaderi','Qanbari','Rabbani','Rafi','Rajabi','Ramezani','Rasouli','Rousta','Saberi','Sadeghzadeh','Saeedi','Salahshoor','Salimi','Sanei','Sarabi','Shafiei','Shakouri','Shams','Shariati','Shayan','Sohrabi','Tajzadeh','Talebi','Tavakoli','Vaezi','Yaghoubi','Zamani','Zandi'];
-        // ترکیب: اسم 1 + فامیل 5 (random cross)
-        $f = $first[array_rand($first)];
-        $l = $last[array_rand($last)];
-        $r = mt_rand(1,100);
-        if ($r <= 20) {
-            $author = $f;
-        } elseif ($r <= 40) {
-            $author = $l;
+        // فارسی — از ویکی‌پدیا: فهرست نام‌های ایرانی + رده:نام‌های خانوادگی
+        $first_fa = ['امیر','امیررضا','امیرحسین','امیرعلی','علی','رضا','حسین','محمد','محمدرضا','محمدحسین','مهدی','سجاد','سینا','آراد','آرش','آریا','آرمان','آرشام','آرشیا','آرتا','آرتین','آروین','اشکان','بابک','بهرام','بهداد','بهنام','بهزاد','بهروز','بورنا','دانیال','داریوش','احسان','عرفان','اسماعیل','فرهاد','فربد','فرزاد','فرشاد','فواد','حامد','حمید','حسن','حسام','هیراد','هومن','هادی','ایمان','جواد','کامیار','کاوه','کسری','کیوان','کیان','کیارش','کوروش','ماهان','مهیار','مانی','منوچهر','منصور','مسعود','مهران','مهرداد','مهرشاد','مهراد','میلاد','محسن','مجتبی','مرتضی','نیما','نوید','امید','پارسا','پرهام','پیام','پدرام','پژمان','پویا','پوریا','رامین','رسول','سعید','سجاد','صالح','سامان','سروش','سام','سپهر','شهاب','شاهین','شهرام','شایان','شروین','سهیل','طاها','وحید','یاسین','یوسف','یونس','زکریا','سارا','سحر','نگین','یاسمن','یاسمین','یلدا','یگانه','یسنا','زهرا','زینب','فاطمه','مریم','مهسا','میترا','مینا','مونا','نرگس','نسرین','نسترن','ندا','نگار','نیلوفر','پریسا','پارمیدا','پردیس','پگاه','ریحانه','رها','روکسانا','روژان','رزا','صدف','سمیرا','ساناز','ساره','ستاره','شادی','شقایق','شیما','شیرین','تارا','ترانه','تینا','سارینا','سوگل','سوگند','شیدا','غزل','هانیه','هدیه','نازنین','مژگان','حدیث','الهه','آتنا','آیدا','آناهیتا','باران','بهار','درسا','دینا','الناز','فائزه','هستی','کیمیا','لاله','مرجان','ملیکا','نادیا','پانته‌آ','پرنیا','رامسینا','سحر','ستایش','آوا','آرزو','آذین','آسنا','النا','الیکا','ماندانا','مینو','نوشین','پروانه','ژیلا','ژاله','هما','هنگامه','وحیده','ویدا','ناهید','نسترن','نیکی','پریا','پرستو','نگار','آیسان','آیسو','سایان','ساینا','سارینا','سلما','سحر','سحرناز','شادی','شراره','شهناز','شیوا','غزل','فاطیما','کتایون','لادن','لیلا','مهتاب','مهناز','مهسا','نازیلا','نسرین','نسیم','نیوشا','پانته‌آ','پریسا','پریا','پگاه','ترانه','تینا','حدیث','خاطره','درسا','دریا','دینا','رابعه','راضیه','رقیه','ریحانه','زهره','سارا','سحر','سحرناز','سمیه','سودابه','سوسن','سولماز','سیما','سیمین','شاپرک','شبنم','شراره','شکوفه','شیما','صبا','صدف','طاهره','عاطفه','عسل','غزل','فائزه','فرشته','فرناز','فهیمه','فیروزه','کتایون','کوثر','لادن','لیلا','مائده','محدثه','مرجان','مرضیه','مریم','مژگان','ملیحه','منا','مهتاب','مهناز','مهسا','مهشید','مونا','مونس','میترا','مینا','نادیا','نازنین','ناهید','ندا','نرگس','نگار','نگین','نیلوفر','ویدا','هانیه','هستی','هنگامه','یاسمن','یاسمین'];
+        $last_fa = ['احمدی','حسینی','کریمی','مرادی','یگانه','موسوی','هاشمی','جعفری','نجفی','رضایی','محمدی','حسین‌زاده','کریم‌زاده','مرادی‌زاده','احمدی‌زاده','هاشمی‌زاده','جعفرزاده','کاظمی','رحیمی','رحمانی','بهرامی','قاسمی','صادقی','صالحی','سلطانی','فراهانی','فاضلی','ابراهیمی','حسنی','حیدری','علیزاده','امیری','امیرزاده','آزادی','عظیمی','باقری','بختیاری','برزگر','بیات','بهشتی','داداشی','دانش','دانشور','داوودی','دهقانی','عبادتی','عبادی','اسکندری','فلاح','فلاحی','فتاحی','غلامی','قنبری','قربانی','حاجی‌زاده','حمیدی','حقی','جمالی','جلالی','جوان','کارگر','کاشانی','کرمانی','خادمی','خلیلی','خندانی','خسروی','کیانی','محمودی','مجیدی','مالکی','منصوری','مرندی','مزاهری','مهرابی','میرزایی','موذنی','معینی','مقدم','محسنی','مختاری','مولوی','منتظری','موحد','نادری','نقوی','نصیری','نظری','نعمت‌اللهی','نیک‌نام','نیکزاد','نوری','امیدوار','پاک‌نژاد','پناهی','پرهیزکار','پارسا','پورمحمدی','قاسمی','قلی‌زاده','رئیسی','رفیعی','رنجبر','رشیدی','رستمی','روحانی','سفری','صحرایی','سجادی','سالاری','سلمانی','سرلک','ستاری','صیاد','شهبازی','شاهی','شاهسواری','شریفی','شجاعی','سلیمانی','طباطبایی','طاهری','تاجیک','توکلی','تهرانی','وحیدی','یزدی','یوسفی','زمانیان','زارع','زارعی','زارع‌پور','زرابی','ذوالفقاری','عباسی','عبدی','اکبری','اکبرزاده','علوی','علی‌پور','انصاری','عرب','عربی','اسدی','عسگری','اشرفی','عطایی','عطاری','عزیزی','بهادری','بابایی','بدیعی','باقرزاده','بختری','بنی','بهروزی','بستان','چاوشی','درویشی','دهقان','اسماعیلی','فرجی','فتحی','فتوحی','گودرزی','حدادی','حقیقی','حکیم','حکیمی','حمزه','هدایت','ایمانی','ایرانی','جباری','جهانگیری','جوادی','کبیری','کمال','کرامپور','خورشیدی','کرد','لطیف','لطفی','مدنی','مهدوی','مخملباف','ملک','میری','مفیدی','مقیمی','نادمی','نعیمی','ناجی','پهلوان','پرویزی','پاشایی','پویا','پورعلی','پوررضا','قادری','قنبری','ربانی','رفیع','رجبی','رمضانی','رسولی','روستا','صابری','صادق‌زاده','سعیدی','صلاح‌شور','سلیمی','صانعی','سرابی','شفیعی','شکوری','شمس','شریعتی','شایان','سهرابی','تاج‌زاده','طالبی','واعظی','یعقوبی','زمانی','زندی','حبیبی','نوری','اکرمی','شیرازی','تهرانی','اصفهانی','تبریزی','مشهدی','شیرزاد','حبیب‌زاده'];
+        // انگلیسی — 15% (transliterated)
+        $first_en = ['Ali','Reza','Hossein','Mohammad','Amir','Amirhossein','Amirali','Amirreza','Arad','Arash','Aria','Arman','Arsam','Arshia','Arta','Artin','Arvin','Ashkan','Babak','Bahram','Behdad','Behnam','Behzad','Borna','Danial','Dariush','Ehsan','Erfan','Farhad','Farbod','Farzad','Hamed','Hamid','Hassan','Hesam','Hooman','Hadi','Iman','Javad','Kamyar','Kaveh','Kasra','Keivan','Kian','Kiarash','Koroush','Mahdi','Mani','Masoud','Mehran','Mehrdad','Milad','Mohsen','Mojtaba','Morteza','Nima','Navid','Omid','Parsa','Payam','Pedram','Pejman','Pouya','Pouria','Ramin','Saeed','Sajjad','Saleh','Saman','Sepehr','Shahab','Shahin','Shahram','Shayan','Sina','Soheil','Taha','Vahid','Yasin','Yousef','Sara','Sahar','Negin','Yasaman','Yalda','Zahra','Zeinab','Fatemeh','Maryam','Mahsa','Mina','Mona','Narges','Negar','Niloufar','Parisa','Raha','Reyhaneh','Sadaf','Samira','Shadi','Shirin','Tara','Tina'];
+        $last_en = ['Ahmadi','Hosseini','Karimi','Moradi','Yeganeh','Mousavi','Hashemi','Jafari','Najafi','Rezai','Mohammadi','Karimzadeh','Kazemi','Rahimi','Bahrami','Ghasemi','Sadeghi','Salehi','Soltani','Ebrahimi','Hassani','Heidari','Alizadeh','Amiri','Azimi','Bagheri','Barzegar','Danesh','Gholami','Ghorbani','Hajizadeh','Hamidi','Jamali','Kargar','Khademi','Khalili','Khosravi','Kiani','Mahmoudi','Maleki','Mansouri','Mirzaei','Moeini','Naderi','Nasiri','Nazari','Nouri','Paknejad','Ranjbar','Rashidi','Rostami','Rouhani','Safari','Soleimani','Tabatabaei','Taheri','Tajik','Tavakoli','Tehrani','Yousefi','Zare','Abbasi','Akbari','Alavi','Ansari','Asadi','Ataei','Azizi','Babaei','Shariati','Shams','Sohrabi','Zamani'];
+
+        $use_fa = mt_rand(1,100) <= 85;
+        if ($use_fa) {
+            $f = $first_fa[array_rand($first_fa)];
+            $l = $last_fa[array_rand($last_fa)];
+            // تنوع نام کوچک: گاهی امیررضا، گاهی امیر + فاصله + رضا
+            // تنوع پسوند فارسی
+            $suffixes_fa = ['', ' کوچولو', ' جان', ' عزیز', ' گل', ' دوست‌داشتنی', ' جون', ' عزیزم'];
+            $suffix = $suffixes_fa[array_rand($suffixes_fa)];
+            // 15% عدد چسبان مثل امیر78
+            $num_suffix = '';
+            if (mt_rand(1,100) <= 15) {
+                $nums = ['78','2000','123','007','1369','1375','1380','99','2001'];
+                $num_suffix = $nums[array_rand($nums)];
+            }
+            $r = mt_rand(1,100);
+            if ($r <= 20) {
+                $author = $f . $suffix . $num_suffix;
+            } elseif ($r <= 40) {
+                $author = $l . $suffix . $num_suffix;
+            } else {
+                $author = $f . ' ' . $l . $suffix . $num_suffix;
+            }
+            // ایمیل از روی transliteration ساده
+            $base = strtolower(self::transliterate_fa_to_en($f . ' ' . $l));
+            $base = preg_replace('/[^a-z]/','', $base);
+            if (strlen($base) < 3) $base = 'user' . mt_rand(100,999);
         } else {
-            $author = $f . ' ' . $l;
+            $f = $first_en[array_rand($first_en)];
+            $l = $last_en[array_rand($last_en)];
+            // تنوع انگلیسی: amir, Amir, AMIR, amir78, amir_2000
+            $variants = ['', '78','2000','123','007','_78','_2000','1369'];
+            $num_suffix = $variants[array_rand($variants)];
+            $case_r = mt_rand(1,100);
+            if ($case_r <= 30) $f = strtolower($f);
+            elseif ($case_r <= 60) $f = ucfirst(strtolower($f));
+            // else keep as is
+            $lvar = $l;
+            if (mt_rand(1,100) <= 30) $lvar = strtolower($lvar);
+            $r = mt_rand(1,100);
+            if ($r <= 20) $author = $f . $num_suffix;
+            elseif ($r <= 40) $author = $lvar . $num_suffix;
+            else $author = $f . ' ' . $lvar . $num_suffix;
+            $base = strtolower(str_replace(' ', '.', $f . ' ' . $l));
+            $base = preg_replace('/[^a-z\.]/','', $base);
         }
-        // ایمیل فیک هماهنگ
-        $base = strtolower(str_replace(' ', '.', $author));
         $base = preg_replace('/[^a-z\.]/','', $base);
         if (strlen($base) < 3) $base = 'user'.mt_rand(1000,9999);
+        $base = trim($base,'.');
         $num = mt_rand(101, 9999);
         $domains = ['gmail.com','yahoo.com','outlook.com','icloud.com'];
         $email = $base . $num . '@' . $domains[array_rand($domains)];
-        return ['author'=>$author, 'email'=>$email];
+        return ['author'=>trim($author), 'email'=>$email];
+    }
+    private static function transliterate_fa_to_en(string $fa): string {
+        // نگاشت ساده برای ایمیل — کامل نیست ولی کافی
+        $map = ['ا'=>'a','ب'=>'b','پ'=>'p','ت'=>'t','ث'=>'s','ج'=>'j','چ'=>'ch','ح'=>'h','خ'=>'kh','د'=>'d','ذ'=>'z','ر'=>'r','ز'=>'z','ژ'=>'zh','س'=>'s','ش'=>'sh','ص'=>'s','ض'=>'z','ط'=>'t','ظ'=>'z','ع'=>'a','غ'=>'gh','ف'=>'f','ق'=>'gh','ک'=>'k','گ'=>'g','ل'=>'l','م'=>'m','ن'=>'n','و'=>'o','ه'=>'h','ی'=>'y','آ'=>'a','ئ'=>'e','ء'=>'','ً'=>'','ٌ'=>'','ٍ'=>'','َ'=>'a','ِ'=>'e','ُ'=>'o','ّ'=>'','ـ'=>'','‌'=>'',' '=>' '];
+        $en = strtr($fa, $map);
+        // پاکسازی کاراکترهای خاص
+        $en = preg_replace('/[^a-zA-Z0-9 ]/','', $en);
+        return $en ?: 'user';
     }
 
     // تولید متن کامنت — AI مرتبط به خواننده + fallback فارسی per tier
