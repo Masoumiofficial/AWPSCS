@@ -1,7 +1,22 @@
-<?php if (!defined('ABSPATH')) exit; ?>
+<?php if (!defined('ABSPATH')) exit;
+// فیلترها: source, post_id, date
+$filter_source = sanitize_text_field($_GET['filter_source'] ?? '');
+$filter_post = isset($_GET['filter_post']) ? (int)$_GET['filter_post'] : 0;
+?>
 <div class="wrap apex-wrap">
-  <h1>تاریخچه تغییرات — APEX Ω</h1>
-  <p>تمام تغییرات دستی، زمان‌بندی‌شده و بازگردانی‌ها با شناسه یکتا و منبع ثبت می‌شوند.</p>
+  <h1>تاریخچه تغییرات — APEX Ω 1.3.0</h1>
+  <p>تمام تغییرات دستی، زمان‌بندی‌شده، توزیع تیره و بازگردانی‌ها با شناسه یکتا و منبع ثبت می‌شوند.</p>
+  <div class="apex-card" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:12px 0;">
+    <form method="get" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <input type="hidden" name="page" value="apex-omega-history">
+      <label>منبع: <select name="filter_source"><option value="">همه</option><option value="manual" <?php selected($filter_source,'manual'); ?>>دستی</option><option value="tier_distribution" <?php selected($filter_source,'tier_distribution'); ?>>توزیع هوشمند</option><option value="scheduled" <?php selected($filter_source,'scheduled'); ?>>زمان‌بندی</option><option value="tier_undo" <?php selected($filter_source,'tier_undo'); ?>>بازگشت توزیع</option></select></label>
+      <label>شناسه پست: <input type="number" name="filter_post" value="<?php echo $filter_post?:''; ?>" placeholder="مثلاً 123" style="width:120px;"></label>
+      <button class="button">فیلتر</button>
+      <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-history')); ?>" class="button secondary">پاک کردن</a>
+    </form>
+    <span style="margin-right:auto;"></span>
+    <button id="apex-export-history-csv" class="button button-apex secondary">📥 خروجی CSV</button>
+  </div>
   <table class="apex-table">
     <thead>
       <tr>

@@ -14,6 +14,24 @@ class Ajax {
             'apex_cancel_schedule',
             'apex_rollback',
             'apex_bulk_apply',
+            'apex_tier_save',
+            'apex_preview_tier',
+            'apex_apply_tier',
+            'apex_undo_tier',
+            'apex_ai_suggest',
+            'apex_ai_save',
+            'apex_test_ai',
+            'apex_save_artist_weights',
+            'apex_save_artist_taxonomy',
+            'apex_auto_artist_ai',
+            'apex_auto_artist_ir',
+            'apex_save_ui_mode',
+            'apex_export_artist_csv',
+            'apex_export_history_csv',
+            'apex_export_tiers_json',
+            'apex_import_artist_csv',
+            'apex_import_tiers_json',
+            'apex_save_evergreen',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -57,6 +75,57 @@ class Ajax {
                 break;
             case 'apex_bulk_apply':
                 self::bulk_apply();
+                break;
+            case 'apex_preview_tier':
+                self::preview_tier();
+                break;
+            case 'apex_apply_tier':
+                self::apply_tier();
+                break;
+            case 'apex_ai_suggest':
+                self::ai_suggest();
+                break;
+            case 'apex_ai_save':
+                self::ai_save();
+                break;
+            case 'apex_save_artist_weights':
+                self::save_artist_weights();
+                break;
+            case 'apex_auto_artist_ai':
+                self::auto_artist_ai();
+                break;
+            case 'apex_auto_artist_ir':
+                self::auto_artist_ir();
+                break;
+            case 'apex_test_ai':
+                self::test_ai();
+                break;
+            case 'apex_save_artist_taxonomy':
+                self::save_artist_taxonomy();
+                break;
+            case 'apex_undo_tier':
+                self::undo_tier();
+                break;
+            case 'apex_save_ui_mode':
+                self::save_ui_mode();
+                break;
+            case 'apex_export_artist_csv':
+                self::export_artist_csv();
+                break;
+            case 'apex_export_history_csv':
+                self::export_history_csv();
+                break;
+            case 'apex_export_tiers_json':
+                self::export_tiers_json();
+                break;
+            case 'apex_import_artist_csv':
+                self::import_artist_csv();
+                break;
+            case 'apex_import_tiers_json':
+                self::import_tiers_json();
+                break;
+            case 'apex_save_evergreen':
+                self::save_evergreen();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -195,10 +264,10 @@ class Ajax {
             'end_at_gmt' => sanitize_text_field($_POST['end_at_gmt'] ?? ''),
             'start_at' => isset($_POST['start_at_gmt']) ? get_date_from_gmt(sanitize_text_field($_POST['start_at_gmt']), 'Y-m-d H:i:s') : null,
             'end_at' => isset($_POST['end_at_gmt']) ? get_date_from_gmt(sanitize_text_field($_POST['end_at_gmt']), 'Y-m-d H:i:s') : null,
-            'min_allowed' => $_POST['min_allowed'] ?? null,
-            'max_allowed' => $_POST['max_allowed'] ?? null,
-            'max_step' => $_POST['max_step'] ?? null,
-            'max_percent_step' => $_POST['max_percent_step'] ?? null,
+            'min_allowed' => (isset($_POST['min_allowed']) && $_POST['min_allowed'] !== '' && (int)$_POST['min_allowed'] > 0) ? $_POST['min_allowed'] : null,
+            'max_allowed' => (isset($_POST['max_allowed']) && $_POST['max_allowed'] !== '' && (int)$_POST['max_allowed'] > 0) ? $_POST['max_allowed'] : null,
+            'max_step' => (isset($_POST['max_step']) && $_POST['max_step'] !== '' && (int)$_POST['max_step'] > 0) ? $_POST['max_step'] : null,
+            'max_percent_step' => (isset($_POST['max_percent_step']) && $_POST['max_percent_step'] !== '' && (float)$_POST['max_percent_step'] > 0) ? $_POST['max_percent_step'] : null,
             'require_confirm_large_drop' => !empty($_POST['require_confirm_large_drop']),
             'confirm_large_drop' => !empty($_POST['confirm_large_drop']),
             'confirm_volatility' => !empty($_POST['confirm_volatility']),
@@ -299,5 +368,166 @@ class Ajax {
         }
 
         wp_send_json_success(['success_count'=>$success_count, 'errors'=>$errors, 'execution_id'=>$exec]);
+    }
+
+    private static function preview_tier(): void {
+        $counts = $_POST['counts'] ?? [];
+        if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
+        // ممکن است به صورت counts[tier_1]=5 بیاید
+        if (empty($counts) && isset($_POST['counts'])) {
+            // حالت fallback: $_POST['counts'] آرایه PHP است
+            $counts = (array) $_POST['counts'];
+        }
+        // sanitize
+        $clean = [];
+        foreach ((array)$counts as $k=>$v) {
+            $k = sanitize_text_field($k);
+            $clean[$k] = max(0, (int)$v);
+        }
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'artist_aware' => !empty($_POST['artist_aware']),
+        ];
+        $res = \ApexOmega\Core\TierManager::preview_distribution($clean, $filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+
+    private static function apply_tier(): void {
+        $counts = $_POST['counts'] ?? [];
+        if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
+        $clean = [];
+        foreach ((array)$counts as $k=>$v) {
+            $k = sanitize_text_field($k);
+            $clean[$k] = max(0, (int)$v);
+        }
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'artist_aware' => !empty($_POST['artist_aware']),
+        ];
+        // ذخیره حالت خودکار
+        $auto_enable = !empty($_POST['auto_enable']);
+        if ($auto_enable) {
+            update_option('apex_omega_auto_tier', ['enabled'=>true, 'counts'=>$clean, 'filters'=>$filters, 'updated_at'=>current_time('mysql', true)], false);
+            \ApexOmega\Core\TierManager::schedule_auto();
+        } else {
+            // اگر تیک برداشته شد
+            $auto = get_option('apex_omega_auto_tier', []);
+            if (!empty($auto['enabled'])) {
+                update_option('apex_omega_auto_tier', ['enabled'=>false], false);
+                \ApexOmega\Core\TierManager::unschedule_auto();
+            }
+        }
+        $res = \ApexOmega\Core\TierManager::apply_distribution($clean, $filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+
+    private static function ai_suggest(): void {
+        global $wpdb;
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+        $tiers = \ApexOmega\Core\TierManager::get_tiers();
+        $res = \ApexOmega\Core\AI_Helper::suggest_distribution($total, $tiers);
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
+    }
+
+    private static function ai_save(): void {
+        $data = [
+            'api_key' => $_POST['api_key'] ?? '',
+            'model' => $_POST['model'] ?? 'gpt-4o-mini',
+            'endpoint' => $_POST['endpoint'] ?? 'https://api.gapgpt.app/v1/chat/completions',
+            'provider' => 'gapgpt',
+        ];
+        // اگر کاربر •••• فرستاد، نگه دار
+        if ($data['api_key'] === '••••••••' || $data['api_key'] === '') {
+            $cur = \ApexOmega\Core\AI_Helper::get_settings();
+            if (empty($_POST['api_key']) || $_POST['api_key'] === '••••••••') {
+                $data['api_key'] = $cur['api_key'];
+            }
+        }
+        \ApexOmega\Core\AI_Helper::save_settings($data);
+        wp_send_json_success(['message'=>'ذخیره شد']);
+    }
+
+    private static function save_artist_weights(): void {
+        $weights = $_POST['weights'] ?? [];
+        if (is_string($weights)) $weights = json_decode(stripslashes($weights), true) ?: [];
+        $clean = [];
+        foreach ((array)$weights as $tid=>$w) {
+            $clean[(int)$tid] = max(0,min(100,(int)$w));
+        }
+        \ApexOmega\Core\ArtistManager::save_weights($clean);
+        wp_send_json_success(['message'=>'وزن‌ها ذخیره شد','count'=>count($clean)]);
+    }
+
+    private static function auto_artist_ai(): void {
+        $res = \ApexOmega\Core\ArtistManager::auto_weight_via_ai();
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
+    }
+
+    private static function auto_artist_ir(): void {
+        $res = \ApexOmega\Core\ArtistManager::auto_weight_via_external();
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
+    }
+    private static function test_ai(): void {
+        $res = \ApexOmega\Core\AI_Helper::test_connection();
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res, 400);
+    }
+    private static function save_artist_taxonomy(): void {
+        $tax = sanitize_text_field($_POST['taxonomy'] ?? '');
+        if ($tax === '__auto__') $tax = '';
+        update_option(\ApexOmega\Core\ArtistManager::OPTION_TAXONOMY, $tax, false);
+        // bust detect cache: just report
+        wp_send_json_success(['message'=>'تاکسونومی ذخیره شد','taxonomy'=>$tax ?: 'خودکار']);
+    }
+    private static function undo_tier(): void {
+        $exec = sanitize_text_field($_POST['execution_id'] ?? '');
+        $res = \ApexOmega\Core\TierManager::undo_last_distribution($exec ?: null);
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res, 400);
+    }
+    private static function save_ui_mode(): void {
+        $mode = sanitize_text_field($_POST['mode'] ?? 'simple');
+        if (!in_array($mode, ['simple','pro'], true)) $mode='simple';
+        update_option('apex_omega_ui_mode', $mode, false);
+        wp_send_json_success(['mode'=>$mode]);
+    }
+    private static function export_artist_csv(): void {
+        $csv = \ApexOmega\Core\Exporter::export_artist_csv();
+        wp_send_json_success(['csv'=>$csv,'filename'=>'apex-artist-weights-'.gmdate('Y-m-d').'.csv']);
+    }
+    private static function export_history_csv(): void {
+        $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 1000;
+        $csv = \ApexOmega\Core\Exporter::export_history_csv(min(5000,max(10,$limit)));
+        wp_send_json_success(['csv'=>$csv,'filename'=>'apex-history-'.gmdate('Y-m-d').'.csv']);
+    }
+    private static function export_tiers_json(): void {
+        $json = \ApexOmega\Core\Exporter::export_tiers_json();
+        wp_send_json_success(['json'=>$json,'filename'=>'apex-tiers-'.gmdate('Y-m-d').'.json']);
+    }
+    private static function import_artist_csv(): void {
+        $csv = $_POST['csv'] ?? '';
+        if (!$csv) wp_send_json_error(['message'=>'CSV خالی است'],400);
+        $res = \ApexOmega\Core\Exporter::import_artist_csv(stripslashes($csv));
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res,400);
+    }
+    private static function import_tiers_json(): void {
+        $json = $_POST['json'] ?? '';
+        if (!$json) wp_send_json_error(['message'=>'JSON خالی است'],400);
+        $res = \ApexOmega\Core\Exporter::import_tiers_json(stripslashes($json));
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res,400);
+    }
+    private static function save_evergreen(): void {
+        $data = [
+            'enabled' => !empty($_POST['enabled']),
+            'rate_percent' => isset($_POST['rate_percent']) ? (float)$_POST['rate_percent'] : null,
+            'max_views' => isset($_POST['max_views']) ? (int)$_POST['max_views'] : null,
+        ];
+        \ApexOmega\Core\Evergreen::save_settings($data);
+        wp_send_json_success(['message'=>'تنظیمات Evergreen ذخیره شد','settings'=>\ApexOmega\Core\Evergreen::get_settings()]);
     }
 }

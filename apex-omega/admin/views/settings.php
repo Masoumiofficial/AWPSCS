@@ -31,6 +31,24 @@
       </div>
     </div>
 
+    <div class="apex-card" style="margin-top:16px; border-right-color:#7c3aed;">
+      <h3>🤖 هوش مصنوعی — GapGPT (اختیاری)</h3>
+      <p>برای پیشنهاد کاملاً خودکار توزیع، کلید را از <a href="https://gapgpt.app/platform-v2" target="_blank">gapgpt.app</a> بگیر. <a href="https://gapgpt.app/platform-v2/docs/quickstart" target="_blank">مستندات quickstart</a></p>
+      <div class="apex-field">
+        <label>API Key (Bearer)</label>
+        <input type="password" name="apex_ai_api_key" value="<?php echo isset($ai_set['api_key']) && $ai_set['api_key'] ? '••••••••' : ''; ?>" placeholder="sk-... از GapGPT">
+        <small>خالی بگذاری یعنی بدون تغییر. کلید در دیتابیس رمزنگاری‌شده ذخیره نمی‌شود ولی لاگ هم نمی‌شود.</small>
+      </div>
+      <div class="apex-field">
+        <label>مدل</label>
+        <input type="text" name="apex_ai_model" value="<?php echo esc_attr($ai_set['model'] ?? 'gpt-4o-mini'); ?>" placeholder="gpt-4o-mini">
+      </div>
+      <div class="apex-field">
+        <label>Endpoint</label>
+        <input type="url" name="apex_ai_endpoint" value="<?php echo esc_attr($ai_set['endpoint'] ?? 'https://api.gapgpt.app/v1/chat/completions'); ?>">
+      </div>
+    </div>
+
     <p><button name="apex_save_settings" value="1" class="button button-primary">ذخیره تنظیمات</button></p>
   </form>
 </div>

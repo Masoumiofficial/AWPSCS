@@ -43,3 +43,52 @@ if (!function_exists('apex_omega_format_number_fa')) {
         return number_format_i18n((float) $num);
     }
 }
+
+if (!function_exists('apex_omega_encrypt')) {
+    function apex_omega_encrypt(string $plaintext): string {
+        if ($plaintext === '') return '';
+        $key_raw = (defined('AUTH_KEY') ? AUTH_KEY : '') . (defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : '') . (defined('LOGGED_IN_SALT') ? LOGGED_IN_SALT : '');
+        if (strlen($key_raw) < 16) $key_raw = $key_raw . 'apex-omega-fallback-salt-2024';
+        $key = hash('sha256', $key_raw, true);
+        if (function_exists('openssl_encrypt')) {
+            $iv = openssl_random_pseudo_bytes(16);
+            $enc = openssl_encrypt($plaintext, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+            if ($enc !== false) return 'enc1:' . base64_encode($iv . $enc);
+        }
+        // fallback: base64 with simple obfuscation (not secure but better than plain)
+        return 'b64:' . base64_encode($plaintext);
+    }
+}
+if (!function_exists('apex_omega_decrypt')) {
+    function apex_omega_decrypt(string $ciphertext): string {
+        if ($ciphertext === '') return '';
+        if (strpos($ciphertext, 'enc1:') === 0) {
+            $raw = base64_decode(substr($ciphertext, 5), true);
+            if ($raw === false) return '';
+            $key_raw = (defined('AUTH_KEY') ? AUTH_KEY : '') . (defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : '') . (defined('LOGGED_IN_SALT') ? LOGGED_IN_SALT : '');
+            if (strlen($key_raw) < 16) $key_raw = $key_raw . 'apex-omega-fallback-salt-2024';
+            $key = hash('sha256', $key_raw, true);
+            $iv = substr($raw, 0, 16);
+            $enc = substr($raw, 16);
+            if (function_exists('openssl_decrypt')) {
+                $dec = openssl_decrypt($enc, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+                if ($dec !== false) return $dec;
+            }
+            return '';
+        }
+        if (strpos($ciphertext, 'b64:') === 0) {
+            $d = base64_decode(substr($ciphertext, 4), true);
+            return $d !== false ? $d : '';
+        }
+        // legacy plain text (for backward compat)
+        return $ciphertext;
+    }
+}
+if (!function_exists('apex_omega_lock_ttl')) {
+    function apex_omega_lock_ttl(int $count, int $min = 30, int $max = 600, int $per_item = 2): int {
+        $ttl = $count * $per_item + 15;
+        if ($ttl < $min) $ttl = $min;
+        if ($ttl > $max) $ttl = $max;
+        return $ttl;
+    }
+}
