@@ -208,7 +208,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:10px;">
         <label>نرخ رشد هر ۵ دقیقه (%):<br><input type="number" id="apex-evergreen-rate" step="0.01" min="0.005" max="0.5" value="<?php echo esc_attr($evergreen['rate_percent']); ?>" style="width:110px;"></label>
         <label>سقف بازدید:<br><input type="number" id="apex-evergreen-max" min="50000" max="5000000" value="<?php echo esc_attr($evergreen['max_views']); ?>" style="width:140px;"></label>
-        <button id="apex-evergreen-save" class="button button-apex" style="background:#0f766e;border-color:#0f766e;">💾 ذخیره Evergreen</button>
+        <button id="apex-evergreen-save" type="button" class="button button-apex" style="background:#0f766e;border-color:#0f766e;">💾 ذخیره Evergreen</button>
         <span id="apex-evergreen-result" style="font-weight:700;"></span>
         <small style="width:100%;color:#6b7280;">پیشنهاد: 0.03–0.05% = ≈ 5–8% رشد روزانه (واقع‌گرایانه). سقف 1.5M برای حفظ اعتبار — بالاتر نرو.</small>
       </div>
@@ -231,7 +231,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         <label>حداکثر شارژ:<br><input type="number" id="apex-autowatch-max" min="1000" max="50000" step="1000" value="<?php echo esc_attr($autowatch['max_views']); ?>" style="width:100%;"></label>
         <label>هر تیک چند پست:<br><input type="number" id="apex-autowatch-batch" min="5" max="50" step="1" value="<?php echo esc_attr($autowatch['batch']); ?>" style="width:100%;"></label>
         <label>فقط پست‌های چند روز اخیر:<br><input type="number" id="apex-autowatch-recent" min="0" max="365" step="1" value="<?php echo esc_attr($autowatch['only_recent_days']); ?>" style="width:100%;"> <small>0=همه</small></label>
-        <button id="apex-autowatch-save" class="button button-apex" style="background:#ea580c;border-color:#ea580c;">💾 ذخیره نگهبان</button>
+        <button id="apex-autowatch-save" type="button" class="button button-apex" style="background:#ea580c;border-color:#ea580c;">💾 ذخیره نگهبان</button>
       </div>
       <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
         <small style="color:#6b7280;">هر <code>apex_omega_tick</code> (5 دقیقه) تا <span id="apex-autowatch-batch-hint"><?php echo esc_html($autowatch['batch']); ?></span> پست کم‌بازدید چک می‌شود — با cooldown 24ساعته هر پست دوباره شارژ نمی‌شود.</small>
@@ -240,6 +240,41 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       </div>
       <small>💡 خواننده تازه‌کار (وزن <30) → 500-3000، ویژه (≥85) → تا 1.6× بیشتر + Evergreen هر تیک صعودی. امتیاز هم همبسته (10-150 رأی، 3.3-5.0⭐).</small>
     </div>
+    <script>
+    // فیکس فوری 1.6.1 — حتی اگر admin.js کش باشد، این هندلر کار می‌کند
+    (function(){
+      function run(){
+        var btn=document.getElementById('apex-autowatch-save');
+        if(!btn || btn.dataset.bound) return;
+        btn.dataset.bound='1';
+        btn.addEventListener('click', function(e){
+          e.preventDefault();
+          var nonce=(window.ApexOmega&&ApexOmega.nonce)||document.querySelector('#_wpnonce')?.value||'';
+          var ajax=(window.ApexOmega&&ApexOmega.ajax_url)||'/wp-admin/admin-ajax.php';
+          var enabled=document.getElementById('apex-autowatch-enabled')?.checked?1:0;
+          var threshold=parseInt(document.getElementById('apex-autowatch-threshold')?.value)||10000;
+          var minv=parseInt(document.getElementById('apex-autowatch-min')?.value)||500;
+          var maxv=parseInt(document.getElementById('apex-autowatch-max')?.value)||10000;
+          var batch=parseInt(document.getElementById('apex-autowatch-batch')?.value)||20;
+          var recent=parseInt(document.getElementById('apex-autowatch-recent')?.value)||60;
+          var resEl=document.getElementById('apex-autowatch-result');
+          btn.disabled=true; btn.textContent='ذخیره…';
+          if(resEl) resEl.textContent='در حال ذخیره…';
+          var fd=new FormData();
+          fd.append('action','apex_save_autowatch'); fd.append('_ajax_nonce',nonce);
+          fd.append('enabled',enabled); fd.append('threshold',threshold); fd.append('min_views',minv);
+          fd.append('max_views',maxv); fd.append('batch',batch); fd.append('only_recent_days',recent);
+          fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(function(j){
+            if(j.success){ if(resEl) resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46'; }
+            else{ if(resEl) resEl.textContent='❌ '+(j.data?.message||'خطا'); if(resEl) resEl.style.color='#991b1b'; }
+          }).catch(function(err){ if(resEl) resEl.textContent='❌ خطا: '+err; if(resEl) resEl.style.color='#991b1b'; }).finally(function(){ btn.disabled=false; btn.textContent='💾 ذخیره نگهبان'; });
+        });
+      }
+      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',run); else run();
+      // تلاش مجدد بعد از لود admin.js
+      setTimeout(run,800);
+    })();
+    </script>
     <div id="apex-tier-preview-box" class="apex-preview-box" style="min-height:90px;">هنوز پیش‌نمایشی نیست.</div>
     <div id="apex-tier-result"></div>
     <!-- جدول نتایج دقیق پس از اعمال -->

@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.6.0
+Stable tag: 1.6.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 1.6.1 =
+* 🐛 فیکس «ذخیره نگهبان» — کلیک هیچ اتفاقی نمی‌افتاد: دکمه type=button + هندلر inline مستقل از کش admin.js + nonce fallback — الان با هر کش/مینیفایر کار می‌کند. همچنین Evergreen همین فیکس.
 
 = 1.6.0 =
 * 👀 نگهبان خودکار پست‌های تازه — هر 5 دقیقه سایت را چک می‌کند (apex_omega_tick): پست‌های <10K (یا صفر) را شناسایی و شارژ می‌کند — تازه‌کار 500-10K با امتیاز همبسته (10-70 رأی، 3.3-5.0⭐)، ویژه‌ها تا 1.6× بیشتر + سپس Evergreen هر تیک صعودی اصولی — سایت هیچ‌وقت ضایع نمی‌ماند حتی با ورود خودکار اسکریپت. تنظیم: آستانه/حداقل/حداکثر/بچ/فقط چند روز اخیر + cooldown 24ساعته هر پست + تاریخچه autowatch — پیش‌فرض روشن، کاملاً خودکار و قابل کنترل از پنل توزیع.
