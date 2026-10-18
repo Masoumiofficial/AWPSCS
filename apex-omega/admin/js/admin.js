@@ -218,6 +218,19 @@ jQuery(function($){
     }).fail(function(xhr){ $('#apex-undo-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('↩️ بازگردانی آخرین توزیع (Undo)'));
   });
 
+  // ======== Analytics — export/import ==========
+  function downloadFile(content, filename, mime){
+    const blob = new Blob([content], {type: mime||'text/plain;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},0);
+  }
+  $(document).on('click','#apex-export-artist',function(){ const $b=$(this); $b.text('در حال تهیه…'); $.post(Apex.ajax_url,{action:'apex_export_artist_csv',_ajax_nonce:getNonce()},res=>{ if(res.success) downloadFile(res.data.csv, res.data.filename, 'text/csv'); else alert(res.data.message||'خطا'); }).always(()=> $b.text('📥 وزن آرتیست CSV')); });
+  $(document).on('click','#apex-export-history',function(){ const $b=$(this); $b.text('در حال تهیه…'); $.post(Apex.ajax_url,{action:'apex_export_history_csv',_ajax_nonce:getNonce(),limit:1000},res=>{ if(res.success) downloadFile(res.data.csv, res.data.filename, 'text/csv'); else alert(res.data.message); }).always(()=> $b.text('📥 تاریخچه CSV')); });
+  $(document).on('click','#apex-export-tiers',function(){ const $b=$(this); $b.text('…'); $.post(Apex.ajax_url,{action:'apex_export_tiers_json',_ajax_nonce:getNonce()},res=>{ if(res.success) downloadFile(res.data.json, res.data.filename, 'application/json'); }).always(()=> $b.text('📥 تیره JSON')); });
+  $(document).on('click','#apex-export-history-csv',function(){ $('#apex-export-history').trigger('click'); });
+  $(document).on('click','#apex-import-artist-btn',function(){ const csv=$('#apex-import-artist-csv').val(); if(!csv) {alert('CSV را وارد کنید'); return;} const $b=$(this); $b.text('وارد کردن…'); $.post(Apex.ajax_url,{action:'apex_import_artist_csv',_ajax_nonce:getNonce(),csv:csv},res=>{ if(res.success) $('#apex-import-artist-res').html('<span style="color:#065f46;">✅ '+res.data.imported+' آرتیست وارد شد</span>'); else $('#apex-import-artist-res').html('<span style="color:#991b1b;">'+(res.data.message||'خطا')+'</span>'); }).always(()=> $b.text('📤 وارد کردن')); });
+  $(document).on('click','#apex-import-tiers-btn',function(){ const j=$('#apex-import-tiers-json').val(); if(!j){alert('JSON را وارد کنید');return;} const $b=$(this); $b.text('…'); $.post(Apex.ajax_url,{action:'apex_import_tiers_json',_ajax_nonce:getNonce(),json:j},res=>{ if(res.success) $('#apex-import-tiers-res').html('<span style="color:#065f46;">✅ '+res.data.count+' تیره وارد شد</span>'); else $('#apex-import-tiers-res').html('<span style="color:#991b1b;">'+(res.data.message||'خطا')+'</span>'); }).always(()=> $b.text('📤 وارد کردن تیره')); });
+
   // sync total_posts from PHP
   if(Apex.total_posts) updateTierTotals();
 });

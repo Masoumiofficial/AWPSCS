@@ -45,6 +45,14 @@ class Admin {
         );
         add_submenu_page(
             'apex-omega',
+            'آنالیتیکس — APEX Ω',
+            'آنالیتیکس 📊',
+            'apex_manage_statistics',
+            'apex-omega-analytics',
+            [$this, 'render_analytics']
+        );
+        add_submenu_page(
+            'apex-omega',
             'ویرایش گروهی — APEX Ω',
             'ویرایش گروهی',
             'apex_manage_statistics',
@@ -181,7 +189,18 @@ class Admin {
     }
 
     public function render_history(): void {
-        $recent = History::get_all_recent(100);
+        global $wpdb;
+        $h = Database::table_history();
+        $where = '1=1';
+        if (!empty($_GET['filter_source'])) {
+            $src = sanitize_text_field($_GET['filter_source']);
+            $where .= $wpdb->prepare(' AND source=%s', $src);
+        }
+        if (!empty($_GET['filter_post'])) {
+            $pid = (int)$_GET['filter_post'];
+            $where .= $wpdb->prepare(' AND post_id=%d', $pid);
+        }
+        $recent = $wpdb->get_results("SELECT h.*, p.post_title FROM $h h LEFT JOIN {$wpdb->posts} p ON p.ID=h.post_id WHERE $where ORDER BY h.created_at_gmt DESC LIMIT 200", ARRAY_A) ?: [];
         include APEX_OMEGA_DIR . 'admin/views/history-table.php';
     }
 
@@ -221,6 +240,10 @@ class Admin {
     public function render_tier(): void {
         global $wpdb;
         include APEX_OMEGA_DIR . 'admin/views/tier-distribution.php';
+    }
+    public function render_analytics(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/analytics.php';
     }
 
     public function render_help(): void {

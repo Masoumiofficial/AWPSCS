@@ -85,6 +85,23 @@ class Rest {
         return rest_ensure_response($res);
     }
 
+    public static function get_analytics(\WP_REST_Request $req) {
+        return rest_ensure_response([
+            'summary'=> \ApexOmega\Core\Analytics::summary(),
+            'tiers'=> \ApexOmega\Core\Analytics::tier_distribution(),
+            'histogram'=> \ApexOmega\Core\Analytics::views_histogram(),
+            'timeline'=> \ApexOmega\Core\Analytics::history_timeline((int)($req->get_param('days')??14)),
+            'top'=> \ApexOmega\Core\Analytics::top_posts(10),
+        ]);
+    }
+    public static function tier_distribution(\WP_REST_Request $req) {
+        $data = $req->get_json_params() ?: $req->get_params();
+        $counts = $data['counts'] ?? [];
+        $filters = $data['filters'] ?? [];
+        $preview = \ApexOmega\Core\TierManager::preview_distribution($counts, $filters);
+        if (empty($preview['success'])) return new \WP_Error('bad_request', $preview['message'] ?? 'bad request', ['status'=>400]);
+        return rest_ensure_response($preview);
+    }
     public static function get_stats(\WP_REST_Request $req) {
         $id = (int) $req->get_param('id');
         $post = get_post($id);

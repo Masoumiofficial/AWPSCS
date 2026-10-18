@@ -26,6 +26,11 @@ class Ajax {
             'apex_auto_artist_ai',
             'apex_auto_artist_ir',
             'apex_save_ui_mode',
+            'apex_export_artist_csv',
+            'apex_export_history_csv',
+            'apex_export_tiers_json',
+            'apex_import_artist_csv',
+            'apex_import_tiers_json',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -102,6 +107,21 @@ class Ajax {
                 break;
             case 'apex_save_ui_mode':
                 self::save_ui_mode();
+                break;
+            case 'apex_export_artist_csv':
+                self::export_artist_csv();
+                break;
+            case 'apex_export_history_csv':
+                self::export_history_csv();
+                break;
+            case 'apex_export_tiers_json':
+                self::export_tiers_json();
+                break;
+            case 'apex_import_artist_csv':
+                self::import_artist_csv();
+                break;
+            case 'apex_import_tiers_json':
+                self::import_tiers_json();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -472,5 +492,30 @@ class Ajax {
         if (!in_array($mode, ['simple','pro'], true)) $mode='simple';
         update_option('apex_omega_ui_mode', $mode, false);
         wp_send_json_success(['mode'=>$mode]);
+    }
+    private static function export_artist_csv(): void {
+        $csv = \ApexOmega\Core\Exporter::export_artist_csv();
+        wp_send_json_success(['csv'=>$csv,'filename'=>'apex-artist-weights-'.gmdate('Y-m-d').'.csv']);
+    }
+    private static function export_history_csv(): void {
+        $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 1000;
+        $csv = \ApexOmega\Core\Exporter::export_history_csv(min(5000,max(10,$limit)));
+        wp_send_json_success(['csv'=>$csv,'filename'=>'apex-history-'.gmdate('Y-m-d').'.csv']);
+    }
+    private static function export_tiers_json(): void {
+        $json = \ApexOmega\Core\Exporter::export_tiers_json();
+        wp_send_json_success(['json'=>$json,'filename'=>'apex-tiers-'.gmdate('Y-m-d').'.json']);
+    }
+    private static function import_artist_csv(): void {
+        $csv = $_POST['csv'] ?? '';
+        if (!$csv) wp_send_json_error(['message'=>'CSV خالی است'],400);
+        $res = \ApexOmega\Core\Exporter::import_artist_csv(stripslashes($csv));
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res,400);
+    }
+    private static function import_tiers_json(): void {
+        $json = $_POST['json'] ?? '';
+        if (!$json) wp_send_json_error(['message'=>'JSON خالی است'],400);
+        $res = \ApexOmega\Core\Exporter::import_tiers_json(stripslashes($json));
+        if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res,400);
     }
 }
