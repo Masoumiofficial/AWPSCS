@@ -222,8 +222,22 @@ class TierManager {
             ];
         }
 
-        // تصادفی‌سازی منصفانه: shuffle
-        shuffle($eligible_ids);
+        // تصادفی‌سازی منصفانه: shuffle - یا آرتیست‌محور
+        $artist_aware = !empty($filters['artist_aware']);
+        if ($artist_aware) {
+            // مرتب‌سازی بر اساس وزن آرتیست (پرطرفدارها اول)
+            $weights = [];
+            foreach ($eligible_ids as $pid) {
+                $weights[$pid] = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
+            }
+            usort($eligible_ids, function($a,$b) use ($weights){
+                $wa = $weights[$a] ?? 50; $wb = $weights[$b] ?? 50;
+                if ($wa === $wb) return 0;
+                return ($wb <=> $wa); // نزولی
+            });
+        } else {
+            shuffle($eligible_ids);
+        }
         $cursor = 0;
         $preview = [];
         $summary = [];

@@ -85,7 +85,7 @@ jQuery(function($){
   $(document).on('click','#apex-preview-tier',function(e){
     e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('در حال پیش‌نمایش…');
     const counts=collectTierCounts(); if(Object.keys(counts).length===0){ alert('حداقل یک دسته را پر کن'); $btn.prop('disabled',false).text('👁️ پیش‌نمایش'); return; }
-    $.post(Apex.ajax_url,{action:'apex_preview_tier',_ajax_nonce:getNonce(),counts:counts,category:$('#apex-filter-cat').val(),post_type:$('#apex-filter-pt').val()},function(res){
+    $.post(Apex.ajax_url,{action:'apex_preview_tier',_ajax_nonce:getNonce(),counts:counts,category:$('#apex-filter-cat').val(),post_type:$('#apex-filter-pt').val(),artist_aware:$('#apex-artist-aware').is(':checked')?1:0},function(res){
       if(res.success){
         let html='<div class="apex-alert success">تعداد درخواستی: '+res.data.total_requested+' | موجود: '+res.data.total_available+' | باقی‌مانده: '+res.data.remaining+'</div>';
         html+='<table class="apex-table"><tr><th>دسته</th><th>تعداد</th><th>میانگین بازدید</th><th>میانگین رأی</th><th>مجموع بازدید</th></tr>';
@@ -106,7 +106,7 @@ jQuery(function($){
     e.preventDefault(); if(!confirm('این عملیات تمام آثار انتخاب‌شده را بازنویسی می‌کند (با تاریخچه و قابل بازگردانی). ادامه؟')) return;
     const $btn=$(this); $btn.prop('disabled',true).text('در حال اعمال…');
     const counts=collectTierCounts();
-    $.post(Apex.ajax_url,{action:'apex_apply_tier',_ajax_nonce:getNonce(),counts:counts,category:$('#apex-filter-cat').val(),post_type:$('#apex-filter-pt').val(),auto_enable:$('#apex-auto-enable').is(':checked')?1:0},function(res){
+    $.post(Apex.ajax_url,{action:'apex_apply_tier',_ajax_nonce:getNonce(),counts:counts,category:$('#apex-filter-cat').val(),post_type:$('#apex-filter-pt').val(),auto_enable:$('#apex-auto-enable').is(':checked')?1:0,artist_aware:$('#apex-artist-aware').is(':checked')?1:0},function(res){
       if(res.success){ $('#apex-tier-result').html('<div class="apex-alert success">✅ '+res.data.applied+' آهنگ با موفقیت توزیع شد. شناسه: '+res.data.execution_id+'<br>خطا: '+(res.data.errors.length? res.data.errors.join('<br>'):'ندارد')+'</div>'); setTimeout(()=>location.reload(),900); }
       else $('#apex-tier-result').html('<div class="apex-alert error">'+(res.data.message||JSON.stringify(res.data))+'</div>');
     }).fail(function(xhr){ $('#apex-tier-result').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('✅ اعمال خودکار (با ثبت تاریخچه)'));
@@ -128,6 +128,29 @@ jQuery(function($){
     e.preventDefault(); const data={action:'apex_ai_save',_ajax_nonce:getNonce(),api_key:$('#apex-ai-key').val(), model:$('#apex-ai-model').val(), endpoint:$('#apex-ai-endpoint').val(), provider:'gapgpt'};
     const $btn=$(this); $btn.text('ذخیره…');
     $.post(Apex.ajax_url,data,function(res){ if(res.success) alert('ذخیره شد'); else alert(res.data.message); }).always(()=> $btn.text('💾 ذخیره کلید'));
+  });
+
+  // Artist
+  $(document).on('input','.apex-artist-weight',function(){ const tid=$(this).data('tid'); $('.apex-artist-slider[data-tid="'+tid+'"]').val($(this).val()); });
+  $(document).on('input','.apex-artist-slider',function(){ const tid=$(this).data('tid'); $('.apex-artist-weight[data-tid="'+tid+'"]').val($(this).val()); });
+  $(document).on('click','#apex-artist-save',function(e){
+    e.preventDefault(); const weights={}; $('.apex-artist-weight').each(function(){ weights[$(this).data('tid')]= $(this).val(); });
+    const $btn=$(this); $btn.text('ذخیره…');
+    $.post(Apex.ajax_url,{action:'apex_save_artist_weights',_ajax_nonce:getNonce(),weights:weights},function(res){ if(res.success) $('#apex-artist-result').html('<div class="apex-alert success">ذخیره شد ('+res.data.count+' آرتیست)</div>'); else $('#apex-artist-result').html('<div class="apex-alert error">'+res.data.message+'</div>'); }).always(()=> $btn.text('💾 ذخیره وزن‌ها'));
+  });
+  $(document).on('click','#apex-artist-ai',function(e){
+    e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('AI در حال امتیازدهی…');
+    $.post(Apex.ajax_url,{action:'apex_auto_artist_ai',_ajax_nonce:getNonce()},function(res){
+      if(res.success){ Object.keys(res.data.weights||res.weights||{}).forEach(tid=>{ const w=res.data.weights[tid]||res.weights[tid]; $('.apex-artist-weight[data-tid="'+tid+'"]').val(w); $('.apex-artist-slider[data-tid="'+tid+'"]').val(w); }); $('#apex-artist-result').html('<div class="apex-alert success">✅ AI امتیاز داد: '+Object.keys(res.data.weights||{}).length+' آرتیست</div>'); }
+      else $('#apex-artist-result').html('<div class="apex-alert error">'+res.data.message+'</div>');
+    }).fail(function(xhr){ $('#apex-artist-result').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('🤖 امتیازدهی خودکار با AI (GapGPT)'));
+  });
+  $(document).on('click','#apex-artist-ir',function(e){
+    e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('در حال خواندن از سایت ایرانی…');
+    $.post(Apex.ajax_url,{action:'apex_auto_artist_ir',_ajax_nonce:getNonce()},function(res){
+      if(res.success){ Object.keys(res.data.weights||{}).forEach(tid=>{ const w=res.data.weights[tid]; $('.apex-artist-weight[data-tid="'+tid+'"]').val(w); $('.apex-artist-slider[data-tid="'+tid+'"]').val(w); }); $('#apex-artist-result').html('<div class="apex-alert success">🌐 از سایت ایرانی امتیاز گرفته شد: '+Object.keys(res.data.weights||{}).length+' — با کش 24 ساعته</div>'); }
+      else $('#apex-artist-result').html('<div class="apex-alert error">'+res.data.message+'</div>');
+    }).fail(function(xhr){ $('#apex-artist-result').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('🌐 امتیاز از سایت ایرانی (رادیوجوان/نکس1موزیک)'));
   });
 
   // sync total_posts from PHP

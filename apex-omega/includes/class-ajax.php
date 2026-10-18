@@ -19,6 +19,9 @@ class Ajax {
             'apex_apply_tier',
             'apex_ai_suggest',
             'apex_ai_save',
+            'apex_save_artist_weights',
+            'apex_auto_artist_ai',
+            'apex_auto_artist_ir',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -335,6 +338,7 @@ class Ajax {
         $filters = [
             'category' => sanitize_text_field($_POST['category'] ?? 'all'),
             'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'artist_aware' => !empty($_POST['artist_aware']),
         ];
         $res = \ApexOmega\Core\TierManager::preview_distribution($clean, $filters);
         if (empty($res['success'])) wp_send_json_error($res, 400);
@@ -352,6 +356,7 @@ class Ajax {
         $filters = [
             'category' => sanitize_text_field($_POST['category'] ?? 'all'),
             'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'artist_aware' => !empty($_POST['artist_aware']),
         ];
         // ذخیره حالت خودکار
         $auto_enable = !empty($_POST['auto_enable']);
@@ -396,5 +401,28 @@ class Ajax {
         }
         \ApexOmega\Core\AI_Helper::save_settings($data);
         wp_send_json_success(['message'=>'ذخیره شد']);
+    }
+
+    private static function save_artist_weights(): void {
+        $weights = $_POST['weights'] ?? [];
+        if (is_string($weights)) $weights = json_decode(stripslashes($weights), true) ?: [];
+        $clean = [];
+        foreach ((array)$weights as $tid=>$w) {
+            $clean[(int)$tid] = max(0,min(100,(int)$w));
+        }
+        \ApexOmega\Core\ArtistManager::save_weights($clean);
+        wp_send_json_success(['message'=>'وزن‌ها ذخیره شد','count'=>count($clean)]);
+    }
+
+    private static function auto_artist_ai(): void {
+        $res = \ApexOmega\Core\ArtistManager::auto_weight_via_ai();
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
+    }
+
+    private static function auto_artist_ir(): void {
+        $res = \ApexOmega\Core\ArtistManager::auto_weight_via_external();
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
     }
 }
