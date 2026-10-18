@@ -88,7 +88,10 @@ class Scheduler {
         $is_views = $data['field_type'] === 'views';
         $old_int = $is_views ? (int)$current : (int)$current; // برای سادگی
         $new_int = (int) $target;
-        $vol = Validator::check_volatility($old_int, $new_int, isset($data['max_step']) ? (int)$data['max_step'] : null, isset($data['max_percent_step']) ? (float)$data['max_percent_step'] : null);
+        // خالی یا 0 = بدون محدودیت؛ قبلاً 0 باعث باگ سقف 0 می‌شد
+        $max_step_for_check = (isset($data['max_step']) && $data['max_step'] !== '' && (int)$data['max_step'] > 0) ? (int)$data['max_step'] : null;
+        $max_percent_for_check = (isset($data['max_percent_step']) && $data['max_percent_step'] !== '' && (float)$data['max_percent_step'] > 0) ? (float)$data['max_percent_step'] : null;
+        $vol = Validator::check_volatility($old_int, $new_int, $max_step_for_check, $max_percent_for_check);
         $needs_confirm = $vol['requires_confirm'];
         $large_drop = $vol['delta'] < 0 && abs($vol['percent']) >= 20;
 
@@ -287,7 +290,7 @@ class Scheduler {
 
             // اعتبارسنجی نهایی قبل از نوشتن
             // بررسی سقف هر اجرا
-            if ($schedule['max_step'] !== null && $schedule['max_step'] !== '' && is_numeric($schedule['max_step'])) {
+            if ($schedule['max_step'] !== null && $schedule['max_step'] !== '' && is_numeric($schedule['max_step']) && (int)$schedule['max_step'] > 0) {
                 $max_step = (int) $schedule['max_step'];
                 $delta = abs((float)$next_value - (float)$current_raw);
                 if ($delta > $max_step) {
@@ -296,7 +299,7 @@ class Scheduler {
                     $next_value = (float)$current_raw + ($direction * $max_step);
                 }
             }
-            if ($schedule['max_percent_step'] !== null && $schedule['max_percent_step'] !== '' && is_numeric($schedule['max_percent_step'])) {
+            if ($schedule['max_percent_step'] !== null && $schedule['max_percent_step'] !== '' && is_numeric($schedule['max_percent_step']) && (float)$schedule['max_percent_step'] > 0) {
                 $max_percent = (float) $schedule['max_percent_step'];
                 $percent = (float)$current_raw != 0 ? abs(((float)$next_value - (float)$current_raw) / (float)$current_raw * 100) : 100;
                 if ($percent > $max_percent) {

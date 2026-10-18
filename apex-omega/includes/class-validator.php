@@ -98,11 +98,12 @@ class Validator {
         $abs_delta = abs($delta);
         $percent = $old > 0 ? ($abs_delta / $old * 100) : ($new > 0 ? 100 : 0);
 
-        if ($max_step !== null && $abs_delta > $max_step) {
+        // 0 یا خالی = بدون محدودیت (پیش‌فرض). این باگ قبلی بود که 0 باعث خطای 1249900% می‌شد
+        if ($max_step !== null && $max_step !== '' && (int)$max_step > 0 && $abs_delta > (int)$max_step) {
             $warnings[] = sprintf('تغییر %s از سقف مجاز هر اجرا (%s) بیشتر است.', number_format_i18n($abs_delta), number_format_i18n($max_step));
             $requires_confirm = true;
         }
-        if ($max_percent !== null && $percent > $max_percent) {
+        if ($max_percent !== null && $max_percent !== '' && (float)$max_percent > 0 && $percent > (float)$max_percent) {
             $warnings[] = sprintf('درصد تغییر %.1f%% از سقف مجاز (%.1f%%) بیشتر است.', $percent, $max_percent);
             $requires_confirm = true;
         }
