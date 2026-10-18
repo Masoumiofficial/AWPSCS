@@ -412,7 +412,7 @@ class CommentGuardian {
                 AND pm2.meta_key = %s
                 AND pm2.meta_value >= %s
             )
-            ORDER BY p.post_date_gmt DESC, p.ID DESC
+            ORDER BY CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
             LIMIT %d
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
@@ -447,16 +447,23 @@ class CommentGuardian {
             // اگر قبلاً خیلی کامنت دارد (مثلاً دستی)، skip
             if ($current >= $max_per_post) continue;
 
-            // چند تا اضافه کنیم؟ — برای تازه 2-3 یکباره، برای پرطرفدار روزانه 1-3
+            // چند تا اضافه کنیم؟ — تازه 2-3 یکباره، پرطرفدار روزانه متناسب با بازدید (میلیونی بیشتر)
             $need = $target - $current;
             if ($cur_views < $threshold) {
-                // تازه: یکباره تا 3 تا (min/max از تنظیمات)
                 $need = min($need, mt_rand($s['min_comments'], $s['max_comments']));
             } else {
-                // پرطرفدار: روزانه growth محدود (مثل Evergreen کامنت)
-                $need = min($need, mt_rand(1, $daily_growth));
+                // مقیاس هوشمند: ملیونی روزانه 3-5، صد هزار 2-3، تازه‌پرمخاطب 1-2
+                if ($cur_views >= 500000) {
+                    $daily_scaled = max($daily_growth, 4);
+                    $need = min($need, mt_rand(2, $daily_scaled));
+                } elseif ($cur_views >= 100000) {
+                    $daily_scaled = max($daily_growth, 3);
+                    $need = min($need, mt_rand(1, $daily_scaled));
+                } else {
+                    $need = min($need, mt_rand(1, $daily_growth));
+                }
             }
-            $need = max(1, min(3, $need));
+            $need = max(1, min(5, $need));
 
             // خواننده برای AI
             $artist_name = self::get_primary_artist($pid);
