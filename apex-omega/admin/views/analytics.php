@@ -56,8 +56,8 @@ $tiers = \ApexOmega\Core\TierManager::get_tiers();
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script>
   // داده‌های PHP به JS
-  const apexTierLabels = <?php echo wp_json_encode(array_map(fn($t)=>$t['icon'].' '.$t['label'], $tiers), JSON_UNESCAPED_UNICODE); ?>;
-  const apexTierCounts = <?php echo wp_json_encode(array_map(fn($t)=> $tierDist[$t['id']] ?? 0, $tiers)); ?>;
+  const apexTierLabels = <?php echo wp_json_encode(array_map(function($t){return $t['icon'].' '.$t['label'];}, $tiers), JSON_UNESCAPED_UNICODE); ?>;
+  const apexTierCounts = <?php echo wp_json_encode(array_map(function($t) use ($tierDist){return $tierDist[$t['id']] ?? 0;}, $tiers)); ?>;
   const apexTierColors = <?php echo wp_json_encode(array_column($tiers,'color')); ?>;
   const apexHistLabels = <?php echo wp_json_encode(array_keys($hist), JSON_UNESCAPED_UNICODE); ?>;
   const apexHistCounts = <?php echo wp_json_encode(array_values($hist)); ?>;

@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.3.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 1.3.1 =
+* 🐛 فیکس بحرانی: فعال‌سازی 1.2.2/1.3.0 با خطای “مشکل جدی” — به‌دلیل بسته‌شدن زودهنگام کلاس Ajax (parse error) — برطرف شد. همچنین arrow-functionها برای PHP 7.1+ جایگزین شد.
 
 = 1.3.0 =
 * 📊 آنالیتیکس حرفه‌ای: داشبورد جدید با Chart.js — توزیع تیره (دونات)، هیستوگرام بازدید (۸باکت)، روند 14روزه، برترین آهنگ‌ها، میانگین/بیشترین بازدید.

@@ -470,7 +470,6 @@ class Ajax {
         if (!empty($res['success'])) wp_send_json_success($res);
         wp_send_json_error($res, 400);
     }
-}
     private static function test_ai(): void {
         $res = \ApexOmega\Core\AI_Helper::test_connection();
         if (!empty($res['success'])) wp_send_json_success($res); else wp_send_json_error($res, 400);
