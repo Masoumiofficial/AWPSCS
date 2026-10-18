@@ -122,7 +122,7 @@ class CommentGuardian {
             $l = $last_fa[array_rand($last_fa)];
             // تنوع نام کوچک: گاهی امیررضا، گاهی امیر + فاصله + رضا
             // تنوع پسوند فارسی
-            $suffixes_fa = ['', '', '', ' کوچولو', ' جان', ' عزیز', ' گل', ' دوست‌داشتنی', ' جون', ' عزیزم', ' گلم', ' عزیزم']; // کوچولو فقط ~8% — نه برای همه
+            $suffixes_fa = ['', '', '', '', '', '', '', '', '', ' کوچولو']; // فقط کوچولو 10% — عزیز/جون/جان حذف شد بنابه درخواست
             $suffix = $suffixes_fa[array_rand($suffixes_fa)];
             // 15% عدد چسبان مثل امیر78
             $num_suffix = '';
@@ -377,11 +377,11 @@ class CommentGuardian {
             'اسطوره‌ای هیچکی مثل تو نمی‌تونه بخونه',
             'محشره از ۱۰۰ بهت ۱۰۰ میدم',
             'صدات معجزه‌ست این قطعه موندگاره',
-            'پرچمت بالاست عزیز دلم',
-            'هر ثانیه‌ش عشقه مرسی که هستی',
+            'پرچمت بالاست دمت گرم',
+            'هر ثانیه‌ش عشقه مرسی بابت این آهنگ',
             'این باید هیت سال بشه واقعاً',
             'تاریخ موسیقی با تو قشنگ‌تره',
-            'بی‌نهایت دوسِت دارم این آهنگ جاودانه‌ست',
+            'بی‌نهایت دوسش دارم این آهنگ جاودانه‌ست',
             'از بچگی با صدات بزرگ شدم ناب',
         ];
         $high_greet_site = [
@@ -429,9 +429,15 @@ class CommentGuardian {
         $log = ob_get_clean();
         return ['before'=>$before,'after'=>$after,'log'=>$log];
     }
-    // تیک هر 5 دقیقه — پست‌های کم‌بازدید و پرطرفدار
+    // تیک هر ۶ ساعت (۴ بار/روز) — همهٔ پست‌ها بر اساس بازدید+امتیاز — درخواست 1.8.5
     public static function tick(bool $verbose = false): void {
         if (!self::is_enabled()) return;
+        // گیت ۶ساعته — فقط هر ۲۱۶۰۰ ثانیه اجرا شود (دستی verbose دور می‌زند)
+        if (!$verbose) {
+            $last = (int) get_option('apex_omega_commentor_last_tick_ts', 0);
+            if ($last && (time() - $last < 21600)) return;
+            update_option('apex_omega_commentor_last_tick_ts', time(), false);
+        }
         $s = self::get_settings();
         $threshold = (int)$s['threshold'];
         $max_per_post = (int)$s['max_per_post'];

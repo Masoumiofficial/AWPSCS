@@ -13,6 +13,7 @@ class Scheduler {
     public static function init(): void {
         add_filter('cron_schedules', [__CLASS__, 'add_cron_schedules']);
         add_action(self::CRON_HOOK, [__CLASS__, 'tick']);
+        add_action(self::COMMENT_HOOK, ['\\ApexOmega\\Core\\CommentGuardian', 'tick']);
         // پاکسازی قفل‌های منقضی روزانه
         add_action('apex_omega_cleanup', [Database::class, 'cleanup_expired_locks']);
         if (!wp_next_scheduled('apex_omega_cleanup')) {
@@ -52,10 +53,17 @@ class Scheduler {
         }
     }
 
+    const COMMENT_INTERVAL = 'apex_omega_six_hours';
+    const COMMENT_HOOK = 'apex_omega_commentor_tick';
+
     public static function add_cron_schedules(array $schedules): array {
         $schedules[self::CRON_INTERVAL] = [
             'interval' => 300,
             'display' => __('هر ۵ دقیقه — APEX Ω', 'apex-omega'),
+        ];
+        $schedules[self::COMMENT_INTERVAL] = [
+            'interval' => 21600,
+            'display' => __('هر ۶ ساعت — APEX Ω کامنت', 'apex-omega'),
         ];
         return $schedules;
     }
@@ -64,13 +72,23 @@ class Scheduler {
         $ts = wp_next_scheduled(self::CRON_HOOK);
         if (!$ts) {
             wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
-            return;
+        } else {
+            $sched = wp_get_schedule(self::CRON_HOOK);
+            if ($sched !== self::CRON_INTERVAL) {
+                wp_clear_scheduled_hook(self::CRON_HOOK);
+                wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+            }
         }
-        // اگر تکی ثبت شده بود (wp_get_schedule === false)، پاک و بازسازی
-        $sched = wp_get_schedule(self::CRON_HOOK);
-        if ($sched !== self::CRON_INTERVAL) {
-            wp_clear_scheduled_hook(self::CRON_HOOK);
-            wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+        // نگهبان کامنت — هر ۶ ساعت (۴ بار/روز) همهٔ پست‌ها
+        $ts_c = wp_next_scheduled(self::COMMENT_HOOK);
+        if (!$ts_c) {
+            wp_schedule_event(time() + 3600, self::COMMENT_INTERVAL, self::COMMENT_HOOK);
+        } else {
+            $sched_c = wp_get_schedule(self::COMMENT_HOOK);
+            if ($sched_c !== self::COMMENT_INTERVAL) {
+                wp_clear_scheduled_hook(self::COMMENT_HOOK);
+                wp_schedule_event(time() + 3600, self::COMMENT_INTERVAL, self::COMMENT_HOOK);
+            }
         }
     }
 
@@ -92,6 +110,8 @@ class Scheduler {
         if ($ts3) wp_unschedule_event($ts3, self::WEEKLY_HOOK);
         $ts4 = wp_next_scheduled('apex_omega_auto_tier_tick');
         if ($ts4) wp_unschedule_event($ts4, 'apex_omega_auto_tier_tick');
+        $ts5 = wp_next_scheduled(self::COMMENT_HOOK);
+        if ($ts5) wp_unschedule_event($ts5, self::COMMENT_HOOK);
     }
 
     public static function send_weekly_report(): void {
@@ -318,10 +338,8 @@ class Scheduler {
         if (class_exists('\\ApexOmega\\Core\\Evergreen')) {
             try { \ApexOmega\Core\Evergreen::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Evergreen tick error: '.$e->getMessage()); }
         }
-        // 💬 نگهبان کامنت هوشمند — روزانه/هر تیک (مثل AutoWatch)
-        if (class_exists('\\ApexOmega\\Core\\CommentGuardian')) {
-            try { \ApexOmega\Core\CommentGuardian::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Commentor tick error: '.$e->getMessage()); }
-        }
+        // 💬 نگهبان کامنت حالا هر ۶ ساعت جدا اجرا می‌شود (apex_omega_commentor_tick) — اینجا دیگر هر ۵ دقیقه صدا نزن
+        // (برای سازگاری اگر کسی دستی صدا زد، CommentGuardian خودش گیت ۶ساعته دارد)
     }
 
     /**

@@ -99,6 +99,10 @@ class Evergreen {
             // رشد تصادفی ±30% حول rate
             $jitter = 0.7 + (mt_rand(0,60)/100); // 0.7 - 1.3
             $inc = max(1, (int) round($cur_views * $rate / 100 * $jitter));
+            // برای پست‌های زیر 10K، میانگین نهایت 20 بازدید در هر تیک ۶ساعته — درخواست کاربر 1.8.5
+            if ($cur_views < 10000) {
+                $inc = min($inc, mt_rand(12, 25));
+            }
             $new_views = $cur_views + $inc;
             if ($new_views > $effective_max) $new_views = $effective_max;
             // امتیاز هم کمی رشد کند
