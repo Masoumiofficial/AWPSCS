@@ -523,6 +523,10 @@ class CommentGuardian {
             }
             $need = max(1, min(5, $need));
 
+            // اگر گفت‌وگو بسته باشد، باز کن — وگرنه کامنت تو دیتابیس هست ولی قالب نشان نمی‌دهد
+            if (get_post_field('comment_status', $pid) !== 'open') {
+                wp_update_post(['ID' => $pid, 'comment_status' => 'open']);
+            }
             // خواننده برای AI
             $artist_name = self::get_primary_artist($pid);
             if (!$artist_name) $artist_name = 'هنرمند ناشناس';

@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.8.3
+Stable tag: 1.8.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 1.8.4 =
+* 🩹 فیکس کامنت ناپیدا: قبلاً اگر گفت‌وگو بسته بود (پست‌های قدیمی آهنگبان) کامنت در DB بود ولی قالب نشان نمی‌داد — الان APEX خودکار `comment_status=open` می‌کند قبل از درج + راهنمای پرامپت قالب.
 
 = 1.8.3 =
 * ✨ هات‌فیکس کرون: ترمیم خودکار بدون نیاز به غیرفعال/فعال — اگر هشدار «رویداد زمان‌بندی فعال نیست» دیدید، داشبورد دکمهٔ «ترمیم کرون» دارد و خودکار در هر بار لود پیشخوان کرون را می‌سازد (فیکس بعد از Fatal 1.8.1).
