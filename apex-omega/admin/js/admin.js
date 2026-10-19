@@ -45,8 +45,7 @@ jQuery(function($){
   $(document).on('click','#apex-bulk-apply',function(e){ e.preventDefault(); if(!confirm(APX().i18n.confirm_bulk))return; const data={action:'apex_bulk_apply',_ajax_nonce:getNonce(),post_ids:$('#apex_bulk_ids').val(),field_type:$('#apex_bulk_field').val(),value:$('#apex_bulk_value').val(),mode:$('#apex_bulk_mode').val()}; const $btn=$(this); $btn.prop('disabled',true).text('در حال اعمال…'); $.post(getAjax(),data,r=>{ if(r.success) $('#apex-bulk-result').html('<div class="apex-alert success">موفق: '+r.data.success_count+'</div>'); else $('#apex-bulk-result').html('<div class="apex-alert error">'+(r.data.message||'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('اعمال گروهی')); });
   $(document).on('change','#_apex_mode',function(){ if($(this).val()==='scheduled') $('#apex-schedule-panel').show(); else $('#apex-schedule-panel').hide(); });
 
-  // ======== توزیع هوشمند TIER ===========
-  function collectTierCounts(){
+  // ======== توزیع هوشمند TIER ====  function collectTierCounts(){
     const out={}; $('.apex-tier-count').each(function(){ const k=$(this).data('tier'); const v=parseInt($(this).val()||0); if(v>0) out[k]=v; else if(v===0 && $(this).val()!=='' ) out[k]=0; });
     return out;
   }
@@ -230,8 +229,6 @@ jQuery(function($){
         if((l.posts||0)>0) setTimeout(()=>location.reload(),1500);
       } else $('#apex-commentor-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
     }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('▶️ اجرای فوری (تست)'));
-<<<<<<< HEAD
-=======
   });
   // کامنت دستی per-post (متاباکس)
   $(document).on('click','#apex-send-manual-comments',function(e){
@@ -270,8 +267,7 @@ jQuery(function($){
     }).fail(function(xhr){ $('#apex-undo-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('↩️ بازگردانی آخرین توزیع (Undo)'));
   });
 
-  // ======== Analytics — export/import ==========
-  function downloadFile(content, filename, mime){
+  // ======== Analytics — export/import ===  function downloadFile(content, filename, mime){
     const blob = new Blob([content], {type: mime||'text/plain;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{document.body.removeChild(a); URL.revokeObjectURL(url);},0);
