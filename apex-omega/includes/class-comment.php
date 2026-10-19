@@ -452,11 +452,17 @@ class CommentGuardian {
             $cutoff = gmdate('Y-m-d H:i:s', time() - $recent_days * DAY_IN_SECONDS);
             $where_recent = $wpdb->prepare(" AND p.post_date_gmt >= %s ", $cutoff);
         }
+        // 1.8.7: برای هیت‌های میلیونی، recent_days سخت‌گیر نباش — اگر بازدید >500k حتی اگر قدیمی باشد شامل شود
+        // این را در SQL جدا هندل می‌کنیم: اگر only_recent_days>0 ولی بازدید بالا باشد، اجازه بده
+        // پس where_recent را برای هیت‌ها شل می‌کنیم در PHP بعداً (فعلا نگه می‌داریم اما در tick برای 657 چک ویژه داریم)
         // پیدا کردن پست‌های کاندید: همهٔ پست‌های منتشرشده که کامنت‌شان زیر سقف تیره است
         // اولویت با پست‌های تازه‌تر (post_date_gmt DESC) — مثل AutoWatch
         // 1.8.0: بدون سقف 20 — روزانه همهٔ پست‌های سایت بر اساس الگوی ریتم (بازدید+امتیاز+وزن)
         // batch=0 یعنی بدون LIMIT — روزانه همه
         $limit_clause = ($batch > 0) ? $wpdb->prepare("LIMIT %d", $batch) : "";
+        // 1.8.7: cooldown هوشمند — هیت‌ها زودتر دوباره کامنت بگیرند
+        // برای پست‌های میلیونی cooldown را از 24h به 12h/6h کاهش می‌دهیم، پس cutoff را پویا می‌سازیم
+        // در SQL اول با cooldown عمومی می‌گیریم، بعد در PHP اگر هیت بود و تازه cooldown شده، باز هم اجازه می‌دهیم
         $sql = "
             SELECT p.ID, p.post_title, p.post_date_gmt, COALESCE(CAST(pm.meta_value AS UNSIGNED), 0) as cur_views
             FROM {$wpdb->posts} p
@@ -490,6 +496,32 @@ class CommentGuardian {
             return;
         }
 
+        // 1.8.7: تضمین برای هیت میلیونی با 0 کامنت — حتی اگر در cooldown باشد، وارد کن (سوتی ممنوع)
+        // اگر پست 657 (یا مشابه 1M+) به خاطر cooldown 24h جا مانده و 0 کامنت دارد، آن را دستی اضافه کن
+        if (!$verbose) {
+            // فقط یکبار چک سبک برای هیت‌های جا مانده
+            $mega_check = $wpdb->get_results($wpdb->prepare("SELECT p.ID, COALESCE(CAST(pm.meta_value AS UNSIGNED),0) as cur_views FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='views' WHERE p.post_type='post' AND p.post_status='publish' AND CAST(pm.meta_value AS UNSIGNED) >= %d ORDER BY CAST(pm.meta_value AS UNSIGNED) DESC LIMIT 20", 500000), ARRAY_A);
+            foreach ($mega_check as $mc) {
+                $mid = (int)$mc['ID'];
+                $mviews = (int)$mc['cur_views'];
+                $mcur = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $mid));
+                if ($mcur === 0 && $mviews >= 800000) {
+                    // آیا در $rows هست؟
+                    $found=false; foreach($rows as $rr) if((int)$rr['ID']===$mid){$found=true;break;}
+                    if(!$found){
+                        // اگر به خاطر cooldown فیلتر شده، به زور اضافه کن (حتی اگر به تازگی کامنت خورده، چون 0 کامنت ضایع است)
+                        $last_meta = get_post_meta($mid, self::META_LAST, true);
+                        $in_cooldown = $last_meta && $last_meta >= $cooldown_cutoff;
+                        if ($in_cooldown) {
+                            error_log("[APEX Ω] Commentor: mega-hit $mid with $mviews views has 0 comments but in cooldown — forcing include");
+                        }
+                        $title = get_the_title($mid);
+                        $rows[] = ['ID'=>$mid,'post_title'=>$title,'post_date_gmt'=>get_post_field('post_date_gmt',$mid),'cur_views'=>$mviews];
+                    }
+                }
+            }
+        }
+
         $exec = apex_omega_generate_uuid();
         $done_posts = 0;
         $done_comments = 0;
@@ -512,13 +544,25 @@ class CommentGuardian {
             if ($current >= $max_per_post) continue;
 
             // چند تا اضافه کنیم؟ — تازه 2-3 یکباره، پرطرفدار روزانه متناسب با بازدید (میلیونی بیشتر)
+            // 1.8.7: سوتی ممنوع برای هیت‌ها — اگر بازدید میلیونی ولی کامنت صفر، پر کن تا خجالت نکشی
             $need = $target - $current;
-            if ($cur_views < $threshold) {
+            $is_mega_hit = ($cur_views >= 500000 && ($avg >= 4.7 || $cur_views >= 1000000));
+            $is_zero_fill = ($current === 0 && $target >= 20);
+            if ($is_zero_fill && $is_mega_hit) {
+                // پر کردن اولیه: هیت میلیونی با 0 کامنت ضایع است — یکجا 10-14 تا بگذار
+                $need = min($need, mt_rand(10, 14));
+                if ($verbose) echo "mega-fill pid=$pid views=$cur_views avg=$avg target=$target need=$need (burst)\n";
+            } elseif ($is_zero_fill && $cur_views >= 300000) {
+                $need = min($need, mt_rand(6, 9));
+            } elseif ($cur_views < $threshold) {
                 $need = min($need, mt_rand($s['min_comments'], $s['max_comments']));
             } else {
-                // مقیاس هوشمند: ملیونی روزانه 3-5، صد هزار 2-3، تازه‌پرمخاطب 1-2
-                if ($cur_views >= 500000) {
-                    $daily_scaled = max($daily_growth, 4);
+                // مقیاس هوشمند: میلیونی روزانه 3-5، صد هزار 2-3، تازه‌پرمخاطب 1-2
+                if ($cur_views >= 1000000) {
+                    $daily_scaled = max($daily_growth + 2, 6);
+                    $need = min($need, mt_rand(3, $daily_scaled));
+                } elseif ($cur_views >= 500000) {
+                    $daily_scaled = max($daily_growth + 1, 5);
                     $need = min($need, mt_rand(2, $daily_scaled));
                 } elseif ($cur_views >= 100000) {
                     $daily_scaled = max($daily_growth, 3);
@@ -527,7 +571,7 @@ class CommentGuardian {
                     $need = min($need, mt_rand(1, $daily_growth));
                 }
             }
-            $need = max(1, min(5, $need));
+            $need = max(1, min(14, $need));
 
             // اگر گفت‌وگو بسته باشد، باز کن — وگرنه کامنت تو دیتابیس هست ولی قالب نشان نمی‌دهد
             if (get_post_field('comment_status', $pid) !== 'open') {
