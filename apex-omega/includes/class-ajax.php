@@ -49,8 +49,12 @@ class Ajax {
         }
         // نانس
         $nonce = $_REQUEST['_ajax_nonce'] ?? $_REQUEST['nonce'] ?? '';
-        if (!wp_verify_nonce($nonce, 'apex_omega_nonce')) {
-            wp_send_json_error(['message' => 'نشانه امنیتی نامعتبر (nonce).'], 403);
+        // پاکسازی بافر قبل از JSON — جلوگیری از Warning HTML که باعث SyntaxError < می‌شود
+        if (ob_get_length()) { ob_clean(); }
+        $valid = wp_verify_nonce($nonce, 'apex_omega_nonce') || wp_verify_nonce($nonce, 'apex-omega-nonce');
+        if (!$valid) {
+            // nonce را با هر دو فرمت قبول کن — داشبورد dash می‌فرستد، admin.js underscore
+            wp_send_json_error(['message' => 'نشانه امنیتی نامعتبر (nonce) — صفحه را رفرش کنید.'], 403);
         }
 
         switch ($action) {

@@ -93,11 +93,23 @@ class Scheduler {
     }
 
     public static function ajax_heal_cron(): void {
-        check_ajax_referer('apex-omega-nonce', 'nonce');
-        if (!current_user_can('apex_manage_statistics')) wp_send_json_error(['msg'=>'دسترسی غیرمجاز']);
+        // جلوگیری از نشت HTML قبل از JSON (Warningها)
+        while (ob_get_level() > 0) { ob_end_clean(); }
+        $nonce = $_REQUEST['nonce'] ?? $_REQUEST['_ajax_nonce'] ?? '';
+        $valid = wp_verify_nonce($nonce, 'apex-omega-nonce') || wp_verify_nonce($nonce, 'apex_omega_nonce') || wp_verify_nonce($nonce, 'apex-omega-nonce');
+        // همچنین dash/underscore هر دو — سازگاری عقب‌رو
+        if (!$valid || !$nonce) {
+            wp_send_json_error(['msg'=>'نشانه امنیتی نامعتبر — صفحه را رفرش کنید (nonce).','code'=>'bad_nonce']);
+        }
+        if (!current_user_can('apex_manage_statistics')) {
+            wp_send_json_error(['msg'=>'دسترسی غیرمجاز']);
+        }
         self::ensure_cron();
         $next = wp_next_scheduled(self::CRON_HOOK);
-        if ($next) wp_send_json_success(['next'=> $next, 'human'=> get_date_from_gmt(gmdate('Y-m-d H:i:s', $next), 'Y-m-d H:i:s')]);
+        $next_c = wp_next_scheduled(self::COMMENT_HOOK);
+        if ($next) {
+            wp_send_json_success(['next'=> $next, 'next_comment'=> $next_c, 'human'=> get_date_from_gmt(gmdate('Y-m-d H:i:s', $next), 'Y-m-d H:i:s')]);
+        }
         wp_send_json_error(['msg'=>'ترمیم ناموفق — Cron سرور را بررسی کنید.']);
     }
 
