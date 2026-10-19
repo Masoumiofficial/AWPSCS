@@ -230,6 +230,25 @@ jQuery(function($){
         if((l.posts||0)>0) setTimeout(()=>location.reload(),1500);
       } else $('#apex-commentor-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
     }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('▶️ اجرای فوری (تست)'));
+<<<<<<< HEAD
+=======
+  });
+  // کامنت دستی per-post (متاباکس)
+  $(document).on('click','#apex-send-manual-comments',function(e){
+    e.preventDefault();
+    const $btn=$(this); const postId=$('#post_ID').val()||$('input[name="post_id"]').val();
+    const count=parseInt($('#apex-manual-comment-count').val())||3;
+    if(!postId){ alert('شناسه نوشته یافت نشد.'); return; }
+    if(count<1||count>60){ alert('تعداد باید 1 تا 60 باشد.'); return; }
+    $btn.prop('disabled',true).text('در حال ارسال…');
+    $('#apex-manual-comment-result').html('<div class="apex-alert success">⏳ '+count+' کامنت در حال ارسال…</div>');
+    $.post(getAjax(),{action:'apex_send_post_comments',_ajax_nonce:getNonce(),post_id:postId,count:count},function(res){
+      if(res.success){
+        $('#apex-manual-comment-result').html('<div class="apex-alert success">✅ '+res.data.inserted+' کامنت ارسال شد (درخواستی: '+res.data.requested+' — مجموع الان: '+res.data.current+'/'+res.data.max+')</div>');
+      } else {
+        $('#apex-manual-comment-result').html('<div class="apex-alert error">❌ '+(res.data.message||'خطا')+'</div>');
+      }
+    }).fail(function(xhr){ $('#apex-manual-comment-result').html('<div class="apex-alert error">❌ '+formatAjaxError(xhr)+'</div>'); }).always(function(){ $btn.prop('disabled',false).text('ارسال کامنت 🚀'); });
   });
   // rhythm — live % update
   $(document).on('input','#apex-rhythm-artist-ratio',function(){ const v=parseInt($(this).val()||85); $('#apex-rhythm-artist-val').text(v+'%'); $('#apex-rhythm-title-val').text((100-v)+'%'); });

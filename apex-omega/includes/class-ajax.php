@@ -34,6 +34,7 @@ class Ajax {
             'apex_save_autowatch',
             'apex_save_commentor',
             'apex_run_commentor_now',
+            'apex_send_post_comments',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -141,6 +142,9 @@ class Ajax {
                 break;
             case 'apex_run_commentor_now':
                 self::run_commentor_now();
+                break;
+            case 'apex_send_post_comments':
+                self::send_post_comments();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -586,5 +590,14 @@ class Ajax {
         $res = \ApexOmega\Core\CommentGuardian::run_manual();
         $last = get_option('apex_omega_commentor_last_run', []);
         wp_send_json_success(['message'=>'اجرای نگهبان کامنت انجام شد','last'=>$last,'debug'=>$res]);
+    }
+    private static function send_post_comments(): void {
+        $post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;
+        $count = isset($_POST['count']) ? (int) $_POST['count'] : 3;
+        if (!$post_id || !get_post($post_id)) wp_send_json_error(['message'=>'نوشته نامعتبر'], 400);
+        if (!current_user_can('edit_post', $post_id) && !apex_omega_user_can_manage()) wp_send_json_error(['message'=>'دسترسی ندارید'], 403);
+        $res = \ApexOmega\Core\CommentGuardian::send_for_post($post_id, $count);
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
     }
 }

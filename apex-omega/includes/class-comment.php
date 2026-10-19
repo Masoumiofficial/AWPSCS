@@ -107,7 +107,7 @@ class CommentGuardian {
         return $target;
     }
 
-    // نام ایرانی — 85% فارسی + 15% انگلیسی، با تنوع (امیر، امیررضا، amir، amir78، امیر کوچولو)
+    // نام ایرانی — 85% فارسی + 15% انگلیسی، با تنوع (امیر، امیررضا، amir، amir78، امیر)
     public static function generate_name(): array {
         // فارسی — از ویکی‌پدیا: فهرست نام‌های ایرانی + رده:نام‌های خانوادگی
         $first_fa = ['امیر','امیررضا','امیرحسین','امیرعلی','علی','رضا','حسین','محمد','محمدرضا','محمدحسین','مهدی','سجاد','سینا','آراد','آرش','آریا','آرمان','آرشام','آرشیا','آرتا','آرتین','آروین','اشکان','بابک','بهرام','بهداد','بهنام','بهزاد','بهروز','بورنا','دانیال','داریوش','احسان','عرفان','اسماعیل','فرهاد','فربد','فرزاد','فرشاد','فواد','حامد','حمید','حسن','حسام','هیراد','هومن','هادی','ایمان','جواد','کامیار','کاوه','کسری','کیوان','کیان','کیارش','کوروش','ماهان','مهیار','مانی','منوچهر','منصور','مسعود','مهران','مهرداد','مهرشاد','مهراد','میلاد','محسن','مجتبی','مرتضی','نیما','نوید','امید','پارسا','پرهام','پیام','پدرام','پژمان','پویا','پوریا','رامین','رسول','سعید','سجاد','صالح','سامان','سروش','سام','سپهر','شهاب','شاهین','شهرام','شایان','شروین','سهیل','طاها','وحید','یاسین','یوسف','یونس','زکریا','سارا','سحر','نگین','یاسمن','یاسمین','یلدا','یگانه','یسنا','زهرا','زینب','فاطمه','مریم','مهسا','میترا','مینا','مونا','نرگس','نسرین','نسترن','ندا','نگار','نیلوفر','پریسا','پارمیدا','پردیس','پگاه','ریحانه','رها','روکسانا','روژان','رزا','صدف','سمیرا','ساناز','ساره','ستاره','شادی','شقایق','شیما','شیرین','تارا','ترانه','تینا','سارینا','سوگل','سوگند','شیدا','غزل','هانیه','هدیه','نازنین','مژگان','حدیث','الهه','آتنا','آیدا','آناهیتا','باران','بهار','درسا','دینا','الناز','فائزه','هستی','کیمیا','لاله','مرجان','ملیکا','نادیا','پانته‌آ','پرنیا','رامسینا','سحر','ستایش','آوا','آرزو','آذین','آسنا','النا','الیکا','ماندانا','مینو','نوشین','پروانه','ژیلا','ژاله','هما','هنگامه','وحیده','ویدا','ناهید','نسترن','نیکی','پریا','پرستو','نگار','آیسان','آیسو','سایان','ساینا','سارینا','سلما','سحر','سحرناز','شادی','شراره','شهناز','شیوا','غزل','فاطیما','کتایون','لادن','لیلا','مهتاب','مهناز','مهسا','نازیلا','نسرین','نسیم','نیوشا','پانته‌آ','پریسا','پریا','پگاه','ترانه','تینا','حدیث','خاطره','درسا','دریا','دینا','رابعه','راضیه','رقیه','ریحانه','زهره','سارا','سحر','سحرناز','سمیه','سودابه','سوسن','سولماز','سیما','سیمین','شاپرک','شبنم','شراره','شکوفه','شیما','صبا','صدف','طاهره','عاطفه','عسل','غزل','فائزه','فرشته','فرناز','فهیمه','فیروزه','کتایون','کوثر','لادن','لیلا','مائده','محدثه','مرجان','مرضیه','مریم','مژگان','ملیحه','منا','مهتاب','مهناز','مهسا','مهشید','مونا','مونس','میترا','مینا','نادیا','نازنین','ناهید','ندا','نرگس','نگار','نگین','نیلوفر','ویدا','هانیه','هستی','هنگامه','یاسمن','یاسمین'];
@@ -122,7 +122,7 @@ class CommentGuardian {
             $l = $last_fa[array_rand($last_fa)];
             // تنوع نام کوچک: گاهی امیررضا، گاهی امیر + فاصله + رضا
             // تنوع پسوند فارسی
-            $suffixes_fa = ['', '', '', '', '', '', '', '', '', ' کوچولو']; // فقط کوچولو 10% — عزیز/جون/جان حذف شد بنابه درخواست
+            $suffixes_fa = ['', '', '', '']; // همه پسوندهای عزیز/عزیزم/جون/جان/کوچولو حذف شد — نام تمیز ایرانی
             $suffix = $suffixes_fa[array_rand($suffixes_fa)];
             // 15% عدد چسبان مثل امیر78
             $num_suffix = '';
@@ -640,6 +640,70 @@ class CommentGuardian {
             update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>$done_posts,'comments'=>$done_comments,'exec'=>$exec], false);
             error_log("[APEX Ω] Commentor: {$done_comments} comments on {$done_posts} posts (threshold {$threshold})");
         }
+    }
+
+    public static function send_for_post(int $post_id, int $requested_count): array {
+        if (!get_post($post_id)) return ['success'=>false,'message'=>'نوشته یافت نشد.'];
+        $requested_count = max(1, min(60, $requested_count));
+        $settings = self::get_settings();
+        $max_per_post = (int)$settings['max_per_post'];
+        // Check current count
+        global $wpdb;
+        $current = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $post_id));
+        $remaining = $max_per_post - $current;
+        if ($remaining <= 0) return ['success'=>false,'message'=>"این پست به سقف $max_per_post کامنت رسیده."];
+        $count = min($requested_count, $remaining);
+        // Also respect target but allow manual to exceed target up to max_per_post
+        $title = get_the_title($post_id) ?: '';
+        $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($post_id);
+        $cur_views = (int) get_post_meta($post_id, 'views', true);
+        $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($post_id);
+        $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
+        $artist_name = self::get_primary_artist($post_id);
+        if (!$artist_name) $artist_name = 'هنرمند ناشناس';
+        // Open comment_status if closed
+        if (get_post_field('comment_status', $post_id) !== 'open') {
+            wp_update_post(['ID' => $post_id, 'comment_status' => 'open']);
+        }
+        $exec = apex_omega_generate_uuid();
+        $inserted = 0;
+        for ($i=0; $i < $count; $i++) {
+            $who = self::generate_name();
+            $text = self::generate_text($post_id, $artist_name, $title, $weight, $cur_views);
+            $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 300));
+            $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
+            $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $post_id, $text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
+            if ($dup) $text = self::fallback_text($weight, $cur_views) . ' ' . mt_rand(10,99);
+            $cid = wp_insert_comment([
+                'comment_post_ID' => $post_id,
+                'comment_author' => $who['author'],
+                'comment_author_email' => $who['email'],
+                'comment_author_url' => '',
+                'comment_content' => $text,
+                'comment_type' => '',
+                'comment_parent' => 0,
+                'user_id' => 0,
+                'comment_author_IP' => self::fake_ip(),
+                'comment_agent' => 'Mozilla/5.0',
+                'comment_date' => $comment_time,
+                'comment_date_gmt' => $comment_time_gmt,
+                'comment_approved' => 1,
+            ]);
+            if ($cid && !is_wp_error($cid)) {
+                add_comment_meta($cid, '_apex_commentor', 1, true);
+                add_comment_meta($cid, '_apex_weight', $weight, true);
+                wp_update_comment_count($post_id);
+                $inserted++;
+                \ApexOmega\Core\History::log($post_id, 'comment', $current, $current+$inserted, 'manual_comment', get_current_user_id(), $exec, null, ['author'=>$who['author'],'weight'=>$weight,'requested'=>$requested_count]);
+            }
+            usleep(30000);
+        }
+        if ($inserted > 0) {
+            update_post_meta($post_id, self::META_LAST, current_time('mysql', true));
+            update_post_meta($post_id, self::META_COUNT, (int)get_post_meta($post_id, self::META_COUNT, true) + $inserted);
+            update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>1,'comments'=>$inserted,'exec'=>$exec], false);
+        }
+        return ['success'=>true,'inserted'=>$inserted,'requested'=>$requested_count,'current'=>$current+$inserted,'max'=>$max_per_post];
     }
 
     private static function get_primary_artist(int $post_id): string {
