@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.9.4
+Stable tag: 2.0.0-alpha
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,10 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.0.0-alpha =
+* Alpha: Simulator S-curve + seasonality + decay, Timeseries, Profiles, Queue (PRIORITY), REST v2 endpoints
+
 
 = 1.9.4 =
 * پرفورمنس: رفع N+1 کامنت (derived JOIN)، paging همیشه 500/batch، histogram تک‌کوئری تکمیل

@@ -90,10 +90,7 @@ class Evergreen {
             $cur_views = Adapter_Views::get_views($pid);
             if ($cur_views >= $max) continue;
             if ($cur_views < 100) $cur_views = 100; // حداقل
-            $tier = get_post_meta($pid, TierManager::META_TIER, true);
-            $mult = isset($tier_multipliers[$tier]) ? (float)$tier_multipliers[$tier] : (float)($tier_multipliers[''] ?? 1.0);
-            $rate = $base_rate * $mult;
-            // سقف تیره: اگر تیره دارد، از سقف تیره فراتر نرو (دقیق‌تر از سقف کلی)
+                // 2.0-alpha: Simulator S-curve (جایگزین فرمول خطی قدیمی)
             $tier_cap = null;
             if ($tier) {
                 $tiers = TierManager::get_tiers();
@@ -101,13 +98,24 @@ class Evergreen {
             }
             $effective_max = $tier_cap ? min($max, $tier_cap) : $max;
             if ($cur_views >= $effective_max) continue;
-            // رشد تصادفی ±30% حول rate
-            $jitter = 0.7 + (mt_rand(0,60)/100); // 0.7 - 1.3
-            $inc = max(1, (int) round($cur_views * $rate / 100 * $jitter));
-            // حرفه‌ای: برای <10K سقف 10-18 بازدید هر تیک (طبیعی، نه جهشی)
-            if ($cur_views < 10000) {
-                $inc = min($inc, mt_rand(10, 18));
-            }
+
+            // پروفایل آرتیست از جدول profiles (اگر نباشد fallback به growth پیش‌فرض)
+            $profile = ['growth' => $base_rate, 'decay' => 0.002];
+            $ageDays = 0;
+            // سن پست: از post_date_gmt
+            $postDate = get_post_field('post_date_gmt', $pid);
+            if ($postDate) $ageDays = max(0, (int) ((time() - strtotime($postDate)) / DAY_IN_SECONDS));
+            // تلاش برای یافتن پروفایل آرتیست
+            try {
+                global $wpdb;
+                $artistTerm = null;
+                // از ArtistManager وزن بگیر و پروفایل را پیدا کن
+                $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
+                // وزن 50 => growth 0.035, وزن 90 => 0.05 (پویا)
+                $profile['growth'] = 0.02 + ($weight / 100) * 0.03;
+            } catch (\Throwable $e) {}
+
+            $inc = Simulator::next_delta($cur_views, $tier ?? '', $profile, $ageDays, $base_rate);
             $new_views = $cur_views + $inc;
             if ($new_views > $effective_max) $new_views = $effective_max;
             // امتیاز هم کمی رشد کند
@@ -136,6 +144,8 @@ class Evergreen {
                 update_post_meta($pid, $detect['meta_avg'], $new_avg);
                 update_post_meta($pid, '_apex_evergreen_last', current_time('mysql', true));
                 $wpdb->query('COMMIT');
+                // 2.0-alpha: ثبت timeseries
+                try { Simulator::record($pid, 'views', (float)$new_views, 'evergreen', '5m'); } catch (\Throwable $e) {}
             } catch (\Throwable $e) {
                 $wpdb->query('ROLLBACK');
                 continue;
