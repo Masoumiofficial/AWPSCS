@@ -157,7 +157,8 @@ class TierManager {
         $views_factor = min(0.15, max(0, ($views - 10000) / 1500000 * 0.12)); // 0..0.12
         $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
         $avg = round($avg, 1);
-        // محاسبه ratings سازگار
+        // محاسبه ratings سازگار — فرمول استاندارد KKSR
+        $ratings = $best > 0 ? round($avg * $casts / $best * 5, 2) : 0;
 
         return [
             'views' => $views,
@@ -244,6 +245,7 @@ class TierManager {
      * پیش‌نمایش توزیع: بدون نوشتن در DB، فقط انتخاب و تولید مقدار
      */
     public static function preview_distribution(array $counts_per_tier, array $filters = []): array {
+        if (function_exists('set_time_limit')) @set_time_limit(90);
         $tiers = self::get_tiers();
         $tiers_by_id = [];
         foreach ($tiers as $t) $tiers_by_id[$t['id']] = $t;
@@ -342,6 +344,10 @@ class TierManager {
      * اجرای واقعی توزیع — با اسنپ‌شات، قفل هوشمند و تراکنش یکپارچه
      */
     public static function apply_distribution(array $counts_per_tier, array $filters = [], string $mode = 'overwrite'): array {
+        // حرفه‌ای 1.9.1: افزایش سقف اجرا برای 884 آهنگ — جلوگیری از Timeout HTML
+        if (function_exists('set_time_limit')) @set_time_limit(180);
+        @ini_set('max_execution_time', '180');
+        @ini_set('memory_limit', '256M');
         $preview = self::preview_distribution($counts_per_tier, $filters);
         if (empty($preview['success'])) return $preview;
 

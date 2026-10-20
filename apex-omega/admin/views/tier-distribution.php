@@ -277,7 +277,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       function apexPost(action, extra){
         var fd=new FormData(); fd.append('action',action); fd.append('_ajax_nonce',getNonce());
         for(var k in extra){ if(extra.hasOwnProperty(k)) fd.append(k, extra[k]); }
-        return fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json());
+        return fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){ return r.text().then(function(txt){ try{ return JSON.parse(txt); }catch(e){ var clean=txt.replace(/<[^>]*>/g,' ').trim().slice(0,300); throw new Error('پاسخ غیرمنتظره HTML به جای JSON — نشست منقضی یا خطای PHP: '+clean); } }); });
       }
       function qs(id){ return document.getElementById(id); }
       function collectCounts(){
@@ -425,7 +425,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
           var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any', aware=qs('apex-artist-aware')?.checked?1:0;
           var fd=new FormData(); fd.append('action','apex_preview_tier'); fd.append('_ajax_nonce',getNonce());
           for(var k in counts) fd.append('counts['+k+']', counts[k]); fd.append('category',cat); fd.append('post_type',pt); fd.append('artist_aware',aware);
-          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(function(res){
+          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){ return r.text().then(function(txt){ try{ return JSON.parse(txt); }catch(e){ throw new Error('پاسخ HTML به جای JSON (نشست منقضی/خطای PHP): '+txt.slice(0,200).replace(/<[^>]*>/g,' ').trim()); } }); }).then(function(res){
             var box=qs('apex-tier-preview-box');
             if(res.success){
               var html='<div class="apex-alert success">تعداد درخواستی: '+res.data.total_requested+' | موجود: '+res.data.total_available+'</div>';
@@ -434,7 +434,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
               html+='</table>';
               if(box) box.innerHTML=html;
             } else if(box) box.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
-          }).catch(function(err){ var box=qs('apex-tier-preview-box'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+err+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
+          }).catch(function(err){ var box=qs('apex-tier-preview-box'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+err.message+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
         });
         bindOnce('apex-apply-tier', function(btn){
           if(!confirm('این عملیات تمام آثار انتخاب‌شده را بازنویسی می‌کند (با تاریخچه + اسنپ‌شات). ادامه؟')) return;
@@ -442,7 +442,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
           var counts=collectCounts(); var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any', aware=qs('apex-artist-aware')?.checked?1:0, autoEn=qs('apex-auto-enable')?.checked?1:0;
           var fd=new FormData(); fd.append('action','apex_apply_tier'); fd.append('_ajax_nonce',getNonce());
           for(var k in counts) fd.append('counts['+k+']', counts[k]); fd.append('category',cat); fd.append('post_type',pt); fd.append('artist_aware',aware); fd.append('auto_enable',autoEn);
-          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(function(res){
+          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){ return r.text().then(function(txt){ try{ return JSON.parse(txt); }catch(e){ throw new Error('پاسخ HTML به جای JSON — خطای سرور یا Timeout: '+txt.slice(0,250).replace(/<[^>]*>/g,' ').trim()); } }); }).then(function(res){
             var box=qs('apex-tier-result');
             if(res.success){
               if(box) box.innerHTML='<div class="apex-alert success">✅ '+res.data.applied+' آهنگ توزیع شد. شناسه: '+res.data.execution_id+'</div>';
@@ -452,7 +452,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
               }
               setTimeout(()=>location.reload(),2200);
             } else if(box) box.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
-          }).catch(function(err){ var box=qs('apex-tier-result'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+err+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
+          }).catch(function(err){ var box=qs('apex-tier-result'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+(err.message||err)+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
         });
         // Undo
         bindOnce('apex-undo-tier', function(btn){
