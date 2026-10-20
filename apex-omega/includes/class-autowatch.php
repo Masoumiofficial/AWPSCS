@@ -13,13 +13,13 @@ class AutoWatch {
 
     public static function get_settings(): array {
         $defaults = [
-            'enabled' => true, // پیش‌فرض روشن — درخواست کاربر
-            'threshold' => 10000, // زیر این = تازه، نیاز به شارژ
-            'min_views' => 500,
-            'max_views' => 10000,
-            'batch' => 20, // هر تیک چند پست
-            'only_recent_days' => 60, // فقط پست‌های 60 روز اخیر (اسکریپت تازه) — 0=همه
-            'cooldown_hours' => 24, // هر پست حداکثر هر 24ساعت یک‌بار شارژ شود
+            'enabled' => true, // حرفه‌ای: روشن — پست تازه هرگز 0 نماند
+            'threshold' => 10000, // زیر این = تازه (استاندارد 10K)
+            'min_views' => 600, // حرفه‌ای: 600-9000 (طبیعی، از 500 به 600 برای اعتبار)
+            'max_views' => 9000,
+            'batch' => 22, // حرفه‌ای: 22/تیک → 3168 روزانه (تعادل بار)
+            'only_recent_days' => 45, // حرفه‌ای: 45 روز — تازه‌های اسکریپت + Evergreen برای قدیمی
+            'cooldown_hours' => 22, // حرفه‌ای: 22h به‌جای 24h — چرخش سریع‌تر
         ];
         $saved = get_option(self::OPTION, []);
         if (!is_array($saved)) $saved = [];
@@ -28,9 +28,9 @@ class AutoWatch {
         $out['threshold'] = max(1000, min(50000, (int)$out['threshold']));
         $out['min_views'] = max(100, min(10000, (int)$out['min_views']));
         $out['max_views'] = max($out['min_views']+100, min(50000, (int)$out['max_views']));
-        $out['batch'] = max(5, min(50, (int)$out['batch']));
-        $out['only_recent_days'] = max(0, min(365, (int)$out['only_recent_days']));
-        $out['cooldown_hours'] = max(1, min(168, (int)$out['cooldown_hours']));
+        $out['batch'] = max(8, min(40, (int)$out['batch']));
+        $out['only_recent_days'] = max(0, min(180, (int)$out['only_recent_days']));
+        $out['cooldown_hours'] = max(12, min(72, (int)$out['cooldown_hours']));
         return $out;
     }
 

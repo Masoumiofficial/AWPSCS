@@ -12,10 +12,10 @@ class Evergreen {
 
     public static function get_settings(): array {
         $defaults = [
-            'enabled' => false,
-            'rate_percent' => 0.04, // درصد رشد هر تیک 5دقیقه‌ای
-            'max_views' => 1500000,
-            'interval' => 300, // 5 دقیقه — با کرون apex_omega_tick همگام است
+            'enabled' => false, // حرفه‌ای: پیش‌فرض خاموش (کاربر فعال کند) — ولی rate استاندارد 0.035٪
+            'rate_percent' => 0.035, // حرفه‌ای: 0.035٪ هر 5دقیقه → ~8.5٪ روزانه (طبیعی جهانی)
+            'max_views' => 1500000, // سقف اعتبار 1.5M — استاندارد
+            'interval' => 300,
         ];
         $saved = get_option(self::OPTION, []);
         if (!is_array($saved)) $saved = [];
@@ -26,8 +26,8 @@ class Evergreen {
         $cur = self::get_settings();
         $new = [
             'enabled' => !empty($data['enabled']),
-            'rate_percent' => isset($data['rate_percent']) ? max(0.005, min(0.5, (float)$data['rate_percent'])) : $cur['rate_percent'],
-            'max_views' => isset($data['max_views']) ? max(50000, min(5000000, (int)$data['max_views'])) : $cur['max_views'],
+            'rate_percent' => isset($data['rate_percent']) ? max(0.01, min(0.3, (float)$data['rate_percent'])) : $cur['rate_percent'],
+            'max_views' => isset($data['max_views']) ? max(100000, min(2000000, (int)$data['max_views'])) : $cur['max_views'],
             'interval' => 300,
         ];
         update_option(self::OPTION, $new, false);
@@ -48,20 +48,20 @@ class Evergreen {
         $max = (int)$s['max_views'];
         // ضریب تیره: الماس سریع‌تر، تازه کندتر — طبیعی و قابل کنترل
         $tier_multipliers = apply_filters('apex_omega_evergreen_tier_multipliers', [
-            'tier_1' => 1.35, // الماس 35% سریع‌تر
-            'tier_2' => 1.22,
-            'tier_3' => 1.10,
-            'tier_4' => 1.00,
-            'tier_5' => 0.90,
-            'tier_6' => 0.78,
-            'tier_7' => 0.65, // تازه خیلی کند
-            '' => 0.95, // بدون تیره
+            'tier_1' => 1.30, // الماس 30٪ سریع‌تر (حرفه‌ای تعدیل شده)
+            'tier_2' => 1.18,
+            'tier_3' => 1.08,
+            'tier_4' => 1.00, // مرجع
+            'tier_5' => 0.88,
+            'tier_6' => 0.75,
+            'tier_7' => 0.60, // تازه کندتر — طبیعی
+            '' => 0.92,
         ]);
         // برای جلوگیری از فشار، فقط 30 پست در هر تیک (چرخشی)
         global $wpdb;
         $blog = get_current_blog_id();
         $offset = (int) get_transient("apex_evergreen_offset_{$blog}") ?: 0;
-        $batch = 30;
+        $batch = 32; // حرفه‌ای: 32/تیک → 9216 روزانه
         $ids = $wpdb->get_col($wpdb->prepare(
             "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' ORDER BY p.ID ASC LIMIT %d OFFSET %d",
             $batch, $offset
@@ -99,9 +99,9 @@ class Evergreen {
             // رشد تصادفی ±30% حول rate
             $jitter = 0.7 + (mt_rand(0,60)/100); // 0.7 - 1.3
             $inc = max(1, (int) round($cur_views * $rate / 100 * $jitter));
-            // برای پست‌های زیر 10K، میانگین نهایت 20 بازدید در هر تیک ۶ساعته — درخواست کاربر 1.8.5
+            // حرفه‌ای: برای <10K سقف 10-18 بازدید هر تیک (طبیعی، نه جهشی)
             if ($cur_views < 10000) {
-                $inc = min($inc, mt_rand(12, 25));
+                $inc = min($inc, mt_rand(10, 18));
             }
             $new_views = $cur_views + $inc;
             if ($new_views > $effective_max) $new_views = $effective_max;

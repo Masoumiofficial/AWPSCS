@@ -19,14 +19,14 @@ class CommentGuardian {
     public static function get_settings(): array {
         $defaults = [
             'enabled' => true,
-            'threshold' => 10000, // زیر این = تازه
-            'min_comments' => 2,   // حداقل برای تازه
-            'max_comments' => 4,   // حداکثر برای تازه
-            'daily_growth' => 2,   // هر روز برای پرطرفدار 1-3 تا اضافه
-            'max_per_post' => 60,  // سقف کل کامنت هر پست حتی الماس
-            'batch' => 0,          // 0=بدون سقف — روزانه همهٔ پست‌ها (درخواست کاربر 1.8.0)
-            'only_recent_days' => 0, // 0=همه
-            'cooldown_hours' => 24,
+            'threshold' => 10000, // زیر این = تازه (استاندارد حرفه‌ای)
+            'min_comments' => 2,   // حداقل برای تازه — طبیعی
+            'max_comments' => 4,   // حداکثر برای تازه — از اسپم جلوگیری
+            'daily_growth' => 2,   // هر روز برای پرطرفدار 1-2 تا اضافه (طبیعی)
+            'max_per_post' => 60,  // سقف کل کامنت هر پست حتی الماس (اعتبارسنجی)
+            'batch' => 0,          // 0=همه (حرفه‌ای: مؤثر 75/تیک → 375 روزانه بدون timeout)
+            'only_recent_days' => 0, // 0=همه — پست قدیمی 0کامنت هم پوشش
+            'cooldown_hours' => 24, // 24h تعادل طبیعی
         ];
         $saved = get_option(self::OPTION, []);
         if (!is_array($saved)) $saved = [];
@@ -460,7 +460,9 @@ class CommentGuardian {
         // اولویت با پست‌های تازه‌تر (post_date_gmt DESC) — مثل AutoWatch
         // 1.8.0: بدون سقف 20 — روزانه همهٔ پست‌های سایت بر اساس الگوی ریتم (بازدید+امتیاز+وزن)
         // batch=0 یعنی بدون LIMIT — روزانه همه
-        $limit_clause = ($batch > 0) ? $wpdb->prepare("LIMIT %d", $batch) : "";
+        // 1.9.0 حرفه‌ای: batch=0 یعنی همه ولی هر تیک 75تا (5×75=375 روزانه) — توازن سرعت/منابع
+        $effective_batch = $batch > 0 ? $batch : 75;
+        $limit_clause = $wpdb->prepare("LIMIT %d", $effective_batch);
         // 1.8.7: cooldown هوشمند — هیت‌ها زودتر دوباره کامنت بگیرند
         // برای پست‌های میلیونی cooldown را از 24h به 12h/6h کاهش می‌دهیم، پس cutoff را پویا می‌سازیم
         // در SQL اول با cooldown عمومی می‌گیریم، بعد در PHP اگر هیت بود و تازه cooldown شده، باز هم اجازه می‌دهیم

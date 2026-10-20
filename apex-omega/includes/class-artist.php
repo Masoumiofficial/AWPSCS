@@ -196,11 +196,11 @@ class ArtistManager {
 
     public static function get_rhythm_settings(): array {
         $defaults = [
-            'artist_ratio' => 0.85,
-            'title_ratio' => 0.15,
-            'unknown_threshold' => 30, // زیر این = نوپا
-            'unknown_cap' => 45,      // سقف نوپا حتی با عنوان هیت
-            'require_pair' => true,   // عنوان هیت فقط با جفت خواننده+عنوان معتبر باشد
+            'artist_ratio' => 0.84, // حرفه‌ای: 84٪ وزن خواننده + 16٪ عنوان — تعادل استاندارد جهانی
+            'title_ratio' => 0.16,
+            'unknown_threshold' => 28, // زیر این = نوپا (استاندارد 28)
+            'unknown_cap' => 42,      // سقف نوپا حتی با عنوان هیت — tier_5 (حرفه‌ای)
+            'require_pair' => true,   // عنوان هیت فقط با جفت خواننده+عنوان معتبر — ضد جهش
         ];
         $saved = get_option('apex_omega_rhythm', []);
         if (!is_array($saved)) $saved = [];
@@ -208,8 +208,8 @@ class ArtistManager {
         // نرمال‌سازی
         $out['artist_ratio'] = max(0.5, min(0.95, (float)$out['artist_ratio']));
         $out['title_ratio'] = 1 - $out['artist_ratio'];
-        $out['unknown_threshold'] = max(15, min(50, (int)$out['unknown_threshold']));
-        $out['unknown_cap'] = max(30, min(65, (int)$out['unknown_cap']));
+        $out['unknown_threshold'] = max(18, min(45, (int)$out['unknown_threshold']));
+        $out['unknown_cap'] = max(32, min(60, (int)$out['unknown_cap']));
         $out['require_pair'] = !empty($out['require_pair']);
         return $out;
     }
@@ -249,9 +249,22 @@ class ArtistManager {
         $t = mb_strtolower(trim($title));
         $pairs = apply_filters('apex_omega_hit_pairs', [
             'محسن یگانه::بهت قول میدم' => 99,
-            'معین::عاشقانه' => 85,
-            'ابی::پاییز' => 88,
-            // لیست قابل توسعه — کلید "خواننده::عنوان جزئی"
+            'محسن یگانه::قول میدم' => 98,
+            'محسن چاوشی::امیر بی گزند' => 92,
+            'محسن چاوشی::بغض' => 90,
+            'معین::عاشقانه' => 88,
+            'معین::پریچه' => 86,
+            'ابی::پاییز' => 89,
+            'ابی::خلیج فارس' => 91,
+            'اندی::لیلا' => 87,
+            'گوگوش::من آمده ام' => 93,
+            'هایده::سوغاتی' => 90,
+            'همایون شجریان::مرغ سحر' => 92,
+            'سیاوش قمیشی::فرنگیس' => 90,
+            'شادمهر عقیلی::دهاتی' => 88,
+            'احسان خواجه امیری::سلام آخر' => 85,
+            'فرهاد مهراد::مرد تنها' => 87,
+            // لیست حرفه‌ای قابل توسعه via filter apex_omega_hit_pairs — کلید "خواننده::عنوان جزئی"
         ]);
         foreach ($pairs as $key => $score) {
             $parts = explode('::', mb_strtolower($key));
@@ -276,12 +289,12 @@ class ArtistManager {
         // 1) تطابق جفت دقیق: خواننده+عنوان (بالاترین اعتبار)
         $pairs = apply_filters('apex_omega_hit_pairs', [
             'محسن یگانه::بهت قول میدم' => 99,
-            'محسن یگانه::بهت قول میدم محسن یگانه' => 99,
-            'معین::' => 90, // خواننده به تنهایی اگر هیت باشد — برای سازگاری
-            'ابی::' => 96,
-            'اندی::' => 88,
-            'گوگوش::' => 94,
-            'همایون شجریان::' => 92,
+            'محسن چاوشی::امیر بی گزند' => 92,
+            'ابی::خلیج فارس' => 91,
+            'سیاوش قمیشی::فرنگیس' => 90,
+            'گوگوش::من آمده ام' => 93,
+            'معین::عاشقانه' => 88,
+            // حرفه‌ای: فقط جفت کامل — خواننده تنها امتیاز نمی‌دهد (ضد دیتای کثیف)
         ]);
         foreach ($pairs as $pair => $score) {
             if (strpos($pair, '::') === false) continue;
@@ -307,8 +320,14 @@ class ArtistManager {
 
         // 2) کلمات عمومی عنوان (مثل "عاشقانه") — بدون زمینه خواننده اعتبار ندارد
         $generic_hits = apply_filters('apex_omega_hit_titles_generic', [
-            'عاشقانه' => 70,
+            'عاشقانه' => 68,
+            'باران' => 66,
+            'پاییز' => 70,
+            'دلتنگی' => 67,
+            'خاطره' => 65,
+            'ماه' => 64,
             'گناه' => 65,
+            'سفر' => 63,
         ]);
         foreach ($generic_hits as $phrase => $score) {
             if (mb_stripos($lower_title, mb_strtolower($phrase)) !== false) {
@@ -377,7 +396,7 @@ class ArtistManager {
         $content = $data['choices'][0]['message']['content'] ?? '';
         if (preg_match('/\d+/', $content, $m)) {
             $score = max(0,min(100,(int)$m[0]));
-            set_transient($key, $score, 12 * HOUR_IN_SECONDS);
+            set_transient($key, $score, 18 * HOUR_IN_SECONDS);
             return $score;
         }
         return null;
@@ -410,7 +429,7 @@ class ArtistManager {
         $content = $data['choices'][0]['message']['content'] ?? '';
         if (preg_match('/\d+/', $content, $m)) {
             $score = max(0,min(100,(int)$m[0]));
-            set_transient($key, $score, 12 * HOUR_IN_SECONDS);
+            set_transient($key, $score, 18 * HOUR_IN_SECONDS);
             return $score;
         }
         return null;
