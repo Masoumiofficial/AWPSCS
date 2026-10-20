@@ -350,8 +350,15 @@ class Scheduler {
         if (class_exists('\\ApexOmega\\Core\\Evergreen')) {
             try { \ApexOmega\Core\Evergreen::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Evergreen tick error: '.$e->getMessage()); }
         }
-        // 💬 نگهبان کامنت حالا هر ۶ ساعت جدا اجرا می‌شود (apex_omega_commentor_tick) — اینجا دیگر هر ۵ دقیقه صدا نزن
-        // (برای سازگاری اگر کسی دستی صدا زد، CommentGuardian خودش گیت ۶ساعته دارد)
+        // 💬 نگهبان کامنت حالا هر ۶ ساعت جدا اجرا می‌شود (apex_omega_commentor_tick) — اما fallback ایمنی هر ۵ دقیقه اگر گیت ۶ساعته جا ماند
+        if (class_exists('\\ApexOmega\\Core\\CommentGuardian') && \ApexOmega\Core\CommentGuardian::is_enabled()) {
+            try {
+                $last_ts = (int) get_option('apex_omega_commentor_last_tick_ts', 0);
+                if (!$last_ts || (time() - $last_ts >= 21600)) {
+                    \ApexOmega\Core\CommentGuardian::tick();
+                }
+            } catch (\Throwable $e) { error_log('[APEX Ω] Commentor fallback tick error: '.$e->getMessage()); }
+        }
     }
 
     /**

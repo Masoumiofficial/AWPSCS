@@ -450,7 +450,8 @@ class CommentGuardian {
         $where_recent = '';
         if ($recent_days > 0) {
             $cutoff = gmdate('Y-m-d H:i:s', time() - $recent_days * DAY_IN_SECONDS);
-            $where_recent = $wpdb->prepare(" AND p.post_date_gmt >= %s ", $cutoff);
+            // 1.8.9: پست‌های بدون کامنت حتی اگر قدیمی باشند نباید فیلتر شوند — خجالت‌آور است
+            $where_recent = $wpdb->prepare(" AND (p.post_date_gmt >= %s OR NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c0 WHERE c0.comment_post_ID = p.ID AND c0.comment_approved='1')) ", $cutoff);
         }
         // 1.8.7: برای هیت‌های میلیونی، recent_days سخت‌گیر نباش — اگر بازدید >500k حتی اگر قدیمی باشد شامل شود
         // این را در SQL جدا هندل می‌کنیم: اگر only_recent_days>0 ولی بازدید بالا باشد، اجازه بده
@@ -475,16 +476,11 @@ class CommentGuardian {
                 AND pm2.meta_key = %s
                 AND pm2.meta_value >= %s
             )
-            ORDER BY CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
+            ORDER BY (SELECT COUNT(*) FROM {$wpdb->comments} cc WHERE cc.comment_post_ID = p.ID AND cc.comment_approved='1') ASC, CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
             {$limit_clause}
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
-        if ($batch > 0) {
-            $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
-        } else {
-            // بدون LIMIT — همهٔ پست‌های due
-            $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
-        }
+        $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
         if ($verbose) echo "candidates:".count($rows)." | threshold:{$threshold} max_per:{$max_per_post} recent:{$recent_days} cooldown:{$cooldown_cutoff}\n";
         if (empty($rows)) {
             if ($verbose) {
@@ -525,7 +521,13 @@ class CommentGuardian {
         $exec = apex_omega_generate_uuid();
         $done_posts = 0;
         $done_comments = 0;
+        $tick_start = microtime(true);
         foreach ($rows as $r) {
+            // تایم‌اوت محافظ — هر تیک حداکثر 25 ثانیه تا 500 خطا ندهد
+            if (microtime(true) - $tick_start > 25) {
+                error_log("[APEX Ω] Commentor: tick timeout guard — processed $done_posts posts, breaking");
+                break;
+            }
             $pid = (int)$r['ID'];
             $cur_views = (int)$r['cur_views'];
             $title = $r['post_title'] ?: get_the_title($pid);
