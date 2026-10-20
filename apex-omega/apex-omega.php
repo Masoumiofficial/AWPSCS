@@ -58,6 +58,10 @@ require_once APEX_OMEGA_DIR . 'includes/class-rest.php';
 require_once APEX_OMEGA_DIR . 'includes/class-rest-v2.php';
 require_once APEX_OMEGA_DIR . 'includes/class-simulator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-queue-worker.php';
+require_once APEX_OMEGA_DIR . 'includes/class-cli.php';
+if (defined('WP_CLI') && WP_CLI) {
+    add_action('init', function(){ if (class_exists('\\ApexOmega\\Core\\CLI')) \ApexOmega\Core\CLI::register(); }, 20);
+}
 require_once APEX_OMEGA_DIR . 'includes/class-ajax.php';
 require_once APEX_OMEGA_DIR . 'includes/class-apex-omega.php';
 
