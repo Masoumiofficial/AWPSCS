@@ -55,8 +55,9 @@ if (!function_exists('apex_omega_encrypt')) {
             $enc = openssl_encrypt($plaintext, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
             if ($enc !== false) return 'enc1:' . base64_encode($iv . $enc);
         }
-        // fallback: base64 with simple obfuscation (not secure but better than plain)
-        return 'b64:' . base64_encode($plaintext);
+        // امن: اگر OpenSSL نیست، ذخیره نکن — plaintext هرگز (P0 SEC-05 1.9.3)
+        error_log('[APEX Ω] encrypt: OpenSSL unavailable — API key not saved securely');
+        return '';
     }
 }
 if (!function_exists('apex_omega_decrypt')) {
@@ -80,7 +81,7 @@ if (!function_exists('apex_omega_decrypt')) {
             $d = base64_decode(substr($ciphertext, 4), true);
             return $d !== false ? $d : '';
         }
-        // legacy plain text (for backward compat)
+        // legacy plain text — دیگر ذخیره نمی‌شود، فقط برای سازگاری خواندن قدیمی
         return $ciphertext;
     }
 }

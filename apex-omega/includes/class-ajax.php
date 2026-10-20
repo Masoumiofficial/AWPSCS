@@ -37,6 +37,9 @@ class Ajax {
             'apex_send_post_comments',
             'apex_commentor_diag',
             'apex_dismiss_notice',
+            'apex_start_tier_job',
+            'apex_process_tier_chunk',
+            'apex_tier_job_status',
         ];
         foreach ($actions as $a) {
             add_action('wp_ajax_' . $a, [__CLASS__, 'router']);
@@ -150,6 +153,15 @@ class Ajax {
                 break;
             case 'apex_commentor_diag':
                 self::commentor_diag();
+                break;
+            case 'apex_start_tier_job':
+                self::start_tier_job();
+                break;
+            case 'apex_process_tier_chunk':
+                self::process_tier_chunk();
+                break;
+            case 'apex_tier_job_status':
+                self::tier_job_status();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -522,7 +534,7 @@ class Ajax {
     }
     private static function export_history_csv(): void {
         $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 1000;
-        $csv = \ApexOmega\Core\Exporter::export_history_csv(min(5000,max(10,$limit)));
+        $csv = \ApexOmega\Core\Exporter::export_history_csv(min(10000,max(10,$limit))); // 1.9.3 سقف 10K
         wp_send_json_success(['csv'=>$csv,'filename'=>'apex-history-'.gmdate('Y-m-d').'.csv']);
     }
     private static function export_tiers_json(): void {
@@ -599,6 +611,35 @@ class Ajax {
     private static function commentor_diag(): void {
         $diag = \ApexOmega\Core\CommentGuardian::diag();
         wp_send_json_success($diag);
+    }
+    private static function start_tier_job(): void {
+        $counts = $_POST['counts'] ?? [];
+        if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
+        $clean=[]; foreach ((array)$counts as $k=>$v){ $k=sanitize_text_field($k); $clean[$k]=max(0,(int)$v); }
+        $filters = ['category'=>sanitize_text_field($_POST['category']??'all'),'post_type'=>sanitize_text_field($_POST['post_type']??'any'),'artist_aware'=>!empty($_POST['artist_aware'])];
+        $chunk_size = isset($_POST['chunk_size']) ? max(10,min(200,(int)$_POST['chunk_size'])) : 100;
+        // ذخیره auto_tier مثل apply_tier
+        $auto_enable=!empty($_POST['auto_enable']);
+        if($auto_enable){ update_option('apex_omega_auto_tier',['enabled'=>true,'counts'=>$clean,'filters'=>$filters,'updated_at'=>current_time('mysql',true)],false); \ApexOmega\Core\TierManager::schedule_auto(); }
+        else { $auto=get_option('apex_omega_auto_tier',[]); if(!empty($auto['enabled'])){ update_option('apex_omega_auto_tier',['enabled'=>false],false); \ApexOmega\Core\TierManager::unschedule_auto(); } }
+        $res=\ApexOmega\Core\TierManager::start_distribution_job($clean,$filters,$chunk_size);
+        if(empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
+    }
+    private static function process_tier_chunk(): void {
+        $exec=sanitize_text_field($_POST['execution_id']??'');
+        if(!$exec) wp_send_json_error(['message'=>'execution_id الزامی است'],400);
+        $chunk_size=isset($_POST['chunk_size'])? (int)$_POST['chunk_size']:0;
+        $res=\ApexOmega\Core\TierManager::process_job_chunk($exec,$chunk_size);
+        if(empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
+    }
+    private static function tier_job_status(): void {
+        $exec=sanitize_text_field($_POST['execution_id']??'');
+        if(!$exec) wp_send_json_error(['message'=>'execution_id الزامی است'],400);
+        $res=\ApexOmega\Core\TierManager::get_job_status($exec);
+        if(empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
     }
     private static function send_post_comments(): void {
         $post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;

@@ -93,8 +93,9 @@ jQuery(function($){
   });
   $(document).on('click','#apex-preset-clear',function(){ $('.apex-tier-count').val(0); $('.apex-tier-slider').val(0); updateTierTotals(); $('#apex-tier-preview-box').html('صفر شد.'); $('#apex-tier-details-box').hide(); });
 
-  // preview
+  // preview (1.9.3 FE-05: vanilla در tier-distribution.php اولویت — جلوگیری از دوبار AJAX)
   $(document).on('click','#apex-preview-tier',function(e){
+    if(document.getElementById('apex-preview-tier')?.dataset.vanilla){ return; }
     e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('در حال پیش‌نمایش…');
     const counts=collectTierCounts(); if(Object.keys(counts).length===0){ alert('حداقل یک دسته را پر کن'); $btn.prop('disabled',false).text('👁️ پیش‌نمایش'); return; }
     $.post(getAjax(),{action:'apex_preview_tier',_ajax_nonce:getNonce(),counts:counts,category:$('#apex-filter-cat').val(),post_type:$('#apex-filter-pt').val(),artist_aware:$('#apex-artist-aware').is(':checked')?1:0},function(res){
@@ -112,8 +113,9 @@ jQuery(function($){
     }).fail(function(xhr){ $('#apex-tier-preview-box').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('👁️ پیش‌نمایش'));
   });
 
-  // apply with result table
+  // apply with result table (1.9.3: اگر vanilla فعال است، jQuery handler نادیده شود)
   $(document).on('click','#apex-apply-tier',function(e){
+    if(document.getElementById('apex-apply-tier')?.dataset.vanilla){ return; }
     e.preventDefault(); if(!confirm('این عملیات تمام آثار انتخاب‌شده را بازنویسی می‌کند (با تاریخچه + اسنپ‌شات و قابل بازگردانی). ادامه؟')) return;
     const $btn=$(this); $btn.prop('disabled',true).text('در حال اعمال… (قفل هوشمند)');
     const counts=collectTierCounts();

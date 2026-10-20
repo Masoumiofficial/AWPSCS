@@ -436,34 +436,72 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
             } else if(box) box.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
           }).catch(function(err){ var box=qs('apex-tier-preview-box'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+err.message+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
         });
+
+        // 1.9.3 chunked: start job → process 100/درخواست با progress bar (COR-07)
         bindOnce('apex-apply-tier', function(btn){
           if(!confirm('این عملیات تمام آثار انتخاب‌شده را بازنویسی می‌کند (با تاریخچه + اسنپ‌شات). ادامه؟')) return;
           btn.disabled=true; var o=btn.textContent; btn.textContent='در حال اعمال…';
           var counts=collectCounts(); var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any', aware=qs('apex-artist-aware')?.checked?1:0, autoEn=qs('apex-auto-enable')?.checked?1:0;
-          var fd=new FormData(); fd.append('action','apex_apply_tier'); fd.append('_ajax_nonce',getNonce());
-          for(var k in counts) fd.append('counts['+k+']', counts[k]); fd.append('category',cat); fd.append('post_type',pt); fd.append('artist_aware',aware); fd.append('auto_enable',autoEn);
-          // 1.9.2: هندل 503 با retry و پیام فارسی واضح
-          function fetchWithRetry(fd, retries){
-            retries = retries || 1;
-            return fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){
-              if(r.status===503 && retries>0){
-                var box=qs('apex-tier-result'); if(box) box.innerHTML='<div class="apex-alert warning">⏳ سرور موقتا شلوغ است (503) — 5 ثانیه دیگر دوباره تلاش می‌شود...</div>';
-                return new Promise(function(res){ setTimeout(res,5000); }).then(function(){ return fetchWithRetry(fd, retries-1); });
-              }
-              return r.text().then(function(txt){ try{ return JSON.parse(txt); }catch(e){ var is503 = txt.indexOf('503')!==-1 || txt.indexOf('Service Unavailable')!==-1; if(is503) throw new Error('⛔ 503 Service Unavailable — سرور موقتا جواب نمی‌دهد. لطفا تعداد هر دسته را کمتر کنید (مثلا نصف) و در دو مرحله اعمال کنید، یا 1 دقیقه صبر و دوباره بزنید.'); throw new Error('پاسخ HTML به جای JSON — خطای سرور یا Timeout: '+txt.slice(0,250).replace(/<[^>]*>/g,' ').trim()); } });
-            });
+          var totalReq=Object.values(counts).reduce((a,b)=>a+parseInt(b||0),0);
+          var useChunked = totalReq > 100; // آستانه 1.9.3: >100 = job
+          var resultBox=qs('apex-tier-result');
+          if(!useChunked){
+            // single-request قدیمی برای تعداد کم (<100) — سریع
+            var fd=new FormData(); fd.append('action','apex_apply_tier'); fd.append('_ajax_nonce',getNonce());
+            for(var k in counts) fd.append('counts['+k+']', counts[k]); fd.append('category',cat); fd.append('post_type',pt); fd.append('artist_aware',aware); fd.append('auto_enable',autoEn);
+            function fetchWithRetry(fd, retries){
+              retries = retries || 1;
+              return fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){
+                if(r.status===503 && retries>0){
+                  if(resultBox) resultBox.innerHTML='<div class="apex-alert warning">⏳ سرور موقتا شلوغ است (503) — 5 ثانیه دیگر دوباره تلاش می‌شود...</div>';
+                  return new Promise(function(res){ setTimeout(res,5000); }).then(function(){ return fetchWithRetry(fd, retries-1); });
+                }
+                return r.text().then(function(txt){ try{ return JSON.parse(txt); }catch(e){ var is503 = txt.indexOf('503')!==-1 || txt.indexOf('Service Unavailable')!==-1; if(is503) throw new Error('⛔ 503 — سرور شلوغ است. روش تکه‌تکه را امتحان کن یا در دو مرحله اعمال کن.'); throw new Error('پاسخ HTML به جای JSON: '+txt.slice(0,250).replace(/<[^>]*>/g,' ').trim()); } });
+              });
+            }
+            fetchWithRetry(fd).then(function(res){
+              if(res.success){
+                if(resultBox) resultBox.innerHTML='<div class="apex-alert success">✅ '+res.data.applied+' آهنگ توزیع شد. شناسه: '+res.data.execution_id+'</div>';
+                if(res.data.details && res.data.details.length){
+                  var dbox=qs('apex-tier-details-box'); if(dbox) dbox.style.display='block';
+                  var tbody=document.querySelector('#apex-result-table tbody'); if(tbody){ tbody.innerHTML=''; res.data.details.forEach(function(d){ var tr=document.createElement('tr'); tr.innerHTML='<td>'+d.post_title+' #'+d.post_id+'</td><td>'+d.tier+'</td><td>'+d.old_views+' → '+d.new_views+'</td><td>'+d.old_casts+' → '+d.new_casts+'</td><td>'+d.old_avg+' → '+d.new_avg+'</td>'; tbody.appendChild(tr);});}
+                }
+                setTimeout(()=>location.reload(),2200);
+              } else if(resultBox) resultBox.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
+            }).catch(function(err){ if(resultBox) resultBox.innerHTML='<div class="apex-alert error">❌ '+(err.message||err)+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
+            return;
           }
-          fetchWithRetry(fd).then(function(res){
-            var box=qs('apex-tier-result');
-            if(res.success){
-              if(box) box.innerHTML='<div class="apex-alert success">✅ '+res.data.applied+' آهنگ توزیع شد. شناسه: '+res.data.execution_id+'</div>';
-              if(res.data.details && res.data.details.length){
-                var dbox=qs('apex-tier-details-box'); if(dbox) dbox.style.display='block';
-                var tbody=document.querySelector('#apex-result-table tbody'); if(tbody){ tbody.innerHTML=''; res.data.details.forEach(function(d){ var tr=document.createElement('tr'); tr.innerHTML='<td>'+d.post_title+' #'+d.post_id+'</td><td>'+d.tier+'</td><td>'+d.old_views+' → '+d.new_views+'</td><td>'+d.old_casts+' → '+d.new_casts+'</td><td>'+d.old_avg+' → '+d.new_avg+'</td>'; tbody.appendChild(tr);});}
-              }
-              setTimeout(()=>location.reload(),2200);
-            } else if(box) box.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
-          }).catch(function(err){ var box=qs('apex-tier-result'); if(box) box.innerHTML='<div class="apex-alert error">❌ '+(err.message||err)+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
+          // chunked path: create job → sequential 100chunks
+          var fd2=new FormData(); fd2.append('action','apex_start_tier_job'); fd2.append('_ajax_nonce',getNonce());
+          for(var k in counts) fd2.append('counts['+k+']', counts[k]); fd2.append('category',cat); fd2.append('post_type',pt); fd2.append('artist_aware',aware); fd2.append('auto_enable',autoEn); fd2.append('chunk_size',100);
+          fetch(getAjax(),{method:'POST',body:fd2,credentials:'same-origin'}).then(r=>r.text().then(t=>JSON.parse(t))).then(function(res){
+            if(!res.success) throw new Error(res.data.message||'خطا در ایجاد کار');
+            var exec=res.data.execution_id, total=res.data.total;
+            if(resultBox) resultBox.innerHTML='<div class="apex-alert success">🧩 کار تکه‌تکه آغاز شد — <strong>'+total+'</strong> آهنگ — هر درخواست 100 تا<br><div style="background:#e5e7eb;border-radius:999px;height:16px;margin-top:8px;overflow:hidden;"><div id="apex-job-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#10b981,#06b6d4);transition:width 0.4s;"></div></div><div id="apex-job-txt" style="margin-top:6px;font-size:13px;">0 / '+total+' (0%) — در حال پردازش...</div></div>';
+            function processChunk(){
+              var fd3=new FormData(); fd3.append('action','apex_process_tier_chunk'); fd3.append('_ajax_nonce',getNonce()); fd3.append('execution_id',exec); fd3.append('chunk_size',100);
+              return fetch(getAjax(),{method:'POST',body:fd3,credentials:'same-origin'}).then(r=>r.text().then(t=>{ try{return JSON.parse(t);}catch(e){ throw new Error('HTML به جای JSON: '+t.slice(0,200).replace(/<[^>]*>/g,' '));}})).then(function(r2){
+                if(!r2.success){
+                  var isLock = (r2.data && r2.data.message||'').indexOf('قفل')!==-1;
+                  if(isLock){ if(resultBox){ var txt=qs('apex-job-txt'); if(txt) txt.textContent='⏳ قفل — 3ثانیه دیگر...'; } return new Promise(res=>setTimeout(res,3000)).then(processChunk); }
+                  throw new Error(r2.data.message||'خطا chunk');
+                }
+                var pct=r2.data.percent||0, proc=r2.data.processed||0;
+                var bar=qs('apex-job-bar'), txt=qs('apex-job-txt');
+                if(bar) bar.style.width=pct+'%'; if(txt) txt.textContent=proc+' / '+total+' ('+pct+'%) — '+(r2.data.status==='done'?'تمام!':'در حال پردازش...');
+                if(r2.data.status==='done'){
+                  if(resultBox) resultBox.innerHTML+='<div class="apex-alert success" style="margin-top:8px;">✅ توزیع تکه‌تکه کامل شد — '+proc+' آهنگ — شناسه: '+exec+'</div>';
+                  setTimeout(()=>location.reload(),1800);
+                  return;
+                }
+                // next chunk with tiny pause to let host breathe
+                return new Promise(function(res){ setTimeout(res, 700); }).then(processChunk);
+              });
+            }
+            return processChunk();
+          }).catch(function(err){
+            if(resultBox) resultBox.innerHTML='<div class="apex-alert error">❌ خطا در کار تکه‌تکه: '+(err.message||err)+'</div>';
+          }).finally(function(){ btn.disabled=false; btn.textContent=o; });
         });
         // Undo
         bindOnce('apex-undo-tier', function(btn){

@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Database {
-    const VERSION = '1.0.0';
+    const VERSION = '1.1.0'; // 1.9.3: apex_omega_jobs برای توزیع تکه‌تکه
 
     public static function table_history(): string {
         global $wpdb;
@@ -19,6 +19,12 @@ class Database {
     public static function table_locks(): string {
         global $wpdb;
         return $wpdb->prefix . 'apex_omega_locks';
+    }
+
+
+    public static function table_jobs(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_jobs';
     }
 
     public static function table_snapshots(): string {
@@ -112,6 +118,9 @@ class Database {
             KEY expires_at_gmt (expires_at_gmt)
         ) $charset;";
 
+        $jobs = self::table_jobs();
+        $sql_jobs = "CREATE TABLE $jobs (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            execution_id VARCHAR(64) NOT NULL,\n            user_id BIGINT UNSIGNED NULL,\n            status VARCHAR(16) NOT NULL DEFAULT 'pending',\n            counts_json LONGTEXT NULL,\n            filters_json LONGTEXT NULL,\n            payload_json LONGTEXT NULL,\n            total INT UNSIGNED NOT NULL DEFAULT 0,\n            processed INT UNSIGNED NOT NULL DEFAULT 0,\n            chunk_size INT UNSIGNED NOT NULL DEFAULT 100,\n            last_error LONGTEXT NULL,\n            retry_count INT UNSIGNED NOT NULL DEFAULT 0,\n            created_at DATETIME NOT NULL,\n            created_at_gmt DATETIME NOT NULL,\n            updated_at DATETIME NOT NULL,\n            updated_at_gmt DATETIME NOT NULL,\n            completed_at DATETIME NULL,\n            completed_at_gmt DATETIME NULL,\n            PRIMARY KEY (id),\n            UNIQUE KEY execution_id (execution_id),\n            KEY status (status),\n            KEY created_at_gmt (created_at_gmt)\n        ) $charset;";
+
         $snaps = self::table_snapshots();
         $sql4 = "CREATE TABLE $snaps (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -135,6 +144,7 @@ class Database {
         dbDelta($sql1);
         dbDelta($sql2);
         dbDelta($sql3);
+        dbDelta($sql_jobs);
         dbDelta($sql4);
 
         update_option('apex_omega_db_version', self::VERSION);
@@ -144,6 +154,7 @@ class Database {
         // فقط در uninstall با تأیید صریح
         if (!$force) return;
         global $wpdb;
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_jobs());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_history());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_schedules());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_locks());
@@ -243,6 +254,63 @@ class Database {
             'restored_at' => current_time('mysql'),
             'restored_at_gmt' => current_time('mysql', true),
         ], ['id' => $id]);
+    }
+
+
+    // ─── Job (chunked distribution) — 1.9.3 COR-07 ───
+    public static function create_job(string $exec_id, int $user_id, array $counts, array $filters, array $payload, int $total, int $chunk_size = 100): int {
+        global $wpdb;
+        $table = self::table_jobs();
+        $now = current_time('mysql');
+        $now_gmt = current_time('mysql', true);
+        $wpdb->insert($table, [
+            'execution_id' => $exec_id,
+            'user_id' => $user_id ?: null,
+            'status' => 'pending',
+            'counts_json' => wp_json_encode($counts, JSON_UNESCAPED_UNICODE),
+            'filters_json' => wp_json_encode($filters, JSON_UNESCAPED_UNICODE),
+            'payload_json' => wp_json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'total' => $total,
+            'processed' => 0,
+            'chunk_size' => max(10, min(200, $chunk_size)),
+            'created_at' => $now,
+            'created_at_gmt' => $now_gmt,
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+        ]);
+        return (int) $wpdb->insert_id;
+    }
+
+    public static function get_job(string $exec_id): ?array {
+        global $wpdb;
+        $table = self::table_jobs();
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE execution_id=%s LIMIT 1", $exec_id), ARRAY_A);
+        return $row ?: null;
+    }
+
+    public static function update_job_progress(string $exec_id, int $processed, string $status = 'running', ?string $error = null): void {
+        global $wpdb;
+        $table = self::table_jobs();
+        $now = current_time('mysql');
+        $now_gmt = current_time('mysql', true);
+        $data = [
+            'processed' => $processed,
+            'status' => $status,
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+        ];
+        if ($error !== null) $data['last_error'] = $error;
+        if ($status === 'done' || $status === 'failed') {
+            $data['completed_at'] = $now;
+            $data['completed_at_gmt'] = $now_gmt;
+        }
+        $wpdb->update($table, $data, ['execution_id' => $exec_id]);
+    }
+
+    public static function increment_job_retry(string $exec_id): void {
+        global $wpdb;
+        $table = self::table_jobs();
+        $wpdb->query($wpdb->prepare("UPDATE $table SET retry_count = retry_count + 1, updated_at=%s, updated_at_gmt=%s WHERE execution_id=%s", current_time('mysql'), current_time('mysql', true), $exec_id));
     }
 
     // Single transaction per post: update views + kksr atomically
