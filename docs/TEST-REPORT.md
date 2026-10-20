@@ -33,3 +33,19 @@
 ## نتیجه کلی
 - 15/15 PASS (5 منطقی، 10 استاتیک)
 - Gate مجاز به ساخت ZIP — با هشدار PHP 7.4 spread operator
+
+---
+
+## 1.9.4 اضافی (فاز 4-5)
+
+| # | تست | نتیجه |
+|---|-----|-------|
+| T16 | کامنت N+1 → derived JOIN | ✅ SQL بدون subquery per-row |
+| T17 | paging 884 → 2 batch 500 | ✅ حافظه <2MB |
+| T18 | lock race 10 موازی → فقط 1 | ✅ INSERT IGNORE |
+| T19 | evergreen offset پس از flush | ✅ option پایدار |
+| T20 | comment tick قطع وسط → next <6h | ✅ update پس از موفقیت |
+| T21 | prune history 90روزه | ✅ daily hook + prune_history() |
+| T22 | DB auto migrate بدون reactivate | ✅ plugins_loaded version_compare |
+| T23 | snapshot is_complete فیلتر | ✅ WHERE is_complete=1 |
+
