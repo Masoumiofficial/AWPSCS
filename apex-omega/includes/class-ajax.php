@@ -409,6 +409,11 @@ class Ajax {
     }
 
     private static function preview_tier(): void {
+        // 1.9.4 SEC-03: هشدار per-post — اگر strict mode روشن باشد، لاگ کن (default: فقط هشدار)
+        if (get_option('apex_omega_strict_per_post', false)) {
+            // strict: require edit_post برای هر پست هدف — ولی preview هنوز پست خاصی ندارد، پس فقط لاگ
+            error_log('[APEX Ω] preview_tier by user '.get_current_user_id().' strict mode check');
+        }
         $counts = $_POST['counts'] ?? [];
         if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
         // ممکن است به صورت counts[tier_1]=5 بیاید

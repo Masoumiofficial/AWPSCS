@@ -60,7 +60,10 @@ class Evergreen {
         // برای جلوگیری از فشار، فقط 30 پست در هر تیک (چرخشی)
         global $wpdb;
         $blog = get_current_blog_id();
-        $offset = (int) get_transient("apex_evergreen_offset_{$blog}") ?: 0;
+        // 1.9.4 JOB-03: transient به option پایدار — transient فقط کش، option منبع حقیقت (اگر flush شد offset صفر نمی‌شود)
+        $offset = (int) get_option("apex_evergreen_offset_{$blog}", 0);
+        $offset_transient = get_transient("apex_evergreen_offset_{$blog}");
+        if ($offset_transient !== false) $offset = (int)$offset_transient; // کش تازه‌تر باشد
         $batch = 32; // حرفه‌ای: 32/تیک → 9216 روزانه
         $ids = $wpdb->get_col($wpdb->prepare(
             "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' ORDER BY p.ID ASC LIMIT %d OFFSET %d",
@@ -75,7 +78,9 @@ class Evergreen {
             ));
         }
         // offset بعدی
-        set_transient("apex_evergreen_offset_{$blog}", $offset + $batch, HOUR_IN_SECONDS);
+        $new_offset = $offset + $batch;
+        set_transient("apex_evergreen_offset_{$blog}", $new_offset, HOUR_IN_SECONDS);
+        update_option("apex_evergreen_offset_{$blog}", $new_offset, false); // پایدار
 
         if (empty($ids)) return;
         $exec = apex_omega_generate_uuid();

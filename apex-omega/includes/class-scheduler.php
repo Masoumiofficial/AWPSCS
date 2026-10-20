@@ -19,6 +19,12 @@ class Scheduler {
         if (!wp_next_scheduled('apex_omega_cleanup')) {
             wp_schedule_event(time(), 'daily', 'apex_omega_cleanup');
         }
+        // 1.9.4 JOB-05: پاکسازی تاریخچه قدیمی (90 روز) — روزانه
+        // actual prune hook
+        add_action('apex_omega_prune_history_daily', function(){ \ApexOmega\Core\Database::prune_history(90); });
+        if (!wp_next_scheduled('apex_omega_prune_history_daily')) {
+            wp_schedule_event(time() + DAY_IN_SECONDS, 'daily', 'apex_omega_prune_history_daily');
+        }
         // گزارش هفتگی
         add_action(self::WEEKLY_HOOK, [__CLASS__, 'send_weekly_report']);
         if (!wp_next_scheduled(self::WEEKLY_HOOK)) {
@@ -124,6 +130,8 @@ class Scheduler {
         if ($ts4) wp_unschedule_event($ts4, 'apex_omega_auto_tier_tick');
         $ts5 = wp_next_scheduled(self::COMMENT_HOOK);
         if ($ts5) wp_unschedule_event($ts5, self::COMMENT_HOOK);
+        $ts6 = wp_next_scheduled('apex_omega_prune_history_daily');
+        if ($ts6) wp_unschedule_event($ts6, 'apex_omega_prune_history_daily');
     }
 
     public static function send_weekly_report(): void {

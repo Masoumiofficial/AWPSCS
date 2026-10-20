@@ -216,17 +216,17 @@ class TierManager {
             ];
         }
 
-        // Paging: WP_Query with posts_per_page max 2000 per batch to avoid memory
+        // Paging: 1.9.4 COR-06: همیشه paging برای جلوگیری از مموری spike — حتی برای 884
         $limit = max(0, min(20000, $limit)); // سقف 20K — محافظ منابع
-        if ($limit <= 5000) {
+        if ($limit <= 500) {
             $args = $base_args;
             $args['posts_per_page'] = (int)$limit;
             $q = new \WP_Query($args);
             return $q->posts ?: [];
         }
-        // large limit: batch
+        // medium+large limit: batch 500 (به جای 1000) — فشار کمتر
         $collected = [];
-        $batch = 1000;
+        $batch = 500;
         $pages = (int) ceil($limit / $batch);
         for ($p=1; $p <= $pages; $p++) {
             $args = $base_args;
@@ -617,6 +617,7 @@ class TierManager {
             $pid = (int)$item['post_id'];
             $tier_id = $item['tier_id'];
             if (!get_post($pid)) { $errors[]="پست $pid یافت نشد"; continue; }
+            if (!current_user_can('edit_post', $pid) && !apex_omega_user_can_manage()) { error_log('[APEX Ω] SEC-03: user '.get_current_user_id().' tried to modify post '.$pid.' without edit_post'); if(get_option('apex_omega_strict_per_post', false)){ $errors[]="دسترسی ویرایش پست $pid ندارید"; continue; } }
             $plock = "apex_tier_{$pid}";
             if (!Database::acquire_lock($plock, 20)) { $errors[]="پست $pid قفل است — دوباره تلاش می‌شود"; continue; }
             $old_views = Adapter_Views::get_views($pid);

@@ -470,6 +470,7 @@ class CommentGuardian {
             SELECT p.ID, p.post_title, p.post_date_gmt, COALESCE(CAST(pm.meta_value AS UNSIGNED), 0) as cur_views
             FROM {$wpdb->posts} p
             LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key='views'
+            LEFT JOIN (SELECT comment_post_ID, COUNT(*) as c FROM {$wpdb->comments} WHERE comment_approved='1' GROUP BY comment_post_ID) cc ON cc.comment_post_ID = p.ID
             WHERE p.post_type='post' AND p.post_status='publish'
             {$where_recent}
             AND NOT EXISTS (
@@ -478,7 +479,7 @@ class CommentGuardian {
                 AND pm2.meta_key = %s
                 AND pm2.meta_value >= %s
             )
-            ORDER BY (SELECT COUNT(*) FROM {$wpdb->comments} cc WHERE cc.comment_post_ID = p.ID AND cc.comment_approved='1') ASC, CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
+            ORDER BY cc.c ASC, CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
             {$limit_clause}
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
@@ -491,6 +492,7 @@ class CommentGuardian {
                 $with_cooldown = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key=%s AND meta_value >= %s", self::META_LAST, $cooldown_cutoff));
                 echo "total_posts:{$total_posts} with_cooldown:{$with_cooldown} | no candidates\n";
             }
+            if (!$verbose) update_option('apex_omega_commentor_last_tick_ts', time(), false);
             return;
         }
 
@@ -643,6 +645,11 @@ class CommentGuardian {
         if ($done_posts > 0) {
             update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>$done_posts,'comments'=>$done_comments,'exec'=>$exec], false);
             error_log("[APEX Ω] Commentor: {$done_comments} comments on {$done_posts} posts (threshold {$threshold})");
+        }
+        // 1.9.4 JOB-04: تیک همیشه بعد از اتمام موفق (حتی اگر 0 post جدید) — اگر خطای 500/503 نخوردیم، گیت 6ساعته ریست
+        if (!$verbose) {
+            // فقط اگر بدون exception تا اینجا آمدیم → موفق
+            update_option('apex_omega_commentor_last_tick_ts', time(), false);
         }
     }
 

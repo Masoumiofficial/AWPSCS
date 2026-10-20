@@ -136,6 +136,7 @@ class Database {
             restored TINYINT(1) NOT NULL DEFAULT 0,
             restored_at DATETIME NULL,
             restored_at_gmt DATETIME NULL,
+            is_complete TINYINT(1) NOT NULL DEFAULT 1,
             PRIMARY KEY (id),
             KEY execution_id (execution_id),
             KEY created_at_gmt (created_at_gmt)
@@ -177,9 +178,9 @@ class Database {
         // پاکسازی قفل‌های منقضی
         $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE expires_at_gmt < %s", $now_gmt));
 
-        // تلاش برای درج
+        // تلاش برای درج — 1.9.4 JOB-02: INSERT IGNORE برای جلوگیری از race دو process همزمان (خطای PK را سایلنت کن)
         $result = $wpdb->query($wpdb->prepare(
-            "INSERT INTO $table (lock_key, locked_at, locked_at_gmt, expires_at, expires_at_gmt, owner) VALUES (%s,%s,%s,%s,%s,%s)",
+            "INSERT IGNORE INTO $table (lock_key, locked_at, locked_at_gmt, expires_at, expires_at_gmt, owner) VALUES (%s,%s,%s,%s,%s,%s)",
             $key, $now, $now_gmt, $expires, $expires_gmt, $owner
         ));
 
@@ -228,6 +229,7 @@ class Database {
             'created_at' => $now,
             'created_at_gmt' => $now_gmt,
             'restored' => 0,
+            'is_complete' => 1,
         ]);
         return (int) $wpdb->insert_id;
     }
@@ -235,7 +237,7 @@ class Database {
     public static function get_last_snapshot(): ?array {
         global $wpdb;
         $table = self::table_snapshots();
-        $row = $wpdb->get_row("SELECT * FROM $table WHERE restored=0 ORDER BY id DESC LIMIT 1", ARRAY_A);
+        $row = $wpdb->get_row("SELECT * FROM $table WHERE restored=0 AND is_complete=1 ORDER BY id DESC LIMIT 1", ARRAY_A);
         return $row ?: null;
     }
 
@@ -311,6 +313,14 @@ class Database {
         global $wpdb;
         $table = self::table_jobs();
         $wpdb->query($wpdb->prepare("UPDATE $table SET retry_count = retry_count + 1, updated_at=%s, updated_at_gmt=%s WHERE execution_id=%s", current_time('mysql'), current_time('mysql', true), $exec_id));
+    }
+
+    public static function prune_history(int $older_than_days = 90): int {
+        global $wpdb;
+        $table = self::table_history();
+        $cutoff = gmdate('Y-m-d H:i:s', time() - $older_than_days * DAY_IN_SECONDS);
+        $deleted = $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE created_at_gmt < %s LIMIT 5000", $cutoff));
+        return (int)$deleted;
     }
 
     // Single transaction per post: update views + kksr atomically
