@@ -442,7 +442,18 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
           var counts=collectCounts(); var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any', aware=qs('apex-artist-aware')?.checked?1:0, autoEn=qs('apex-auto-enable')?.checked?1:0;
           var fd=new FormData(); fd.append('action','apex_apply_tier'); fd.append('_ajax_nonce',getNonce());
           for(var k in counts) fd.append('counts['+k+']', counts[k]); fd.append('category',cat); fd.append('post_type',pt); fd.append('artist_aware',aware); fd.append('auto_enable',autoEn);
-          fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){ return r.text().then(function(txt){ try{ return JSON.parse(txt); }catch(e){ throw new Error('پاسخ HTML به جای JSON — خطای سرور یا Timeout: '+txt.slice(0,250).replace(/<[^>]*>/g,' ').trim()); } }); }).then(function(res){
+          // 1.9.2: هندل 503 با retry و پیام فارسی واضح
+          function fetchWithRetry(fd, retries){
+            retries = retries || 1;
+            return fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){
+              if(r.status===503 && retries>0){
+                var box=qs('apex-tier-result'); if(box) box.innerHTML='<div class="apex-alert warning">⏳ سرور موقتا شلوغ است (503) — 5 ثانیه دیگر دوباره تلاش می‌شود...</div>';
+                return new Promise(function(res){ setTimeout(res,5000); }).then(function(){ return fetchWithRetry(fd, retries-1); });
+              }
+              return r.text().then(function(txt){ try{ return JSON.parse(txt); }catch(e){ var is503 = txt.indexOf('503')!==-1 || txt.indexOf('Service Unavailable')!==-1; if(is503) throw new Error('⛔ 503 Service Unavailable — سرور موقتا جواب نمی‌دهد. لطفا تعداد هر دسته را کمتر کنید (مثلا نصف) و در دو مرحله اعمال کنید، یا 1 دقیقه صبر و دوباره بزنید.'); throw new Error('پاسخ HTML به جای JSON — خطای سرور یا Timeout: '+txt.slice(0,250).replace(/<[^>]*>/g,' ').trim()); } });
+            });
+          }
+          fetchWithRetry(fd).then(function(res){
             var box=qs('apex-tier-result');
             if(res.success){
               if(box) box.innerHTML='<div class="apex-alert success">✅ '+res.data.applied+' آهنگ توزیع شد. شناسه: '+res.data.execution_id+'</div>';

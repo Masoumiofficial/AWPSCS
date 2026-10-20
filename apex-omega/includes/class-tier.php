@@ -391,9 +391,16 @@ class TierManager {
         $applied = 0;
         $errors = [];
         $details = [];
+        $chunk_counter = 0;
 
         foreach ($preview['preview'] as $tier_id => $items) {
             foreach ($items as $item) {
+                // 1.9.2 حرفه‌ای: هر 100 آهنگ 0.3 ثانیه مکث برای جلوگیری از 503 Service Unavailable
+                if ($chunk_counter > 0 && $chunk_counter % 100 === 0) {
+                    usleep(300000);
+                    if (function_exists('set_time_limit')) @set_time_limit(180);
+                }
+                $chunk_counter++;
                 $pid = (int)$item['post_id'];
                 if (!get_post($pid)) { $errors[] = "پست $pid یافت نشد"; continue; }
 

@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.9.1
+Stable tag: 1.9.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,7 +57,7 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 
 == Changelog ==
 
-= 1.9.1 =
+= 1.9.2 =
 * 🧹 حذف پسوندهای عزیز/عزیزم/جون/جان/گلم از نام‌ها + ریتم جدید هر ۶ ساعت (۴ بار/روز) برای کامنت‌ها — همهٔ پست‌ها بر اساس بازدید+امتیاز، برای زیر 10K میانگین 20 بازدید (Evergreen cap) + تیک کامنت از ۵ دقیقه به ۶ ساعت با کرون جدا `apex_omega_six_hours`.
 
 = 1.8.4 =
