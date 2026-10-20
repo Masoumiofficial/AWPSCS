@@ -481,7 +481,7 @@ class CommentGuardian {
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
         $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
-        if ($verbose) echo "candidates:".count($rows)." | threshold:{$threshold} max_per:{$max_per_post} recent:{$recent_days} cooldown:{$cooldown_cutoff}\n";
+        if ($verbose) echo "candidates:".count($rows)." | threshold:{$threshold} max_per:{$max_per_post} recent:{$recent_days} cooldown:{$cooldown_cutoff} effective_batch:{$effective_batch}\n";
         if (empty($rows)) {
             if ($verbose) {
                 // دلیل یاب
@@ -541,9 +541,9 @@ class CommentGuardian {
             $target = min($target, $max_per_post);
             // تعداد فعلی کامنت‌های تأییدشده
             $current = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
-            if ($current >= $target) continue;
+            if ($current >= $target) { if ($verbose) error_log("[APEX Ω] skip pid=$pid current=$current >= target=$target views=$cur_views weight=$weight avg=$avg"); continue; }
             // اگر قبلاً خیلی کامنت دارد (مثلاً دستی)، skip
-            if ($current >= $max_per_post) continue;
+            if ($current >= $max_per_post) { if ($verbose) error_log("[APEX Ω] skip pid=$pid at max_per_post $max_per_post"); continue; }
 
             // چند تا اضافه کنیم؟ — تازه 2-3 یکباره، پرطرفدار روزانه متناسب با بازدید (میلیونی بیشتر)
             // 1.8.7: سوتی ممنوع برای هیت‌ها — اگر بازدید میلیونی ولی کامنت صفر، پر کن تا خجالت نکشی
@@ -642,6 +642,55 @@ class CommentGuardian {
             update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>$done_posts,'comments'=>$done_comments,'exec'=>$exec], false);
             error_log("[APEX Ω] Commentor: {$done_comments} comments on {$done_posts} posts (threshold {$threshold})");
         }
+    }
+
+    public static function diag(): array {
+        global $wpdb;
+        $s = self::get_settings();
+        $threshold = (int)$s['threshold'];
+        $max_per_post = (int)$s['max_per_post'];
+        $cooldown = (int)$s['cooldown_hours'] * HOUR_IN_SECONDS;
+        $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
+        $total_posts = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+        $with_comments = (int)$wpdb->get_var("SELECT COUNT(DISTINCT comment_post_ID) FROM {$wpdb->comments} WHERE comment_approved='1'");
+        $zero = $total_posts - $with_comments;
+        // Due count (same SQL as tick but without LIMIT)
+        $recent_days = (int)$s['only_recent_days'];
+        $where_recent = '';
+        if ($recent_days > 0) {
+            $cutoff = gmdate('Y-m-d H:i:s', time() - $recent_days * DAY_IN_SECONDS);
+            $where_recent = $wpdb->prepare(" AND (p.post_date_gmt >= %s OR NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c0 WHERE c0.comment_post_ID = p.ID AND c0.comment_approved='1')) ", $cutoff);
+        }
+        $sql = "
+            SELECT p.ID, COALESCE(CAST(pm.meta_value AS UNSIGNED),0) as cur_views
+            FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key='views'
+            WHERE p.post_type='post' AND p.post_status='publish'
+            {$where_recent}
+            AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->postmeta} pm2
+                WHERE pm2.post_id = p.ID
+                AND pm2.meta_key = %s
+                AND pm2.meta_value >= %s
+            )
+        ";
+        $candidates = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
+        $due = count($candidates);
+        // Sample 5 zero-comment posts with details
+        $samples = [];
+        $zero_rows = $wpdb->get_results("SELECT p.ID, p.post_title, p.post_date_gmt, COALESCE(CAST(pm.meta_value AS UNSIGNED),0) as cur_views FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='views' WHERE p.post_type='post' AND p.post_status='publish' AND NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c WHERE c.comment_post_ID=p.ID AND c.comment_approved='1') ORDER BY p.post_date_gmt DESC LIMIT 5", ARRAY_A);
+        foreach ($zero_rows as $r) {
+            $pid=(int)$r['ID'];
+            $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
+            $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
+            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg);
+            $current = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            $samples[] = ['ID'=>$pid,'title'=>mb_strimwidth($r['post_title']??'',0,40,'…'),'views'=>(int)$r['cur_views'],'weight'=>$weight,'avg'=>$avg,'target'=>$target,'current'=>$current];
+        }
+        $last_run = get_option('apex_omega_commentor_last_run', []);
+        $last_tick = (int)get_option('apex_omega_commentor_last_tick_ts', 0);
+        return ['total_posts'=>$total_posts,'with_comments'=>$with_comments,'zero'=>$zero,'due'=>$due,'candidates_sample'=>count($candidates),'samples'=>$samples,'settings'=>$s,'last_run'=>$last_run,'last_tick'=> $last_tick ? gmdate('Y-m-d H:i:s',$last_tick).' ('.(time()-$last_tick).'s ago)' : 'never','cooldown_cutoff'=>$cooldown_cutoff];
     }
 
     public static function send_for_post(int $post_id, int $requested_count): array {

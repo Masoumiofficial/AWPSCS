@@ -35,6 +35,7 @@ class Ajax {
             'apex_save_commentor',
             'apex_run_commentor_now',
             'apex_send_post_comments',
+            'apex_commentor_diag',
             'apex_dismiss_notice',
         ];
         foreach ($actions as $a) {
@@ -145,6 +146,9 @@ class Ajax {
                 break;
             case 'apex_send_post_comments':
                 self::send_post_comments();
+                break;
+            case 'apex_commentor_diag':
+                self::commentor_diag();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -590,6 +594,10 @@ class Ajax {
         $res = \ApexOmega\Core\CommentGuardian::run_manual();
         $last = get_option('apex_omega_commentor_last_run', []);
         wp_send_json_success(['message'=>'اجرای نگهبان کامنت انجام شد','last'=>$last,'debug'=>$res]);
+    }
+    private static function commentor_diag(): void {
+        $diag = \ApexOmega\Core\CommentGuardian::diag();
+        wp_send_json_success($diag);
     }
     private static function send_post_comments(): void {
         $post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;
