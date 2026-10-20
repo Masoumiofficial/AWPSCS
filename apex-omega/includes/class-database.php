@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Database {
-    const VERSION = '1.1.0'; // 1.9.3: apex_omega_jobs برای توزیع تکه‌تکه
+    const VERSION = '2.0.0-alpha'; // 2.0-alpha: timeseries+profiles+queue برای توزیع تکه‌تکه
 
     public static function table_history(): string {
         global $wpdb;
@@ -25,6 +25,22 @@ class Database {
     public static function table_jobs(): string {
         global $wpdb;
         return $wpdb->prefix . 'apex_omega_jobs';
+    }
+
+
+    public static function table_timeseries(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_timeseries';
+    }
+
+    public static function table_profiles(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_profiles';
+    }
+
+    public static function table_queue(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_queue';
     }
 
     public static function table_snapshots(): string {
@@ -142,6 +158,20 @@ class Database {
             KEY created_at_gmt (created_at_gmt)
         ) $charset;";
 
+        // --- 2.0-alpha tables ---
+        $ts = self::table_timeseries();
+        $sql_ts = "CREATE TABLE $ts (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            post_id BIGINT UNSIGNED NOT NULL,\n            metric VARCHAR(16) NOT NULL,\n            value DOUBLE NOT NULL,\n            sampled_at DATETIME NOT NULL,\n            sampled_at_gmt DATETIME NOT NULL,\n            source VARCHAR(32) NOT NULL DEFAULT 'evergreen',\n            granularity VARCHAR(8) NOT NULL DEFAULT '5m',\n            PRIMARY KEY (id),\n            KEY post_metric_time (post_id, metric, sampled_at_gmt),\n            KEY sampled_gmt (sampled_at_gmt)\n        ) $charset;";
+
+        $pf = self::table_profiles();
+        $sql_pf = "CREATE TABLE $pf (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            term_id BIGINT UNSIGNED NOT NULL,\n            artist_name VARCHAR(191) NOT NULL,\n            weight DOUBLE NOT NULL DEFAULT 50,\n            confidence DOUBLE NOT NULL DEFAULT 0.5,\n            samples INT UNSIGNED NOT NULL DEFAULT 0,\n            curve_json LONGTEXT NULL,\n            updated_at_gmt DATETIME NOT NULL,\n            PRIMARY KEY (id),\n            UNIQUE KEY term_id (term_id),\n            KEY confidence (confidence)\n        ) $charset;";
+
+        $qu = self::table_queue();
+        $sql_qu = "CREATE TABLE $qu (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            job_id VARCHAR(64) NOT NULL,\n            type VARCHAR(32) NOT NULL,\n            status VARCHAR(16) NOT NULL DEFAULT 'pending',\n            priority TINYINT NOT NULL DEFAULT 5,\n            payload_json LONGTEXT NULL,\n            attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,\n            max_attempts TINYINT UNSIGNED NOT NULL DEFAULT 3,\n            next_retry_gmt DATETIME NULL,\n            created_at_gmt DATETIME NOT NULL,\n            started_at_gmt DATETIME NULL,\n            completed_at_gmt DATETIME NULL,\n            PRIMARY KEY (id),\n            UNIQUE KEY job_id (job_id),\n            KEY status_prio (status, priority, next_retry_gmt)\n        ) $charset;";
+
+        dbDelta($sql_ts);
+        dbDelta($sql_pf);
+        dbDelta($sql_qu);
+
         dbDelta($sql1);
         dbDelta($sql2);
         dbDelta($sql3);
@@ -155,6 +185,9 @@ class Database {
         // فقط در uninstall با تأیید صریح
         if (!$force) return;
         global $wpdb;
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_queue());
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_profiles());
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_timeseries());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_jobs());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_history());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_schedules());

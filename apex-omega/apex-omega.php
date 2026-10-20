@@ -55,6 +55,8 @@ require_once APEX_OMEGA_DIR . 'includes/class-comment.php';
 require_once APEX_OMEGA_DIR . 'includes/class-activator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-deactivator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-rest.php';
+require_once APEX_OMEGA_DIR . 'includes/class-rest-v2.php';
+require_once APEX_OMEGA_DIR . 'includes/class-simulator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-ajax.php';
 require_once APEX_OMEGA_DIR . 'includes/class-apex-omega.php';
 
