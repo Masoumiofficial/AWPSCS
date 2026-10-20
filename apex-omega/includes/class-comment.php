@@ -19,14 +19,14 @@ class CommentGuardian {
     public static function get_settings(): array {
         $defaults = [
             'enabled' => true,
-            'threshold' => 10000, // زیر این = تازه
-            'min_comments' => 2,   // حداقل برای تازه
-            'max_comments' => 4,   // حداکثر برای تازه
-            'daily_growth' => 2,   // هر روز برای پرطرفدار 1-3 تا اضافه
-            'max_per_post' => 60,  // سقف کل کامنت هر پست حتی الماس
-            'batch' => 0,          // 0=بدون سقف — روزانه همهٔ پست‌ها (درخواست کاربر 1.8.0)
-            'only_recent_days' => 0, // 0=همه
-            'cooldown_hours' => 24,
+            'threshold' => 10000, // زیر این = تازه (استاندارد حرفه‌ای)
+            'min_comments' => 2,   // حداقل برای تازه — طبیعی
+            'max_comments' => 4,   // حداکثر برای تازه — از اسپم جلوگیری
+            'daily_growth' => 2,   // هر روز برای پرطرفدار 1-2 تا اضافه (طبیعی)
+            'max_per_post' => 60,  // سقف کل کامنت هر پست حتی الماس (اعتبارسنجی)
+            'batch' => 0,          // 0=همه (حرفه‌ای: مؤثر 75/تیک → 375 روزانه بدون timeout)
+            'only_recent_days' => 0, // 0=همه — پست قدیمی 0کامنت هم پوشش
+            'cooldown_hours' => 24, // 24h تعادل طبیعی
         ];
         $saved = get_option(self::OPTION, []);
         if (!is_array($saved)) $saved = [];
@@ -107,7 +107,7 @@ class CommentGuardian {
         return $target;
     }
 
-    // نام ایرانی — 85% فارسی + 15% انگلیسی، با تنوع (امیر، امیررضا، amir، amir78، امیر کوچولو)
+    // نام ایرانی — 85% فارسی + 15% انگلیسی، با تنوع (امیر، امیررضا، amir، amir78، امیر)
     public static function generate_name(): array {
         // فارسی — از ویکی‌پدیا: فهرست نام‌های ایرانی + رده:نام‌های خانوادگی
         $first_fa = ['امیر','امیررضا','امیرحسین','امیرعلی','علی','رضا','حسین','محمد','محمدرضا','محمدحسین','مهدی','سجاد','سینا','آراد','آرش','آریا','آرمان','آرشام','آرشیا','آرتا','آرتین','آروین','اشکان','بابک','بهرام','بهداد','بهنام','بهزاد','بهروز','بورنا','دانیال','داریوش','احسان','عرفان','اسماعیل','فرهاد','فربد','فرزاد','فرشاد','فواد','حامد','حمید','حسن','حسام','هیراد','هومن','هادی','ایمان','جواد','کامیار','کاوه','کسری','کیوان','کیان','کیارش','کوروش','ماهان','مهیار','مانی','منوچهر','منصور','مسعود','مهران','مهرداد','مهرشاد','مهراد','میلاد','محسن','مجتبی','مرتضی','نیما','نوید','امید','پارسا','پرهام','پیام','پدرام','پژمان','پویا','پوریا','رامین','رسول','سعید','سجاد','صالح','سامان','سروش','سام','سپهر','شهاب','شاهین','شهرام','شایان','شروین','سهیل','طاها','وحید','یاسین','یوسف','یونس','زکریا','سارا','سحر','نگین','یاسمن','یاسمین','یلدا','یگانه','یسنا','زهرا','زینب','فاطمه','مریم','مهسا','میترا','مینا','مونا','نرگس','نسرین','نسترن','ندا','نگار','نیلوفر','پریسا','پارمیدا','پردیس','پگاه','ریحانه','رها','روکسانا','روژان','رزا','صدف','سمیرا','ساناز','ساره','ستاره','شادی','شقایق','شیما','شیرین','تارا','ترانه','تینا','سارینا','سوگل','سوگند','شیدا','غزل','هانیه','هدیه','نازنین','مژگان','حدیث','الهه','آتنا','آیدا','آناهیتا','باران','بهار','درسا','دینا','الناز','فائزه','هستی','کیمیا','لاله','مرجان','ملیکا','نادیا','پانته‌آ','پرنیا','رامسینا','سحر','ستایش','آوا','آرزو','آذین','آسنا','النا','الیکا','ماندانا','مینو','نوشین','پروانه','ژیلا','ژاله','هما','هنگامه','وحیده','ویدا','ناهید','نسترن','نیکی','پریا','پرستو','نگار','آیسان','آیسو','سایان','ساینا','سارینا','سلما','سحر','سحرناز','شادی','شراره','شهناز','شیوا','غزل','فاطیما','کتایون','لادن','لیلا','مهتاب','مهناز','مهسا','نازیلا','نسرین','نسیم','نیوشا','پانته‌آ','پریسا','پریا','پگاه','ترانه','تینا','حدیث','خاطره','درسا','دریا','دینا','رابعه','راضیه','رقیه','ریحانه','زهره','سارا','سحر','سحرناز','سمیه','سودابه','سوسن','سولماز','سیما','سیمین','شاپرک','شبنم','شراره','شکوفه','شیما','صبا','صدف','طاهره','عاطفه','عسل','غزل','فائزه','فرشته','فرناز','فهیمه','فیروزه','کتایون','کوثر','لادن','لیلا','مائده','محدثه','مرجان','مرضیه','مریم','مژگان','ملیحه','منا','مهتاب','مهناز','مهسا','مهشید','مونا','مونس','میترا','مینا','نادیا','نازنین','ناهید','ندا','نرگس','نگار','نگین','نیلوفر','ویدا','هانیه','هستی','هنگامه','یاسمن','یاسمین'];
@@ -122,7 +122,7 @@ class CommentGuardian {
             $l = $last_fa[array_rand($last_fa)];
             // تنوع نام کوچک: گاهی امیررضا، گاهی امیر + فاصله + رضا
             // تنوع پسوند فارسی
-            $suffixes_fa = ['', '', '', '', '', '', '', '', '', ' کوچولو']; // فقط کوچولو 10% — عزیز/جون/جان حذف شد بنابه درخواست
+            $suffixes_fa = ['', '', '', '']; // همه پسوندهای عزیز/عزیزم/جون/جان/کوچولو حذف شد — نام تمیز ایرانی
             $suffix = $suffixes_fa[array_rand($suffixes_fa)];
             // 15% عدد چسبان مثل امیر78
             $num_suffix = '';
@@ -450,17 +450,27 @@ class CommentGuardian {
         $where_recent = '';
         if ($recent_days > 0) {
             $cutoff = gmdate('Y-m-d H:i:s', time() - $recent_days * DAY_IN_SECONDS);
-            $where_recent = $wpdb->prepare(" AND p.post_date_gmt >= %s ", $cutoff);
+            // 1.8.9: پست‌های بدون کامنت حتی اگر قدیمی باشند نباید فیلتر شوند — خجالت‌آور است
+            $where_recent = $wpdb->prepare(" AND (p.post_date_gmt >= %s OR NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c0 WHERE c0.comment_post_ID = p.ID AND c0.comment_approved='1')) ", $cutoff);
         }
+        // 1.8.7: برای هیت‌های میلیونی، recent_days سخت‌گیر نباش — اگر بازدید >500k حتی اگر قدیمی باشد شامل شود
+        // این را در SQL جدا هندل می‌کنیم: اگر only_recent_days>0 ولی بازدید بالا باشد، اجازه بده
+        // پس where_recent را برای هیت‌ها شل می‌کنیم در PHP بعداً (فعلا نگه می‌داریم اما در tick برای 657 چک ویژه داریم)
         // پیدا کردن پست‌های کاندید: همهٔ پست‌های منتشرشده که کامنت‌شان زیر سقف تیره است
         // اولویت با پست‌های تازه‌تر (post_date_gmt DESC) — مثل AutoWatch
         // 1.8.0: بدون سقف 20 — روزانه همهٔ پست‌های سایت بر اساس الگوی ریتم (بازدید+امتیاز+وزن)
         // batch=0 یعنی بدون LIMIT — روزانه همه
-        $limit_clause = ($batch > 0) ? $wpdb->prepare("LIMIT %d", $batch) : "";
+        // 1.9.0 حرفه‌ای: batch=0 یعنی همه ولی هر تیک 75تا (5×75=375 روزانه) — توازن سرعت/منابع
+        $effective_batch = $batch > 0 ? $batch : 75;
+        $limit_clause = $wpdb->prepare("LIMIT %d", $effective_batch);
+        // 1.8.7: cooldown هوشمند — هیت‌ها زودتر دوباره کامنت بگیرند
+        // برای پست‌های میلیونی cooldown را از 24h به 12h/6h کاهش می‌دهیم، پس cutoff را پویا می‌سازیم
+        // در SQL اول با cooldown عمومی می‌گیریم، بعد در PHP اگر هیت بود و تازه cooldown شده، باز هم اجازه می‌دهیم
         $sql = "
             SELECT p.ID, p.post_title, p.post_date_gmt, COALESCE(CAST(pm.meta_value AS UNSIGNED), 0) as cur_views
             FROM {$wpdb->posts} p
             LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key='views'
+            LEFT JOIN (SELECT comment_post_ID, COUNT(*) as c FROM {$wpdb->comments} WHERE comment_approved='1' GROUP BY comment_post_ID) cc ON cc.comment_post_ID = p.ID
             WHERE p.post_type='post' AND p.post_status='publish'
             {$where_recent}
             AND NOT EXISTS (
@@ -469,17 +479,12 @@ class CommentGuardian {
                 AND pm2.meta_key = %s
                 AND pm2.meta_value >= %s
             )
-            ORDER BY CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
+            ORDER BY cc.c ASC, CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
             {$limit_clause}
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
-        if ($batch > 0) {
-            $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
-        } else {
-            // بدون LIMIT — همهٔ پست‌های due
-            $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
-        }
-        if ($verbose) echo "candidates:".count($rows)." | threshold:{$threshold} max_per:{$max_per_post} recent:{$recent_days} cooldown:{$cooldown_cutoff}\n";
+        $rows = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
+        if ($verbose) echo "candidates:".count($rows)." | threshold:{$threshold} max_per:{$max_per_post} recent:{$recent_days} cooldown:{$cooldown_cutoff} effective_batch:{$effective_batch}\n";
         if (empty($rows)) {
             if ($verbose) {
                 // دلیل یاب
@@ -487,13 +492,46 @@ class CommentGuardian {
                 $with_cooldown = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key=%s AND meta_value >= %s", self::META_LAST, $cooldown_cutoff));
                 echo "total_posts:{$total_posts} with_cooldown:{$with_cooldown} | no candidates\n";
             }
+            if (!$verbose) update_option('apex_omega_commentor_last_tick_ts', time(), false);
             return;
+        }
+
+        // 1.8.7: تضمین برای هیت میلیونی با 0 کامنت — حتی اگر در cooldown باشد، وارد کن (سوتی ممنوع)
+        // اگر پست 657 (یا مشابه 1M+) به خاطر cooldown 24h جا مانده و 0 کامنت دارد، آن را دستی اضافه کن
+        if (!$verbose) {
+            // فقط یکبار چک سبک برای هیت‌های جا مانده
+            $mega_check = $wpdb->get_results($wpdb->prepare("SELECT p.ID, COALESCE(CAST(pm.meta_value AS UNSIGNED),0) as cur_views FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='views' WHERE p.post_type='post' AND p.post_status='publish' AND CAST(pm.meta_value AS UNSIGNED) >= %d ORDER BY CAST(pm.meta_value AS UNSIGNED) DESC LIMIT 20", 500000), ARRAY_A);
+            foreach ($mega_check as $mc) {
+                $mid = (int)$mc['ID'];
+                $mviews = (int)$mc['cur_views'];
+                $mcur = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $mid));
+                if ($mcur === 0 && $mviews >= 800000) {
+                    // آیا در $rows هست؟
+                    $found=false; foreach($rows as $rr) if((int)$rr['ID']===$mid){$found=true;break;}
+                    if(!$found){
+                        // اگر به خاطر cooldown فیلتر شده، به زور اضافه کن (حتی اگر به تازگی کامنت خورده، چون 0 کامنت ضایع است)
+                        $last_meta = get_post_meta($mid, self::META_LAST, true);
+                        $in_cooldown = $last_meta && $last_meta >= $cooldown_cutoff;
+                        if ($in_cooldown) {
+                            error_log("[APEX Ω] Commentor: mega-hit $mid with $mviews views has 0 comments but in cooldown — forcing include");
+                        }
+                        $title = get_the_title($mid);
+                        $rows[] = ['ID'=>$mid,'post_title'=>$title,'post_date_gmt'=>get_post_field('post_date_gmt',$mid),'cur_views'=>$mviews];
+                    }
+                }
+            }
         }
 
         $exec = apex_omega_generate_uuid();
         $done_posts = 0;
         $done_comments = 0;
+        $tick_start = microtime(true);
         foreach ($rows as $r) {
+            // تایم‌اوت محافظ — هر تیک حداکثر 25 ثانیه تا 500 خطا ندهد
+            if (microtime(true) - $tick_start > 25) {
+                error_log("[APEX Ω] Commentor: tick timeout guard — processed $done_posts posts, breaking");
+                break;
+            }
             $pid = (int)$r['ID'];
             $cur_views = (int)$r['cur_views'];
             $title = $r['post_title'] ?: get_the_title($pid);
@@ -507,18 +545,30 @@ class CommentGuardian {
             $target = min($target, $max_per_post);
             // تعداد فعلی کامنت‌های تأییدشده
             $current = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
-            if ($current >= $target) continue;
+            if ($current >= $target) { if ($verbose) error_log("[APEX Ω] skip pid=$pid current=$current >= target=$target views=$cur_views weight=$weight avg=$avg"); continue; }
             // اگر قبلاً خیلی کامنت دارد (مثلاً دستی)، skip
-            if ($current >= $max_per_post) continue;
+            if ($current >= $max_per_post) { if ($verbose) error_log("[APEX Ω] skip pid=$pid at max_per_post $max_per_post"); continue; }
 
             // چند تا اضافه کنیم؟ — تازه 2-3 یکباره، پرطرفدار روزانه متناسب با بازدید (میلیونی بیشتر)
+            // 1.8.7: سوتی ممنوع برای هیت‌ها — اگر بازدید میلیونی ولی کامنت صفر، پر کن تا خجالت نکشی
             $need = $target - $current;
-            if ($cur_views < $threshold) {
+            $is_mega_hit = ($cur_views >= 500000 && ($avg >= 4.7 || $cur_views >= 1000000));
+            $is_zero_fill = ($current === 0 && $target >= 20);
+            if ($is_zero_fill && $is_mega_hit) {
+                // پر کردن اولیه: هیت میلیونی با 0 کامنت ضایع است — یکجا 10-14 تا بگذار
+                $need = min($need, mt_rand(10, 14));
+                if ($verbose) echo "mega-fill pid=$pid views=$cur_views avg=$avg target=$target need=$need (burst)\n";
+            } elseif ($is_zero_fill && $cur_views >= 300000) {
+                $need = min($need, mt_rand(6, 9));
+            } elseif ($cur_views < $threshold) {
                 $need = min($need, mt_rand($s['min_comments'], $s['max_comments']));
             } else {
-                // مقیاس هوشمند: ملیونی روزانه 3-5، صد هزار 2-3، تازه‌پرمخاطب 1-2
-                if ($cur_views >= 500000) {
-                    $daily_scaled = max($daily_growth, 4);
+                // مقیاس هوشمند: میلیونی روزانه 3-5، صد هزار 2-3، تازه‌پرمخاطب 1-2
+                if ($cur_views >= 1000000) {
+                    $daily_scaled = max($daily_growth + 2, 6);
+                    $need = min($need, mt_rand(3, $daily_scaled));
+                } elseif ($cur_views >= 500000) {
+                    $daily_scaled = max($daily_growth + 1, 5);
                     $need = min($need, mt_rand(2, $daily_scaled));
                 } elseif ($cur_views >= 100000) {
                     $daily_scaled = max($daily_growth, 3);
@@ -527,7 +577,7 @@ class CommentGuardian {
                     $need = min($need, mt_rand(1, $daily_growth));
                 }
             }
-            $need = max(1, min(5, $need));
+            $need = max(1, min(14, $need));
 
             // اگر گفت‌وگو بسته باشد، باز کن — وگرنه کامنت تو دیتابیس هست ولی قالب نشان نمی‌دهد
             if (get_post_field('comment_status', $pid) !== 'open') {
@@ -596,6 +646,124 @@ class CommentGuardian {
             update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>$done_posts,'comments'=>$done_comments,'exec'=>$exec], false);
             error_log("[APEX Ω] Commentor: {$done_comments} comments on {$done_posts} posts (threshold {$threshold})");
         }
+        // 1.9.4 JOB-04: تیک همیشه بعد از اتمام موفق (حتی اگر 0 post جدید) — اگر خطای 500/503 نخوردیم، گیت 6ساعته ریست
+        if (!$verbose) {
+            // فقط اگر بدون exception تا اینجا آمدیم → موفق
+            update_option('apex_omega_commentor_last_tick_ts', time(), false);
+        }
+    }
+
+    public static function diag(): array {
+        global $wpdb;
+        $s = self::get_settings();
+        $threshold = (int)$s['threshold'];
+        $max_per_post = (int)$s['max_per_post'];
+        $cooldown = (int)$s['cooldown_hours'] * HOUR_IN_SECONDS;
+        $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
+        $total_posts = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+        $with_comments = (int)$wpdb->get_var("SELECT COUNT(DISTINCT comment_post_ID) FROM {$wpdb->comments} WHERE comment_approved='1'");
+        $zero = $total_posts - $with_comments;
+        // Due count (same SQL as tick but without LIMIT)
+        $recent_days = (int)$s['only_recent_days'];
+        $where_recent = '';
+        if ($recent_days > 0) {
+            $cutoff = gmdate('Y-m-d H:i:s', time() - $recent_days * DAY_IN_SECONDS);
+            $where_recent = $wpdb->prepare(" AND (p.post_date_gmt >= %s OR NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c0 WHERE c0.comment_post_ID = p.ID AND c0.comment_approved='1')) ", $cutoff);
+        }
+        $sql = "
+            SELECT p.ID, COALESCE(CAST(pm.meta_value AS UNSIGNED),0) as cur_views
+            FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key='views'
+            WHERE p.post_type='post' AND p.post_status='publish'
+            {$where_recent}
+            AND NOT EXISTS (
+                SELECT 1 FROM {$wpdb->postmeta} pm2
+                WHERE pm2.post_id = p.ID
+                AND pm2.meta_key = %s
+                AND pm2.meta_value >= %s
+            )
+        ";
+        $candidates = $wpdb->get_results($wpdb->prepare($sql, self::META_LAST, $cooldown_cutoff), ARRAY_A);
+        $due = count($candidates);
+        // Sample 5 zero-comment posts with details
+        $samples = [];
+        $zero_rows = $wpdb->get_results("SELECT p.ID, p.post_title, p.post_date_gmt, COALESCE(CAST(pm.meta_value AS UNSIGNED),0) as cur_views FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='views' WHERE p.post_type='post' AND p.post_status='publish' AND NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c WHERE c.comment_post_ID=p.ID AND c.comment_approved='1') ORDER BY p.post_date_gmt DESC LIMIT 5", ARRAY_A);
+        foreach ($zero_rows as $r) {
+            $pid=(int)$r['ID'];
+            $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
+            $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
+            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg);
+            $current = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            $samples[] = ['ID'=>$pid,'title'=>mb_strimwidth($r['post_title']??'',0,40,'…'),'views'=>(int)$r['cur_views'],'weight'=>$weight,'avg'=>$avg,'target'=>$target,'current'=>$current];
+        }
+        $last_run = get_option('apex_omega_commentor_last_run', []);
+        $last_tick = (int)get_option('apex_omega_commentor_last_tick_ts', 0);
+        return ['total_posts'=>$total_posts,'with_comments'=>$with_comments,'zero'=>$zero,'due'=>$due,'candidates_sample'=>count($candidates),'samples'=>$samples,'settings'=>$s,'last_run'=>$last_run,'last_tick'=> $last_tick ? gmdate('Y-m-d H:i:s',$last_tick).' ('.(time()-$last_tick).'s ago)' : 'never','cooldown_cutoff'=>$cooldown_cutoff];
+    }
+
+    public static function send_for_post(int $post_id, int $requested_count): array {
+        if (!get_post($post_id)) return ['success'=>false,'message'=>'نوشته یافت نشد.'];
+        $requested_count = max(1, min(60, $requested_count));
+        $settings = self::get_settings();
+        $max_per_post = (int)$settings['max_per_post'];
+        // Check current count
+        global $wpdb;
+        $current = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $post_id));
+        $remaining = $max_per_post - $current;
+        if ($remaining <= 0) return ['success'=>false,'message'=>"این پست به سقف $max_per_post کامنت رسیده."];
+        $count = min($requested_count, $remaining);
+        // Also respect target but allow manual to exceed target up to max_per_post
+        $title = get_the_title($post_id) ?: '';
+        $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($post_id);
+        $cur_views = (int) get_post_meta($post_id, 'views', true);
+        $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($post_id);
+        $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
+        $artist_name = self::get_primary_artist($post_id);
+        if (!$artist_name) $artist_name = 'هنرمند ناشناس';
+        // Open comment_status if closed
+        if (get_post_field('comment_status', $post_id) !== 'open') {
+            wp_update_post(['ID' => $post_id, 'comment_status' => 'open']);
+        }
+        $exec = apex_omega_generate_uuid();
+        $inserted = 0;
+        for ($i=0; $i < $count; $i++) {
+            $who = self::generate_name();
+            $text = self::generate_text($post_id, $artist_name, $title, $weight, $cur_views);
+            $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 300));
+            $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
+            $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $post_id, $text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
+            if ($dup) $text = self::fallback_text($weight, $cur_views) . ' ' . mt_rand(10,99);
+            $cid = wp_insert_comment([
+                'comment_post_ID' => $post_id,
+                'comment_author' => $who['author'],
+                'comment_author_email' => $who['email'],
+                'comment_author_url' => '',
+                'comment_content' => $text,
+                'comment_type' => '',
+                'comment_parent' => 0,
+                'user_id' => 0,
+                'comment_author_IP' => self::fake_ip(),
+                'comment_agent' => 'Mozilla/5.0',
+                'comment_date' => $comment_time,
+                'comment_date_gmt' => $comment_time_gmt,
+                'comment_approved' => 1,
+            ]);
+            if ($cid && !is_wp_error($cid)) {
+                add_comment_meta($cid, '_apex_commentor', 1, true);
+                add_comment_meta($cid, '_apex_weight', $weight, true);
+                wp_update_comment_count($post_id);
+                $inserted++;
+                \ApexOmega\Core\History::log($post_id, 'comment', $current, $current+$inserted, 'manual_comment', get_current_user_id(), $exec, null, ['author'=>$who['author'],'weight'=>$weight,'requested'=>$requested_count]);
+            }
+            usleep(30000);
+        }
+        if ($inserted > 0) {
+            update_post_meta($post_id, self::META_LAST, current_time('mysql', true));
+            update_post_meta($post_id, self::META_COUNT, (int)get_post_meta($post_id, self::META_COUNT, true) + $inserted);
+            update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>1,'comments'=>$inserted,'exec'=>$exec], false);
+        }
+        return ['success'=>true,'inserted'=>$inserted,'requested'=>$requested_count,'current'=>$current+$inserted,'max'=>$max_per_post];
     }
 
     private static function get_primary_artist(int $post_id): string {

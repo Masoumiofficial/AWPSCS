@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Database {
-    const VERSION = '1.0.0';
+    const VERSION = '2.0.0-alpha'; // 2.0-alpha: timeseries+profiles+queue برای توزیع تکه‌تکه
 
     public static function table_history(): string {
         global $wpdb;
@@ -19,6 +19,28 @@ class Database {
     public static function table_locks(): string {
         global $wpdb;
         return $wpdb->prefix . 'apex_omega_locks';
+    }
+
+
+    public static function table_jobs(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_jobs';
+    }
+
+
+    public static function table_timeseries(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_timeseries';
+    }
+
+    public static function table_profiles(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_profiles';
+    }
+
+    public static function table_queue(): string {
+        global $wpdb;
+        return $wpdb->prefix . 'apex_omega_queue';
     }
 
     public static function table_snapshots(): string {
@@ -112,6 +134,9 @@ class Database {
             KEY expires_at_gmt (expires_at_gmt)
         ) $charset;";
 
+        $jobs = self::table_jobs();
+        $sql_jobs = "CREATE TABLE $jobs (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            execution_id VARCHAR(64) NOT NULL,\n            user_id BIGINT UNSIGNED NULL,\n            status VARCHAR(16) NOT NULL DEFAULT 'pending',\n            counts_json LONGTEXT NULL,\n            filters_json LONGTEXT NULL,\n            payload_json LONGTEXT NULL,\n            total INT UNSIGNED NOT NULL DEFAULT 0,\n            processed INT UNSIGNED NOT NULL DEFAULT 0,\n            chunk_size INT UNSIGNED NOT NULL DEFAULT 100,\n            last_error LONGTEXT NULL,\n            retry_count INT UNSIGNED NOT NULL DEFAULT 0,\n            created_at DATETIME NOT NULL,\n            created_at_gmt DATETIME NOT NULL,\n            updated_at DATETIME NOT NULL,\n            updated_at_gmt DATETIME NOT NULL,\n            completed_at DATETIME NULL,\n            completed_at_gmt DATETIME NULL,\n            PRIMARY KEY (id),\n            UNIQUE KEY execution_id (execution_id),\n            KEY status (status),\n            KEY created_at_gmt (created_at_gmt)\n        ) $charset;";
+
         $snaps = self::table_snapshots();
         $sql4 = "CREATE TABLE $snaps (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -127,14 +152,30 @@ class Database {
             restored TINYINT(1) NOT NULL DEFAULT 0,
             restored_at DATETIME NULL,
             restored_at_gmt DATETIME NULL,
+            is_complete TINYINT(1) NOT NULL DEFAULT 1,
             PRIMARY KEY (id),
             KEY execution_id (execution_id),
             KEY created_at_gmt (created_at_gmt)
         ) $charset;";
 
+        // --- 2.0-alpha tables ---
+        $ts = self::table_timeseries();
+        $sql_ts = "CREATE TABLE $ts (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            post_id BIGINT UNSIGNED NOT NULL,\n            metric VARCHAR(16) NOT NULL,\n            value DOUBLE NOT NULL,\n            sampled_at DATETIME NOT NULL,\n            sampled_at_gmt DATETIME NOT NULL,\n            source VARCHAR(32) NOT NULL DEFAULT 'evergreen',\n            granularity VARCHAR(8) NOT NULL DEFAULT '5m',\n            PRIMARY KEY (id),\n            KEY post_metric_time (post_id, metric, sampled_at_gmt),\n            KEY sampled_gmt (sampled_at_gmt)\n        ) $charset;";
+
+        $pf = self::table_profiles();
+        $sql_pf = "CREATE TABLE $pf (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            term_id BIGINT UNSIGNED NOT NULL,\n            artist_name VARCHAR(191) NOT NULL,\n            weight DOUBLE NOT NULL DEFAULT 50,\n            confidence DOUBLE NOT NULL DEFAULT 0.5,\n            samples INT UNSIGNED NOT NULL DEFAULT 0,\n            curve_json LONGTEXT NULL,\n            updated_at_gmt DATETIME NOT NULL,\n            PRIMARY KEY (id),\n            UNIQUE KEY term_id (term_id),\n            KEY confidence (confidence)\n        ) $charset;";
+
+        $qu = self::table_queue();
+        $sql_qu = "CREATE TABLE $qu (\n            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n            job_id VARCHAR(64) NOT NULL,\n            type VARCHAR(32) NOT NULL,\n            status VARCHAR(16) NOT NULL DEFAULT 'pending',\n            priority TINYINT NOT NULL DEFAULT 5,\n            payload_json LONGTEXT NULL,\n            attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,\n            max_attempts TINYINT UNSIGNED NOT NULL DEFAULT 3,\n            next_retry_gmt DATETIME NULL,\n            created_at_gmt DATETIME NOT NULL,\n            started_at_gmt DATETIME NULL,\n            completed_at_gmt DATETIME NULL,\n            PRIMARY KEY (id),\n            UNIQUE KEY job_id (job_id),\n            KEY status_prio (status, priority, next_retry_gmt)\n        ) $charset;";
+
+        dbDelta($sql_ts);
+        dbDelta($sql_pf);
+        dbDelta($sql_qu);
+
         dbDelta($sql1);
         dbDelta($sql2);
         dbDelta($sql3);
+        dbDelta($sql_jobs);
         dbDelta($sql4);
 
         update_option('apex_omega_db_version', self::VERSION);
@@ -144,6 +185,10 @@ class Database {
         // فقط در uninstall با تأیید صریح
         if (!$force) return;
         global $wpdb;
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_queue());
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_profiles());
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_timeseries());
+        $wpdb->query("DROP TABLE IF EXISTS " . self::table_jobs());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_history());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_schedules());
         $wpdb->query("DROP TABLE IF EXISTS " . self::table_locks());
@@ -166,9 +211,9 @@ class Database {
         // پاکسازی قفل‌های منقضی
         $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE expires_at_gmt < %s", $now_gmt));
 
-        // تلاش برای درج
+        // تلاش برای درج — 1.9.4 JOB-02: INSERT IGNORE برای جلوگیری از race دو process همزمان (خطای PK را سایلنت کن)
         $result = $wpdb->query($wpdb->prepare(
-            "INSERT INTO $table (lock_key, locked_at, locked_at_gmt, expires_at, expires_at_gmt, owner) VALUES (%s,%s,%s,%s,%s,%s)",
+            "INSERT IGNORE INTO $table (lock_key, locked_at, locked_at_gmt, expires_at, expires_at_gmt, owner) VALUES (%s,%s,%s,%s,%s,%s)",
             $key, $now, $now_gmt, $expires, $expires_gmt, $owner
         ));
 
@@ -217,6 +262,7 @@ class Database {
             'created_at' => $now,
             'created_at_gmt' => $now_gmt,
             'restored' => 0,
+            'is_complete' => 1,
         ]);
         return (int) $wpdb->insert_id;
     }
@@ -224,7 +270,7 @@ class Database {
     public static function get_last_snapshot(): ?array {
         global $wpdb;
         $table = self::table_snapshots();
-        $row = $wpdb->get_row("SELECT * FROM $table WHERE restored=0 ORDER BY id DESC LIMIT 1", ARRAY_A);
+        $row = $wpdb->get_row("SELECT * FROM $table WHERE restored=0 AND is_complete=1 ORDER BY id DESC LIMIT 1", ARRAY_A);
         return $row ?: null;
     }
 
@@ -243,6 +289,71 @@ class Database {
             'restored_at' => current_time('mysql'),
             'restored_at_gmt' => current_time('mysql', true),
         ], ['id' => $id]);
+    }
+
+
+    // ─── Job (chunked distribution) — 1.9.3 COR-07 ───
+    public static function create_job(string $exec_id, int $user_id, array $counts, array $filters, array $payload, int $total, int $chunk_size = 100): int {
+        global $wpdb;
+        $table = self::table_jobs();
+        $now = current_time('mysql');
+        $now_gmt = current_time('mysql', true);
+        $wpdb->insert($table, [
+            'execution_id' => $exec_id,
+            'user_id' => $user_id ?: null,
+            'status' => 'pending',
+            'counts_json' => wp_json_encode($counts, JSON_UNESCAPED_UNICODE),
+            'filters_json' => wp_json_encode($filters, JSON_UNESCAPED_UNICODE),
+            'payload_json' => wp_json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'total' => $total,
+            'processed' => 0,
+            'chunk_size' => max(10, min(200, $chunk_size)),
+            'created_at' => $now,
+            'created_at_gmt' => $now_gmt,
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+        ]);
+        return (int) $wpdb->insert_id;
+    }
+
+    public static function get_job(string $exec_id): ?array {
+        global $wpdb;
+        $table = self::table_jobs();
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE execution_id=%s LIMIT 1", $exec_id), ARRAY_A);
+        return $row ?: null;
+    }
+
+    public static function update_job_progress(string $exec_id, int $processed, string $status = 'running', ?string $error = null): void {
+        global $wpdb;
+        $table = self::table_jobs();
+        $now = current_time('mysql');
+        $now_gmt = current_time('mysql', true);
+        $data = [
+            'processed' => $processed,
+            'status' => $status,
+            'updated_at' => $now,
+            'updated_at_gmt' => $now_gmt,
+        ];
+        if ($error !== null) $data['last_error'] = $error;
+        if ($status === 'done' || $status === 'failed') {
+            $data['completed_at'] = $now;
+            $data['completed_at_gmt'] = $now_gmt;
+        }
+        $wpdb->update($table, $data, ['execution_id' => $exec_id]);
+    }
+
+    public static function increment_job_retry(string $exec_id): void {
+        global $wpdb;
+        $table = self::table_jobs();
+        $wpdb->query($wpdb->prepare("UPDATE $table SET retry_count = retry_count + 1, updated_at=%s, updated_at_gmt=%s WHERE execution_id=%s", current_time('mysql'), current_time('mysql', true), $exec_id));
+    }
+
+    public static function prune_history(int $older_than_days = 90): int {
+        global $wpdb;
+        $table = self::table_history();
+        $cutoff = gmdate('Y-m-d H:i:s', time() - $older_than_days * DAY_IN_SECONDS);
+        $deleted = $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE created_at_gmt < %s LIMIT 5000", $cutoff));
+        return (int)$deleted;
     }
 
     // Single transaction per post: update views + kksr atomically

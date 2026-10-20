@@ -3,7 +3,7 @@
  * Plugin Name:       APEX Ω — Advanced WordPress Statistics Control System
  * Plugin URI:        https://etehadwp.com/plugins/apex-omega
  * Description:       مدیریت دقیق، امن و زمان‌بندی‌شده آمار بازدید، امتیاز ستاره‌ای و آراء آهنگ‌ها با سازگاری کامل با kk Star Ratings. کنترل نوسان، تاریخچه کامل و بازگردانی هوشمند.
- * Version:           1.8.5
+ * Version:           2.0.0-beta
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            اتحاد وردپرس | EtehadWP
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('APEX_OMEGA_VERSION', '1.8.5');
+define('APEX_OMEGA_VERSION', '2.0.0-beta');
 define('APEX_OMEGA_FILE', __FILE__);
 define('APEX_OMEGA_DIR', plugin_dir_path(__FILE__));
 define('APEX_OMEGA_URL', plugin_dir_url(__FILE__));
@@ -55,6 +55,13 @@ require_once APEX_OMEGA_DIR . 'includes/class-comment.php';
 require_once APEX_OMEGA_DIR . 'includes/class-activator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-deactivator.php';
 require_once APEX_OMEGA_DIR . 'includes/class-rest.php';
+require_once APEX_OMEGA_DIR . 'includes/class-rest-v2.php';
+require_once APEX_OMEGA_DIR . 'includes/class-simulator.php';
+require_once APEX_OMEGA_DIR . 'includes/class-queue-worker.php';
+require_once APEX_OMEGA_DIR . 'includes/class-cli.php';
+if (defined('WP_CLI') && WP_CLI) {
+    add_action('init', function(){ if (class_exists('\\ApexOmega\\Core\\CLI')) \ApexOmega\Core\CLI::register(); }, 20);
+}
 require_once APEX_OMEGA_DIR . 'includes/class-ajax.php';
 require_once APEX_OMEGA_DIR . 'includes/class-apex-omega.php';
 
@@ -81,7 +88,14 @@ register_uninstall_hook(__FILE__, ['\ApexOmega\Core\Activator', 'uninstall']);
 add_action('plugins_loaded', function () {
     load_plugin_textdomain('apex-omega', false, dirname(APEX_OMEGA_BASENAME) . '/languages');
     apex_omega()->init();
-    // مهاجرت 1.3.1 → 1.8.5: سقف 10M → 1.5M + پاکسازی حالت ساده/حرفه‌ای منسوخ + فعال‌سازی نگهبان خودکار
+    // 1.9.4: مهاجرت DB خودکار بدون نیاز به reactivate (jobs + is_complete)
+    add_action('init', function() {
+        $dbv = get_option('apex_omega_db_version', '0');
+        if (version_compare($dbv, \ApexOmega\Core\Database::VERSION, '<')) {
+            \ApexOmega\Core\Database::create_tables();
+        }
+    }, 15);
+    // مهاجرت 1.3.1 → 1.9.3: سقف 10M → 1.5M + پاکسازی حالت ساده/حرفه‌ای منسوخ + فعال‌سازی نگهبان خودکار
     add_action('init', function() {
         $stored = get_option(\ApexOmega\Core\TierManager::OPTION_TIERS, null);
         if (is_array($stored) && !empty($stored)) {

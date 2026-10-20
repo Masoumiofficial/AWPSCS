@@ -32,10 +32,12 @@ class Analytics {
             '900K-1.5M'=> [900001,1500000],
             '1.5M+'  => [1500001, 1000000000],
         ];
-        $out = [];
-        foreach ($buckets as $label=>$range) {
-            $cnt = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key='views' AND CAST(meta_value AS UNSIGNED) BETWEEN %d AND %d", $range[0], $range[1]));
-            $out[$label] = $cnt;
+        // 1.9.3 PERF-02: یک کوئری به جای 8 — PHP bucketing
+        $vals = $wpdb->get_col("SELECT CAST(meta_value AS UNSIGNED) FROM {$wpdb->postmeta} WHERE meta_key='views'");
+        $out = array_fill_keys(array_keys($buckets), 0);
+        foreach ($vals as $v) {
+            $v=(int)$v;
+            foreach ($buckets as $label=>$range) { if($v >= $range[0] && $v <= $range[1]){ $out[$label]++; break; } }
         }
         return $out;
     }
@@ -60,12 +62,18 @@ class Analytics {
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare("SELECT p.ID, p.post_title, CAST(pm.meta_value AS UNSIGNED) as views FROM {$wpdb->posts} p JOIN {$wpdb->postmeta} pm ON pm.post_id=p.ID AND pm.meta_key='views' WHERE p.post_type='post' AND p.post_status='publish' ORDER BY views DESC LIMIT %d", $limit), ARRAY_A);
         if (!$rows) return [];
-        // add tier & kksr
+        // 1.9.3 PERF-03: batch meta để جلوگیری از N+1
+        $ids = array_column($rows, 'ID');
+        global $wpdb;
+        $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+        $meta_rows = $wpdb->get_results($wpdb->prepare("SELECT post_id, meta_key, meta_value FROM {$wpdb->postmeta} WHERE post_id IN ($placeholders) AND meta_key IN ('_apex_tier','_kksr_casts','_kksr_avg','_kksr_ratings','kksr_casts','kksr_avg')", ...$ids), ARRAY_A);
+        $meta_map=[]; foreach($meta_rows as $mr){ $mid=(int)$mr['post_id']; $meta_map[$mid][$mr['meta_key']]=$mr['meta_value']; }
         foreach ($rows as &$r) {
-            $r['tier'] = get_post_meta($r['ID'], TierManager::META_TIER, true);
-            $st = Adapter_KKSR::get_stats((int)$r['ID']);
-            $r['casts'] = $st['casts'];
-            $r['avg'] = $st['avg'];
+            $mid=(int)$r['ID'];
+            $r['tier'] = $meta_map[$mid][TierManager::META_TIER] ?? '';
+            // fallback to get_stats logic but via cached map
+            $r['casts'] = (int)($meta_map[$mid]['_kksr_casts'] ?? $meta_map[$mid]['kksr_casts'] ?? 0);
+            $r['avg'] = (float)($meta_map[$mid]['_kksr_avg'] ?? $meta_map[$mid]['kksr_avg'] ?? 0);
         }
         return $rows;
     }

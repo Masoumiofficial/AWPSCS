@@ -52,6 +52,7 @@ class Exporter {
 
     // صادر کردن تاریخچه به CSV (1000 ردیف آخر)
     public static function export_history_csv(int $limit=1000): string {
+        $limit = max(10, min(10000, $limit)); // 1.9.3 PERF-06: سقف 10K نه 5K نامحدود
         $rows = History::get_all_recent($limit);
         $out = "id,post_id,title,field_type,old_value,new_value,delta,source,user_id,execution_id,created_at_gmt\n";
         foreach ($rows as $r) {

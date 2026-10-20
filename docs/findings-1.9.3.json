@@ -1,0 +1,76 @@
+{
+  "version": "1.9.3",
+  "date": "2026-10-20",
+  "findings": [
+    {
+      "id": "SEC-05",
+      "severity": "P0",
+      "status": "fixed",
+      "file": "includes/helpers.php",
+      "line": 58,
+      "evidence": "fallback b64 removed",
+      "fix": "return '' + error_log",
+      "test": "T03"
+    },
+    {
+      "id": "COR-07",
+      "severity": "P1",
+      "status": "fixed",
+      "file": "includes/class-tier.php",
+      "line": 540,
+      "evidence": "single 884 writes 503",
+      "fix": "start/process/status Job 100/chunk",
+      "test": "T05"
+    },
+    {
+      "id": "PERF-02",
+      "severity": "P1",
+      "status": "fixed",
+      "file": "includes/class-analytics.php",
+      "line": 20,
+      "evidence": "8 queries histogram",
+      "fix": "get_col + PHP bucket",
+      "test": "T09"
+    },
+    {
+      "id": "PERF-03",
+      "severity": "P1",
+      "status": "fixed",
+      "file": "includes/class-analytics.php",
+      "line": 65,
+      "evidence": "N+1 top_posts",
+      "fix": "batch postmeta IN",
+      "test": "T09"
+    },
+    {
+      "id": "COR-06",
+      "severity": "P1",
+      "status": "fixed",
+      "file": "includes/class-tier.php",
+      "line": 165,
+      "evidence": "orderby date unstable",
+      "fix": "date ID",
+      "test": "T06"
+    },
+    {
+      "id": "FE-05",
+      "severity": "P1",
+      "status": "fixed",
+      "file": "admin/js/admin.js",
+      "line": 96,
+      "evidence": "dual vanilla+jQuery handler",
+      "fix": "dataset.vanilla guard",
+      "test": "T12"
+    },
+    {
+      "id": "PERF-06",
+      "severity": "P2",
+      "status": "fixed",
+      "file": "includes/class-export.php",
+      "line": 38,
+      "evidence": "limit 5000 uncapped mem",
+      "fix": "min 10K",
+      "test": "T10"
+    }
+  ]
+}

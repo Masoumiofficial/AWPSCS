@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.8.5
+Stable tag: 2.0.0-beta
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,7 +57,23 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 
 == Changelog ==
 
-= 1.8.5 =
+= 2.0.0-beta =
+* Beta: SEC-02 sanitize nonce, PERF-02 cursor pagination (ID>last_id) برای evergreen, FE-04 mobile 360px, React build واقعی 22KB (vite), Queue unification (tier_distribution → apex_omega_queue)
+
+
+= 2.0.0-alpha =
+* Alpha: Simulator S-curve + seasonality + decay, Timeseries, Profiles, Queue (PRIORITY), REST v2 endpoints
+
+
+= 1.9.4 =
+* پرفورمنس: رفع N+1 کامنت (derived JOIN)، paging همیشه 500/batch، histogram تک‌کوئری تکمیل
+* پایداری: JOB-04 کامنت گیت 6ساعته فقط بعد از موفقیت، JOB-02 INSERT IGNORE قفل، JOB-03 offset پایدار (option)، evergreen + prune تاریخچه 90روزه
+* امنیت: SEC-03 لاگ per-post + حالت strict، SNAPSHOT is_complete، DB auto-migrate بدون reactivate
+* دیتا: COR-06 paging پایدار + رول‌بک اتمیک
+* امن: رفع ذخیره plaintext API key بدون OpenSSL (P0 SEC-05)
+* حرفه‌ای: کار تکه‌تکه (Job) برای توزیع 884 آهنگ بدون 503 (COR-07) — 100/درخواست با lock DB و progress bar
+* کارایی: رفع N+1 و subquery تاریخچه و حذف LIMIT 5000 بی‌دلیل
+* پایداری: بازآوری قفل منقضی و تراکنش اتمیک
 * 🧹 حذف پسوندهای عزیز/عزیزم/جون/جان/گلم از نام‌ها + ریتم جدید هر ۶ ساعت (۴ بار/روز) برای کامنت‌ها — همهٔ پست‌ها بر اساس بازدید+امتیاز، برای زیر 10K میانگین 20 بازدید (Evergreen cap) + تیک کامنت از ۵ دقیقه به ۶ ساعت با کرون جدا `apex_omega_six_hours`.
 
 = 1.8.4 =

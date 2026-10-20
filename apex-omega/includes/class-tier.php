@@ -13,7 +13,9 @@ class TierManager {
     const META_TIER = '_apex_tier';
 
     /**
-     * دسته‌های پیش‌فرض - سقف واقع‌گرایانه 1.5M (درخواست کاربر)
+     * دسته‌های پیش‌فرض — حرفه‌ای استاندارد 1.5M (هرم جهانی موسیقی)
+     * توزیع: 2٪ الماس، 4٪ پرطرفدار، 10٪ محبوب، 14٪ متوسط‌بالا، 20٪ متوسط، 25٪ درحال‌رشد، 25٪ تازه
+     * همبستگی بازدید↔رای↔میانگین کاملاً رعایت شده (ISO-like)
      */
     public static function default_tiers(): array {
         return [
@@ -155,7 +157,8 @@ class TierManager {
         $views_factor = min(0.15, max(0, ($views - 10000) / 1500000 * 0.12)); // 0..0.12
         $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
         $avg = round($avg, 1);
-        // محاسبه ratings سازگار
+        // محاسبه ratings سازگار — فرمول استاندارد KKSR
+        $ratings = $best > 0 ? round($avg * $casts / $best * 5, 2) : 0;
 
         return [
             'views' => $views,
@@ -186,12 +189,13 @@ class TierManager {
             'post_type' => $post_types,
             'post_status' => 'publish',
             'fields' => 'ids',
-            'orderby' => 'date',
+            'orderby' => 'date ID',
             'order' => 'DESC',
             'no_found_rows' => true,
             'update_post_meta_cache' => false,
             'update_post_term_cache' => false,
-        ];
+        ]; // 1.9.3 COR-06: پایدار — جلوگیری از دوباره‌شمارش با orderby دوتایی
+
         if ($category && $category !== 'all') {
             $base_args['cat'] = (int)$category;
             if (!is_numeric($category)) {
@@ -213,17 +217,17 @@ class TierManager {
             ];
         }
 
-        // Paging: WP_Query with posts_per_page max 2000 per batch to avoid memory
+        // Paging: 1.9.4 COR-06: همیشه paging برای جلوگیری از مموری spike — حتی برای 884
         $limit = max(0, min(20000, $limit)); // سقف 20K — محافظ منابع
-        if ($limit <= 5000) {
+        if ($limit <= 500) {
             $args = $base_args;
             $args['posts_per_page'] = (int)$limit;
             $q = new \WP_Query($args);
             return $q->posts ?: [];
         }
-        // large limit: batch
+        // medium+large limit: batch 500 (به جای 1000) — فشار کمتر
         $collected = [];
-        $batch = 1000;
+        $batch = 500;
         $pages = (int) ceil($limit / $batch);
         for ($p=1; $p <= $pages; $p++) {
             $args = $base_args;
@@ -242,6 +246,7 @@ class TierManager {
      * پیش‌نمایش توزیع: بدون نوشتن در DB، فقط انتخاب و تولید مقدار
      */
     public static function preview_distribution(array $counts_per_tier, array $filters = []): array {
+        if (function_exists('set_time_limit')) @set_time_limit(90);
         $tiers = self::get_tiers();
         $tiers_by_id = [];
         foreach ($tiers as $t) $tiers_by_id[$t['id']] = $t;
@@ -340,6 +345,10 @@ class TierManager {
      * اجرای واقعی توزیع — با اسنپ‌شات، قفل هوشمند و تراکنش یکپارچه
      */
     public static function apply_distribution(array $counts_per_tier, array $filters = [], string $mode = 'overwrite'): array {
+        // حرفه‌ای 1.9.1: افزایش سقف اجرا برای 884 آهنگ — جلوگیری از Timeout HTML
+        if (function_exists('set_time_limit')) @set_time_limit(180);
+        @ini_set('max_execution_time', '180');
+        @ini_set('memory_limit', '256M');
         $preview = self::preview_distribution($counts_per_tier, $filters);
         if (empty($preview['success'])) return $preview;
 
@@ -383,9 +392,16 @@ class TierManager {
         $applied = 0;
         $errors = [];
         $details = [];
+        $chunk_counter = 0;
 
         foreach ($preview['preview'] as $tier_id => $items) {
             foreach ($items as $item) {
+                // 1.9.2 حرفه‌ای: هر 100 آهنگ 0.3 ثانیه مکث برای جلوگیری از 503 Service Unavailable
+                if ($chunk_counter > 0 && $chunk_counter % 100 === 0) {
+                    usleep(300000);
+                    if (function_exists('set_time_limit')) @set_time_limit(180);
+                }
+                $chunk_counter++;
                 $pid = (int)$item['post_id'];
                 if (!get_post($pid)) { $errors[] = "پست $pid یافت نشد"; continue; }
 
@@ -535,6 +551,167 @@ class TierManager {
     }
     public static function unschedule_auto(): void {
         wp_clear_scheduled_hook('apex_omega_auto_tier_tick');
+    }
+
+    // ─── 1.9.3 Chunked Job — تکه‌تکه 100/درخواست با DB lock/idempotent/Retry (COR-07) ───
+    public static function start_distribution_job(array $counts_per_tier, array $filters = [], int $chunk_size = 100): array {
+        if (function_exists('set_time_limit')) @set_time_limit(60);
+        $preview = self::preview_distribution($counts_per_tier, $filters);
+        if (empty($preview['success'])) return $preview;
+        $flat = [];
+        foreach ($preview['preview'] as $tier_id => $items) {
+            foreach ($items as $item) {
+                $flat[] = array_merge($item, ['tier_id'=>$tier_id]);
+            }
+        }
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        $total = count($flat);
+        // payload: flat already contains generated values — idempotent
+        Database::create_job($exec, $user_id, $counts_per_tier, $filters, $flat, $total, $chunk_size);
+        // 2.0-beta: هم‌زمان در صف جدید هم ثبت کن تا REST /queue دیده شود
+        if (class_exists('\\ApexOmega\\Core\\QueueWorker')) {
+            try { \ApexOmega\Core\QueueWorker::enqueue('tier_distribution', ['execution_id'=>$exec,'total'=>$total,'counts'=>$counts_per_tier], 10); } catch (\Throwable $e) {}
+        }
+        // snapshot برای Undo بعد از شروع (خالی تا پایان job پر می‌شود)
+        return [
+            'success' => true,
+            'execution_id' => $exec,
+            'total' => $total,
+            'chunk_size' => $chunk_size,
+            'message' => 'کار تکه‌تکه ایجاد شد — '.$total.' آهنگ در صف',
+            'preview_summary' => $preview['summary'],
+        ];
+    }
+
+    public static function process_job_chunk(string $execution_id, int $chunk_size = 0): array {
+        $job = Database::get_job($execution_id);
+        if (!$job) return ['success'=>false,'message'=>'کار یافت نشد'];
+        if (in_array($job['status'], ['done','failed'], true) && (int)$job['processed'] >= (int)$job['total']) {
+            return ['success'=>true,'status'=>'done','processed'=>(int)$job['processed'],'total'=>(int)$job['total'],'message'=>'کار قبلا کامل شده'];
+        }
+        $chunk_size = $chunk_size > 0 ? $chunk_size : (int)$job['chunk_size'];
+        $chunk_size = max(10, min(200, $chunk_size));
+        $payload = json_decode($job['payload_json'], true);
+        if (!is_array($payload)) return ['success'=>false,'message'=>'payload نامعتبر'];
+        $total = (int)$job['total'];
+        $processed = (int)$job['processed'];
+        if ($processed >= $total) {
+            Database::update_job_progress($execution_id, $total, 'done');
+            return ['success'=>true,'status'=>'done','processed'=>$total,'total'=>$total];
+        }
+        // lock per job
+        $lock_key = 'apex_job_' . $execution_id;
+        if (!Database::acquire_lock($lock_key, 120)) {
+            return ['success'=>false,'message'=>'کار دیگری در حال پردازش است — چند ثانیه صبر کنید','retry_after'=>5];
+        }
+        // re-read to avoid double process
+        $job = Database::get_job($execution_id);
+        $processed = (int)$job['processed'];
+        $slice = array_slice($payload, $processed, $chunk_size);
+        if (empty($slice)) {
+            Database::release_lock($lock_key);
+            Database::update_job_progress($execution_id, $total, 'done');
+            return ['success'=>true,'status'=>'done','processed'=>$total,'total'=>$total];
+        }
+        $best = (int) get_option('kksr_stars', 5); if ($best<1) $best=5;
+        $applied = 0; $errors=[];
+        $snapshot_rows=[]; // for this chunk only; accumulated in option
+        global $wpdb;
+        foreach ($slice as $item) {
+            $pid = (int)$item['post_id'];
+            $tier_id = $item['tier_id'];
+            if (!get_post($pid)) { $errors[]="پست $pid یافت نشد"; continue; }
+            if (!current_user_can('edit_post', $pid) && !apex_omega_user_can_manage()) { error_log('[APEX Ω] SEC-03: user '.get_current_user_id().' tried to modify post '.$pid.' without edit_post'); if(get_option('apex_omega_strict_per_post', false)){ $errors[]="دسترسی ویرایش پست $pid ندارید"; continue; } }
+            $plock = "apex_tier_{$pid}";
+            if (!Database::acquire_lock($plock, 20)) { $errors[]="پست $pid قفل است — دوباره تلاش می‌شود"; continue; }
+            $old_views = Adapter_Views::get_views($pid);
+            $old_kksr = Adapter_KKSR::get_stats($pid);
+            $detect = Adapter_KKSR::detect();
+            $wpdb->query('START TRANSACTION');
+            try {
+                update_post_meta($pid, Adapter_Views::META_KEY, (int)$item['views']);
+                $real_snapshot = get_post_meta($pid, '_apex_real_views', true);
+                if ($real_snapshot === '') {
+                    update_post_meta($pid, '_apex_real_views', $old_views);
+                    update_post_meta($pid, '_apex_real_views_captured_at', current_time('mysql', true));
+                }
+                update_post_meta($pid, '_apex_managed_views', (int)$item['views']);
+                update_post_meta($pid, '_apex_views_last_source', 'tier_distribution_chunked');
+                update_post_meta($pid, '_apex_views_last_exec', $execution_id);
+                update_post_meta($pid, $detect['meta_casts'], (int)$item['casts']);
+                update_post_meta($pid, $detect['meta_ratings'], (float)$item['ratings']);
+                update_post_meta($pid, $detect['meta_avg'], (float)$item['avg']);
+                wp_cache_delete($pid, 'post_meta');
+                update_post_meta($pid, self::META_TIER, $tier_id);
+                update_post_meta($pid, '_apex_tier_applied_at', current_time('mysql', true));
+                $wpdb->query('COMMIT');
+                History::log($pid, 'views', $old_views, $item['views'], 'tier_distribution', get_current_user_id(), $execution_id, null, ['tier'=>$tier_id,'chunked'=>true]);
+                History::log($pid, 'kksr_combined', wp_json_encode(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings']], JSON_UNESCAPED_UNICODE), wp_json_encode(['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings']], JSON_UNESCAPED_UNICODE), 'tier_distribution', get_current_user_id(), $execution_id, null, ['tier'=>$tier_id,'best'=>$best,'chunked'=>true]);
+                do_action('apex_omega_views_updated', $pid, $old_views, (int)$item['views'], 'tier_distribution_chunked', $execution_id);
+                $snapshot_rows[] = [
+                    'post_id'=>$pid,'post_title'=>$item['post_title']??(string)$pid,'tier'=>$tier_id,
+                    'old_views'=>$old_views,'new_views'=>$item['views'],'old_casts'=>$old_kksr['casts'],'old_avg'=>$old_kksr['avg'],'old_ratings'=>$old_kksr['ratings'],'best'=>$best,
+                    'new_casts'=>$item['casts'],'new_avg'=>$item['avg'],'new_ratings'=>$item['ratings'],
+                ];
+                $applied++;
+            } catch (\Throwable $e) {
+                $wpdb->query('ROLLBACK');
+                $errors[]="پست $pid: ".$e->getMessage();
+            }
+            Database::release_lock($plock);
+        }
+        $new_processed = $processed + $applied;
+        // ذخیره snapshot تجمعی برای Undo (append)
+        $opt_key = 'apex_job_snapshot_' . $execution_id;
+        $acc = get_option($opt_key, []);
+        if (!is_array($acc)) $acc=[];
+        $acc = array_merge($acc, $snapshot_rows);
+        update_option($opt_key, $acc, false);
+        if ($applied === 0 && !empty($errors) && count($slice) === count($errors)) {
+            // کل chunk شکست خورد — retry count
+            Database::increment_job_retry($execution_id);
+            Database::release_lock($lock_key);
+            return ['success'=>false,'message'=>'خطا در پردازش chunk: '.implode(' | ', array_slice($errors,0,3)),'errors'=>$errors,'processed'=>$processed,'total'=>$total,'retry'=>true];
+        }
+        $is_done = ($new_processed >= $total);
+        Database::update_job_progress($execution_id, $new_processed, $is_done ? 'done' : 'running');
+        Database::release_lock($lock_key);
+        if ($is_done) {
+            // ساخت snapshot نهایی برای Undo
+            try {
+                $counts = json_decode($job['counts_json'], true) ?: [];
+                $filters = json_decode($job['filters_json'], true) ?: [];
+                Database::create_snapshot($execution_id, (int)$job['user_id'], $counts, $filters, $total, $new_processed, $acc);
+                delete_option($opt_key);
+                update_option(self::OPTION_LAST_DISTRIBUTION, ['counts'=>$counts,'filters'=>$filters,'applied'=>$new_processed,'exec'=>$execution_id,'at'=>current_time('mysql', true),'errors'=>$errors,'chunked'=>true], false);
+            } catch (\Throwable $e) { error_log('[APEX Ω] chunked snapshot fail: '.$e->getMessage()); }
+        }
+        return [
+            'success'=>true,
+            'status'=> $is_done ? 'done' : 'running',
+            'processed'=>$new_processed,
+            'total'=>$total,
+            'applied_in_chunk'=>$applied,
+            'errors'=>$errors,
+            'remaining'=> $total - $new_processed,
+            'percent'=> $total ? round($new_processed/$total*100,1) : 0,
+        ];
+    }
+
+    public static function get_job_status(string $execution_id): array {
+        $job = Database::get_job($execution_id);
+        if (!$job) return ['success'=>false,'message'=>'کار یافت نشد'];
+        return [
+            'success'=>true,
+            'execution_id'=>$execution_id,
+            'status'=>$job['status'],
+            'processed'=>(int)$job['processed'],
+            'total'=>(int)$job['total'],
+            'percent'=> (int)$job['total'] ? round((int)$job['processed']/(int)$job['total']*100,1) : 0,
+            'retry_count'=>(int)$job['retry_count'],
+            'last_error'=>$job['last_error'],
+        ];
     }
 
     // توزیع هوشمند پیش‌فرض بر اساس هرم: تعداد آثار کم در صدر، زیاد در قاعده

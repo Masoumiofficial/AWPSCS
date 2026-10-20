@@ -3,6 +3,9 @@ jQuery(function($){
   function esc(s){ if(s===null||s===undefined) return ''; return String(s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m];}); }
   function getNonce(){ var a=APX(); return a.nonce || (document.querySelector('input[name="_wpnonce"]') ? document.querySelector('input[name="_wpnonce"]').value : '') || (document.querySelector('#_wpnonce') ? document.querySelector('#_wpnonce').value : '') || ''; }
   function getAjax(){ var a=APX(); return a.ajax_url || (window.ajaxurl || '/wp-admin/admin-ajax.php'); }
+  // Helper: نمایش خطای Ajax حتی اگر پاسخ HTML باشد (جلوگیری از SyntaxError '<' گنگ)
+  function formatAjaxError(xhr){ if(xhr.responseJSON && xhr.responseJSON.data) return typeof xhr.responseJSON.data==='string'?xhr.responseJSON.data:(xhr.responseJSON.data.message||xhr.responseJSON.data.msg||JSON.stringify(xhr.responseJSON.data)); if(xhr.responseText){ var txt=xhr.responseText.trim(); if(txt.charAt(0)==='<'||txt.indexOf('<!DOCTYPE')===0||txt.indexOf('<br')===0) return 'پاسخ HTML به جای JSON (نشست منقضی/خطای PHP) — اول پاسخ: '+txt.slice(0,180).replace(/<[^>]*>/g,' ').trim(); return txt.slice(0,250); } return 'خطای شبکه ('+xhr.status+')'; }
+  // Global: اگر WP_DEBUG warning چاپ شد، JSON خراب می‌شود — قبل از هر ajax بافر را تمیز نگه دار
   function toGmt(localStr){ if(!localStr) return ''; const d=new Date(localStr); return d.toISOString().slice(0,19).replace('T',' '); }
 
   // ===== دستی متاباکس =====
@@ -15,7 +18,7 @@ jQuery(function($){
     $.post(getAjax(),data,function(res){
       if(res.success) $('#apex-manual-result').html('<div class="apex-alert success">ذخیره شد. '+ (res.data.execution_id||'') +'</div>');
       else { let msg=res.data.message||JSON.stringify(res.data); if(res.data.requires_confirm) msg=(res.data.warnings||[]).join('<br>')+'<br>لطفاً تأیید را علامت بزنید.'; $('#apex-manual-result').html('<div class="apex-alert error">'+msg+'</div>'); }
-    }).fail(function(xhr){ $('#apex-manual-result').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('ذخیره دستی'));
+    }).fail(function(xhr){ $('#apex-manual-result').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('ذخیره دستی'));
   });
 
   // ===== زمان‌بندی =====
@@ -42,7 +45,7 @@ jQuery(function($){
   $(document).on('click','#apex-bulk-apply',function(e){ e.preventDefault(); if(!confirm(APX().i18n.confirm_bulk))return; const data={action:'apex_bulk_apply',_ajax_nonce:getNonce(),post_ids:$('#apex_bulk_ids').val(),field_type:$('#apex_bulk_field').val(),value:$('#apex_bulk_value').val(),mode:$('#apex_bulk_mode').val()}; const $btn=$(this); $btn.prop('disabled',true).text('در حال اعمال…'); $.post(getAjax(),data,r=>{ if(r.success) $('#apex-bulk-result').html('<div class="apex-alert success">موفق: '+r.data.success_count+'</div>'); else $('#apex-bulk-result').html('<div class="apex-alert error">'+(r.data.message||'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('اعمال گروهی')); });
   $(document).on('change','#_apex_mode',function(){ if($(this).val()==='scheduled') $('#apex-schedule-panel').show(); else $('#apex-schedule-panel').hide(); });
 
-  // ======== توزیع هوشمند TIER ===========
+  // ======== توزیع هوشمند TIER ====
   function collectTierCounts(){
     const out={}; $('.apex-tier-count').each(function(){ const k=$(this).data('tier'); const v=parseInt($(this).val()||0); if(v>0) out[k]=v; else if(v===0 && $(this).val()!=='' ) out[k]=0; });
     return out;
@@ -90,8 +93,9 @@ jQuery(function($){
   });
   $(document).on('click','#apex-preset-clear',function(){ $('.apex-tier-count').val(0); $('.apex-tier-slider').val(0); updateTierTotals(); $('#apex-tier-preview-box').html('صفر شد.'); $('#apex-tier-details-box').hide(); });
 
-  // preview
+  // preview (1.9.3 FE-05: vanilla در tier-distribution.php اولویت — جلوگیری از دوبار AJAX)
   $(document).on('click','#apex-preview-tier',function(e){
+    if(document.getElementById('apex-preview-tier')?.dataset.vanilla){ return; }
     e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('در حال پیش‌نمایش…');
     const counts=collectTierCounts(); if(Object.keys(counts).length===0){ alert('حداقل یک دسته را پر کن'); $btn.prop('disabled',false).text('👁️ پیش‌نمایش'); return; }
     $.post(getAjax(),{action:'apex_preview_tier',_ajax_nonce:getNonce(),counts:counts,category:$('#apex-filter-cat').val(),post_type:$('#apex-filter-pt').val(),artist_aware:$('#apex-artist-aware').is(':checked')?1:0},function(res){
@@ -106,11 +110,12 @@ jQuery(function($){
         $('#apex-tier-preview-box').html(html);
         $('#apex-preview-hint').text('پیش‌نمایش آماده — اگر اوکیه «اعمال خودکار» بزن (اسنپ‌شات ذخیره می‌شود)');
       } else { $('#apex-tier-preview-box').html('<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>'); }
-    }).fail(function(xhr){ $('#apex-tier-preview-box').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('👁️ پیش‌نمایش'));
+    }).fail(function(xhr){ $('#apex-tier-preview-box').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('👁️ پیش‌نمایش'));
   });
 
-  // apply with result table
+  // apply with result table (1.9.3: اگر vanilla فعال است، jQuery handler نادیده شود)
   $(document).on('click','#apex-apply-tier',function(e){
+    if(document.getElementById('apex-apply-tier')?.dataset.vanilla){ return; }
     e.preventDefault(); if(!confirm('این عملیات تمام آثار انتخاب‌شده را بازنویسی می‌کند (با تاریخچه + اسنپ‌شات و قابل بازگردانی). ادامه؟')) return;
     const $btn=$(this); $btn.prop('disabled',true).text('در حال اعمال… (قفل هوشمند)');
     const counts=collectTierCounts();
@@ -132,7 +137,7 @@ jQuery(function($){
         setTimeout(()=>location.reload(),2500);
       }
       else $('#apex-tier-result').html('<div class="apex-alert error">'+(res.data.message||JSON.stringify(res.data))+'</div>');
-    }).fail(function(xhr){ $('#apex-tier-result').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('✅ اعمال خودکار (با ثبت تاریخچه + اسنپ‌شات)'));
+    }).fail(function(xhr){ $('#apex-tier-result').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('✅ اعمال خودکار (با ثبت تاریخچه + اسنپ‌شات)'));
   });
 
   // AI suggest
@@ -143,7 +148,7 @@ jQuery(function($){
         Object.keys(res.data.suggestion).forEach(k=>{ const v=res.data.suggestion[k]; $('.apex-tier-count[data-tier="'+k+'"]').val(v); $('.apex-tier-slider[data-tier="'+k+'"]').val(v); });
         updateTierTotals(); $('#apex-tier-preview-box').html('<div class="apex-alert success">✨ پیشنهاد AI اعمال شد ('+esc(res.data.source)+'): '+ esc(res.data.explanation? res.data.explanation.substring(0,300):'') +'</div>');
       } else { let msg=res.data.message||'خطا'; if(res.data.fallback) msg+=' — از هرم پیش‌فرض استفاده شد'; $('#apex-tier-preview-box').html('<div class="apex-alert error">'+msg+'</div>'); if(res.data.fallback){ Object.keys(res.data.fallback).forEach(k=>{ $('.apex-tier-count[data-tier="'+k+'"]').val(res.data.fallback[k]); $('.apex-tier-slider[data-tier="'+k+'"]').val(res.data.fallback[k]); }); updateTierTotals(); } }
-    }).fail(function(xhr){ $('#apex-tier-preview-box').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('✨ پیشنهاد AI'));
+    }).fail(function(xhr){ $('#apex-tier-preview-box').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('✨ پیشنهاد AI'));
   });
 
   // AI save + test
@@ -173,14 +178,14 @@ jQuery(function($){
     $.post(getAjax(),{action:'apex_auto_artist_ai',_ajax_nonce:getNonce()},function(res){
       if(res.success){ Object.keys(res.data.weights||res.weights||{}).forEach(tid=>{ const w=res.data.weights[tid]||res.weights[tid]; $('.apex-artist-weight[data-tid="'+tid+'"]').val(w); $('.apex-artist-slider[data-tid="'+tid+'"]').val(w); }); $('#apex-artist-result').html('<div class="apex-alert success">✅ AI امتیاز داد: '+Object.keys(res.data.weights||{}).length+' آرتیست</div>'); }
       else $('#apex-artist-result').html('<div class="apex-alert error">'+res.data.message+'</div>');
-    }).fail(function(xhr){ $('#apex-artist-result').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('🤖 امتیازدهی خودکار با AI (GapGPT)'));
+    }).fail(function(xhr){ $('#apex-artist-result').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('🤖 امتیازدهی خودکار با AI (GapGPT)'));
   });
   $(document).on('click','#apex-artist-ir',function(e){
     e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('در حال خواندن از سایت ایرانی…');
     $.post(getAjax(),{action:'apex_auto_artist_ir',_ajax_nonce:getNonce()},function(res){
       if(res.success){ Object.keys(res.data.weights||{}).forEach(tid=>{ const w=res.data.weights[tid]; $('.apex-artist-weight[data-tid="'+tid+'"]').val(w); $('.apex-artist-slider[data-tid="'+tid+'"]').val(w); }); $('#apex-artist-result').html('<div class="apex-alert success">🌐 از سایت ایرانی امتیاز گرفته شد: '+Object.keys(res.data.weights||{}).length+' — با کش 24 ساعته + cooldown خطا</div>'); }
       else $('#apex-artist-result').html('<div class="apex-alert error">'+res.data.message+'</div>');
-    }).fail(function(xhr){ $('#apex-artist-result').html('<div class="apex-alert error">'+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('🌐 امتیاز از سایت ایرانی (رادیوجوان/نکس1موزیک)'));
+    }).fail(function(xhr){ $('#apex-artist-result').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('🌐 امتیاز از سایت ایرانی (رادیوجوان/نکس1موزیک)'));
   });
   // taxonomy selector
   $(document).on('click','#apex-taxonomy-save',function(e){
@@ -188,7 +193,7 @@ jQuery(function($){
     $.post(getAjax(),{action:'apex_save_artist_taxonomy',_ajax_nonce:getNonce(),taxonomy:tax},function(res){
       if(res.success){ $('#apex-taxonomy-result').text('✅ '+res.data.message+' — '+res.data.taxonomy).css('color','#065f46'); setTimeout(()=>location.reload(),900); }
       else $('#apex-taxonomy-result').text('❌ '+res.data.message).css('color','#991b1b');
-    }).fail(function(xhr){ $('#apex-taxonomy-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.text('ذخیره تاکسونومی'));
+    }).fail(function(xhr){ $('#apex-taxonomy-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.text('ذخیره تاکسونومی'));
   });
   // evergreen
   $(document).on('click','#apex-evergreen-save',function(e){
@@ -197,7 +202,7 @@ jQuery(function($){
     $.post(getAjax(),{action:'apex_save_evergreen',_ajax_nonce:getNonce(),enabled:enabled,rate_percent:rate,max_views:max},function(res){
       if(res.success) $('#apex-evergreen-result').text('✅ ذخیره شد — '+(res.data.settings.enabled?'فعال':'غیرفعال')+' — نرخ '+res.data.settings.rate_percent+'%').css('color','#065f46');
       else $('#apex-evergreen-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
-    }).fail(function(xhr){ $('#apex-evergreen-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره Evergreen'));
+    }).fail(function(xhr){ $('#apex-evergreen-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره Evergreen'));
   });
   // autowatch
   $(document).on('click','#apex-autowatch-save',function(e){
@@ -206,7 +211,7 @@ jQuery(function($){
     $.post(getAjax(),{action:'apex_save_autowatch',_ajax_nonce:getNonce(),enabled:enabled,threshold:threshold,min_views:minv,max_views:maxv,batch:batch,only_recent_days:recent},function(res){
       if(res.success) $('#apex-autowatch-result').text('✅ '+res.data.message+' — آستانه '+res.data.settings.threshold).css('color','#065f46');
       else $('#apex-autowatch-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
-    }).fail(function(xhr){ $('#apex-autowatch-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره نگهبان'));
+    }).fail(function(xhr){ $('#apex-autowatch-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره نگهبان'));
   });
   // commentor
   $(document).on('click','#apex-commentor-save',function(e){
@@ -215,7 +220,7 @@ jQuery(function($){
     $.post(getAjax(),{action:'apex_save_commentor',_ajax_nonce:getNonce(),enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent},function(res){
       if(res.success) $('#apex-commentor-result').text('✅ '+res.data.message+' — آستانه '+res.data.settings.threshold).css('color','#065f46');
       else $('#apex-commentor-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
-    }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💬 ذخیره نگهبان کامنت'));
+    }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💬 ذخیره نگهبان کامنت'));
   });
   $(document).on('click','#apex-commentor-run',function(e){
     e.preventDefault(); const $btn=$(this); $btn.prop('disabled',true).text('در حال اجرا…');
@@ -226,7 +231,24 @@ jQuery(function($){
         $('#apex-commentor-result').html('✅ اجرا شد: '+(l.posts||0)+' پست → '+(l.comments||0)+' کامنت <br><small>'+JSON.stringify(d.log||'')+'</small>').css('color','#065f46');
         if((l.posts||0)>0) setTimeout(()=>location.reload(),1500);
       } else $('#apex-commentor-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
-    }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('▶️ اجرای فوری (تست)'));
+    }).fail(function(xhr){ $('#apex-commentor-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('▶️ اجرای فوری (تست)'));
+  });
+  // کامنت دستی per-post (متاباکس)
+  $(document).on('click','#apex-send-manual-comments',function(e){
+    e.preventDefault();
+    const $btn=$(this); const postId=$('#post_ID').val()||$('input[name="post_id"]').val();
+    const count=parseInt($('#apex-manual-comment-count').val())||3;
+    if(!postId){ alert('شناسه نوشته یافت نشد.'); return; }
+    if(count<1||count>60){ alert('تعداد باید 1 تا 60 باشد.'); return; }
+    $btn.prop('disabled',true).text('در حال ارسال…');
+    $('#apex-manual-comment-result').html('<div class="apex-alert success">⏳ '+count+' کامنت در حال ارسال…</div>');
+    $.post(getAjax(),{action:'apex_send_post_comments',_ajax_nonce:getNonce(),post_id:postId,count:count},function(res){
+      if(res.success){
+        $('#apex-manual-comment-result').html('<div class="apex-alert success">✅ '+res.data.inserted+' کامنت ارسال شد (درخواستی: '+res.data.requested+' — مجموع الان: '+res.data.current+'/'+res.data.max+')</div>');
+      } else {
+        $('#apex-manual-comment-result').html('<div class="apex-alert error">❌ '+(res.data.message||'خطا')+'</div>');
+      }
+    }).fail(function(xhr){ $('#apex-manual-comment-result').html('<div class="apex-alert error">❌ '+formatAjaxError(xhr)+'</div>'); }).always(function(){ $btn.prop('disabled',false).text('ارسال کامنت 🚀'); });
   });
   // rhythm — live % update
   $(document).on('input','#apex-rhythm-artist-ratio',function(){ const v=parseInt($(this).val()||85); $('#apex-rhythm-artist-val').text(v+'%'); $('#apex-rhythm-title-val').text((100-v)+'%'); });
@@ -236,7 +258,7 @@ jQuery(function($){
     $.post(getAjax(),{action:'apex_save_rhythm',_ajax_nonce:getNonce(),artist_ratio:artist_ratio,unknown_threshold:threshold,unknown_cap:cap,require_pair:pair},function(res){
       if(res.success) $('#apex-rhythm-result').text('✅ '+res.data.message+' — '+Math.round(res.data.settings.artist_ratio*100)+'/'+Math.round(res.data.settings.title_ratio*100)+' — سقف '+res.data.settings.unknown_cap).css('color','#065f46');
       else $('#apex-rhythm-result').text('❌ '+(res.data.message||'خطا')).css('color','#991b1b');
-    }).fail(function(xhr){ $('#apex-rhythm-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره الگوی ریتم'));
+    }).fail(function(xhr){ $('#apex-rhythm-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('💾 ذخیره الگوی ریتم'));
   });
   // undo last distribution
   $(document).on('click','#apex-undo-tier',function(e){
@@ -245,10 +267,10 @@ jQuery(function($){
     $.post(getAjax(),{action:'apex_undo_tier',_ajax_nonce:getNonce(),execution_id:exec},function(res){
       if(res.success){ $('#apex-undo-result').text('✅ بازگردانی شد: '+res.data.restored+' آهنگ').css('color','#065f46'); setTimeout(()=>location.reload(),900); }
       else $('#apex-undo-result').text('❌ '+res.data.message).css('color','#991b1b');
-    }).fail(function(xhr){ $('#apex-undo-result').text('❌ '+(xhr.responseJSON?JSON.stringify(xhr.responseJSON.data):'خطا')).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('↩️ بازگردانی آخرین توزیع (Undo)'));
+    }).fail(function(xhr){ $('#apex-undo-result').text('❌ '+formatAjaxError(xhr)).css('color','#991b1b'); }).always(()=> $btn.prop('disabled',false).text('↩️ بازگردانی آخرین توزیع (Undo)'));
   });
 
-  // ======== Analytics — export/import ==========
+  // ======== Analytics — export/import ===
   function downloadFile(content, filename, mime){
     const blob = new Blob([content], {type: mime||'text/plain;charset=utf-8;'});
     const url = URL.createObjectURL(blob);

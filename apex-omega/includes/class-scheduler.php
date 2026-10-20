@@ -19,6 +19,25 @@ class Scheduler {
         if (!wp_next_scheduled('apex_omega_cleanup')) {
             wp_schedule_event(time(), 'daily', 'apex_omega_cleanup');
         }
+        // 1.9.4 JOB-05: پاکسازی تاریخچه قدیمی (90 روز) — روزانه
+        // actual prune hook
+        add_action('apex_omega_prune_history_daily', function(){ \ApexOmega\Core\Database::prune_history(90); });
+        if (!wp_next_scheduled('apex_omega_prune_history_daily')) {
+            wp_schedule_event(time() + DAY_IN_SECONDS, 'daily', 'apex_omega_prune_history_daily');
+        }
+        // 2.0-alpha: rollup timeseries روزانه 02:00
+        add_action('apex_omega_rollup_daily', function(){
+            if (class_exists('\\ApexOmega\\Core\\QueueWorker')) {
+                \ApexOmega\Core\QueueWorker::enqueue('timeseries_rollup', [], 2);
+            } else {
+                \ApexOmega\Core\Scheduler::rollup_timeseries();
+            }
+        });
+        if (!wp_next_scheduled('apex_omega_rollup_daily')) {
+            // فردا 02:00
+            $tomorrow2am = strtotime('tomorrow 02:00:00');
+            wp_schedule_event($tomorrow2am, 'daily', 'apex_omega_rollup_daily');
+        }
         // گزارش هفتگی
         add_action(self::WEEKLY_HOOK, [__CLASS__, 'send_weekly_report']);
         if (!wp_next_scheduled(self::WEEKLY_HOOK)) {
@@ -93,11 +112,23 @@ class Scheduler {
     }
 
     public static function ajax_heal_cron(): void {
-        check_ajax_referer('apex-omega-nonce', 'nonce');
-        if (!current_user_can('apex_manage_statistics')) wp_send_json_error(['msg'=>'دسترسی غیرمجاز']);
+        // جلوگیری از نشت HTML قبل از JSON (Warningها)
+        while (ob_get_level() > 0) { ob_end_clean(); }
+        $nonce = sanitize_text_field($_REQUEST['nonce'] ?? $_REQUEST['_ajax_nonce'] ?? ''); // SEC-02
+        $valid = wp_verify_nonce($nonce, 'apex-omega-nonce') || wp_verify_nonce($nonce, 'apex_omega_nonce') || wp_verify_nonce($nonce, 'apex-omega-nonce');
+        // همچنین dash/underscore هر دو — سازگاری عقب‌رو
+        if (!$valid || !$nonce) {
+            wp_send_json_error(['msg'=>'نشانه امنیتی نامعتبر — صفحه را رفرش کنید (nonce).','code'=>'bad_nonce']);
+        }
+        if (!current_user_can('apex_manage_statistics')) {
+            wp_send_json_error(['msg'=>'دسترسی غیرمجاز']);
+        }
         self::ensure_cron();
         $next = wp_next_scheduled(self::CRON_HOOK);
-        if ($next) wp_send_json_success(['next'=> $next, 'human'=> get_date_from_gmt(gmdate('Y-m-d H:i:s', $next), 'Y-m-d H:i:s')]);
+        $next_c = wp_next_scheduled(self::COMMENT_HOOK);
+        if ($next) {
+            wp_send_json_success(['next'=> $next, 'next_comment'=> $next_c, 'human'=> get_date_from_gmt(gmdate('Y-m-d H:i:s', $next), 'Y-m-d H:i:s')]);
+        }
         wp_send_json_error(['msg'=>'ترمیم ناموفق — Cron سرور را بررسی کنید.']);
     }
 
@@ -112,6 +143,10 @@ class Scheduler {
         if ($ts4) wp_unschedule_event($ts4, 'apex_omega_auto_tier_tick');
         $ts5 = wp_next_scheduled(self::COMMENT_HOOK);
         if ($ts5) wp_unschedule_event($ts5, self::COMMENT_HOOK);
+        $ts6 = wp_next_scheduled('apex_omega_prune_history_daily');
+        if ($ts6) wp_unschedule_event($ts6, 'apex_omega_prune_history_daily');
+        $ts7 = wp_next_scheduled('apex_omega_rollup_daily');
+        if ($ts7) wp_unschedule_event($ts7, 'apex_omega_rollup_daily');
     }
 
     public static function send_weekly_report(): void {
@@ -338,8 +373,68 @@ class Scheduler {
         if (class_exists('\\ApexOmega\\Core\\Evergreen')) {
             try { \ApexOmega\Core\Evergreen::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Evergreen tick error: '.$e->getMessage()); }
         }
-        // 💬 نگهبان کامنت حالا هر ۶ ساعت جدا اجرا می‌شود (apex_omega_commentor_tick) — اینجا دیگر هر ۵ دقیقه صدا نزن
-        // (برای سازگاری اگر کسی دستی صدا زد، CommentGuardian خودش گیت ۶ساعته دارد)
+        // 💬 نگهبان کامنت حالا هر ۶ ساعت جدا اجرا می‌شود (apex_omega_commentor_tick) — اما fallback ایمنی هر ۵ دقیقه اگر گیت ۶ساعته جا ماند
+        if (class_exists('\\ApexOmega\\Core\\CommentGuardian') && \ApexOmega\Core\CommentGuardian::is_enabled()) {
+            try {
+                $last_ts = (int) get_option('apex_omega_commentor_last_tick_ts', 0);
+                if (!$last_ts || (time() - $last_ts >= 21600)) {
+                    \ApexOmega\Core\CommentGuardian::tick();
+                }
+            } catch (\Throwable $e) { error_log('[APEX Ω] Commentor fallback tick error: '.$e->getMessage()); }
+        }
+        // 2.0-alpha: پردازش صف هوشمند (queue worker) — 5 job هر تیک با اولویت
+        if (class_exists('\\ApexOmega\\Core\\QueueWorker')) {
+            try { \ApexOmega\Core\QueueWorker::tick(5); } catch (\Throwable $e) { error_log('[APEX Ω] Queue tick error: '.$e->getMessage()); }
+        } else {
+            // fallback سبک: اگر QueueWorker هنوز لود نشده (برای سازگاری)
+            try { self::process_queue_fallback(5); } catch (\Throwable $e) {}
+        }
+    }
+
+    /**
+     * Fallback ساده صف — اگر کلاس QueueWorker موجود نباشد (alpha)
+     */
+    public static function process_queue_fallback(int $limit = 5): void {
+        global $wpdb;
+        $table = Database::table_queue();
+        // اگر جدول وجود ندارد (هنوز migrate نشده) خارج شو
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table'") !== $table) return;
+        $nowGmt = current_time('mysql', true);
+        $jobs = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM $table WHERE status IN ('pending','retry') AND (next_retry_gmt IS NULL OR next_retry_gmt <= %s) ORDER BY priority DESC, created_at_gmt ASC LIMIT %d",
+            $nowGmt, $limit
+        ), ARRAY_A);
+        if (empty($jobs)) return;
+        foreach ($jobs as $job) {
+            $lockKey = 'apex_queue_' . $job['job_id'];
+            if (!Database::acquire_lock($lockKey, 300)) continue;
+            $wpdb->update($table, ['status'=>'running','started_at_gmt'=>$nowGmt,'attempts'=> (int)$job['attempts']+1], ['id'=>$job['id']]);
+            // فعلا stub: فقط done کن (در نسخه کامل بر اساس type پردازش می‌شود)
+            $payload = json_decode($job['payload_json'] ?? '', true);
+            $type = $job['type'];
+            $success = true;
+            // rollup نمونه
+            if ($type === 'timeseries_rollup') {
+                $deleted = 0;
+                try { $deleted = self::rollup_timeseries(); } catch (\Throwable $e) { $success = false; }
+                if ($success) $wpdb->update($table, ['status'=>'done','completed_at_gmt'=>current_time('mysql', true)], ['id'=>$job['id']]);
+                else $wpdb->update($table, ['status'=>'retry','next_retry_gmt'=>gmdate('Y-m-d H:i:s', time() + pow(2, (int)$job['attempts']+1)*60)], ['id'=>$job['id']]);
+            } else {
+                // سایر jobها فعلا done (برای alpha)
+                $wpdb->update($table, ['status'=>'done','completed_at_gmt'=>current_time('mysql', true)], ['id'=>$job['id']]);
+            }
+            Database::release_lock($lockKey);
+        }
+    }
+
+    public static function rollup_timeseries(): int {
+        global $wpdb;
+        $table = Database::table_timeseries();
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table'") !== $table) return 0;
+        // 5m -> 1h پس از 30 روز: حذف 5m قدیمی‌تر از 30d (نگهداری 1h باقی می‌ماند — در alpha فعلا فقط حذف)
+        $cutoff30d = gmdate('Y-m-d H:i:s', time() - 30*DAY_IN_SECONDS);
+        $deleted = $wpdb->query($wpdb->prepare("DELETE FROM $table WHERE granularity='5m' AND sampled_at_gmt < %s LIMIT 1000", $cutoff30d));
+        return (int) $deleted;
     }
 
     /**

@@ -34,7 +34,12 @@ class Ajax {
             'apex_save_autowatch',
             'apex_save_commentor',
             'apex_run_commentor_now',
+            'apex_send_post_comments',
+            'apex_commentor_diag',
             'apex_dismiss_notice',
+            'apex_start_tier_job',
+            'apex_process_tier_chunk',
+            'apex_tier_job_status',
         ];
         foreach ($actions as $a) {
             add_action('wp_ajax_' . $a, [__CLASS__, 'router']);
@@ -48,9 +53,14 @@ class Ajax {
             wp_send_json_error(['message' => 'دسترسی غیرمجاز.'], 403);
         }
         // نانس
-        $nonce = $_REQUEST['_ajax_nonce'] ?? $_REQUEST['nonce'] ?? '';
-        if (!wp_verify_nonce($nonce, 'apex_omega_nonce')) {
-            wp_send_json_error(['message' => 'نشانه امنیتی نامعتبر (nonce).'], 403);
+        $nonce = sanitize_text_field($_REQUEST['_ajax_nonce'] ?? $_REQUEST['nonce'] ?? ''); // 2.0-beta SEC-02 sanitize
+        // پاکسازی کامل بافر قبل از JSON — جلوگیری از Warning HTML که باعث SyntaxError < می‌شود (فیکس 1.9.1)
+        while (ob_get_level() > 0) { @ob_end_clean(); }
+        @ob_start();
+        $valid = wp_verify_nonce($nonce, 'apex_omega_nonce') || wp_verify_nonce($nonce, 'apex-omega-nonce');
+        if (!$valid) {
+            // nonce را با هر دو فرمت قبول کن — داشبورد dash می‌فرستد، admin.js underscore
+            wp_send_json_error(['message' => 'نشانه امنیتی نامعتبر (nonce) — صفحه را رفرش کنید.'], 403);
         }
 
         switch ($action) {
@@ -137,6 +147,21 @@ class Ajax {
                 break;
             case 'apex_run_commentor_now':
                 self::run_commentor_now();
+                break;
+            case 'apex_send_post_comments':
+                self::send_post_comments();
+                break;
+            case 'apex_commentor_diag':
+                self::commentor_diag();
+                break;
+            case 'apex_start_tier_job':
+                self::start_tier_job();
+                break;
+            case 'apex_process_tier_chunk':
+                self::process_tier_chunk();
+                break;
+            case 'apex_tier_job_status':
+                self::tier_job_status();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -384,6 +409,11 @@ class Ajax {
     }
 
     private static function preview_tier(): void {
+        // 1.9.4 SEC-03: هشدار per-post — اگر strict mode روشن باشد، لاگ کن (default: فقط هشدار)
+        if (get_option('apex_omega_strict_per_post', false)) {
+            // strict: require edit_post برای هر پست هدف — ولی preview هنوز پست خاصی ندارد، پس فقط لاگ
+            error_log('[APEX Ω] preview_tier by user '.get_current_user_id().' strict mode check');
+        }
         $counts = $_POST['counts'] ?? [];
         if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
         // ممکن است به صورت counts[tier_1]=5 بیاید
@@ -509,7 +539,7 @@ class Ajax {
     }
     private static function export_history_csv(): void {
         $limit = isset($_POST['limit']) ? (int)$_POST['limit'] : 1000;
-        $csv = \ApexOmega\Core\Exporter::export_history_csv(min(5000,max(10,$limit)));
+        $csv = \ApexOmega\Core\Exporter::export_history_csv(min(10000,max(10,$limit))); // 1.9.3 سقف 10K
         wp_send_json_success(['csv'=>$csv,'filename'=>'apex-history-'.gmdate('Y-m-d').'.csv']);
     }
     private static function export_tiers_json(): void {
@@ -582,5 +612,47 @@ class Ajax {
         $res = \ApexOmega\Core\CommentGuardian::run_manual();
         $last = get_option('apex_omega_commentor_last_run', []);
         wp_send_json_success(['message'=>'اجرای نگهبان کامنت انجام شد','last'=>$last,'debug'=>$res]);
+    }
+    private static function commentor_diag(): void {
+        $diag = \ApexOmega\Core\CommentGuardian::diag();
+        wp_send_json_success($diag);
+    }
+    private static function start_tier_job(): void {
+        $counts = $_POST['counts'] ?? [];
+        if (is_string($counts)) $counts = json_decode(stripslashes($counts), true) ?: [];
+        $clean=[]; foreach ((array)$counts as $k=>$v){ $k=sanitize_text_field($k); $clean[$k]=max(0,(int)$v); }
+        $filters = ['category'=>sanitize_text_field($_POST['category']??'all'),'post_type'=>sanitize_text_field($_POST['post_type']??'any'),'artist_aware'=>!empty($_POST['artist_aware'])];
+        $chunk_size = isset($_POST['chunk_size']) ? max(10,min(200,(int)$_POST['chunk_size'])) : 100;
+        // ذخیره auto_tier مثل apply_tier
+        $auto_enable=!empty($_POST['auto_enable']);
+        if($auto_enable){ update_option('apex_omega_auto_tier',['enabled'=>true,'counts'=>$clean,'filters'=>$filters,'updated_at'=>current_time('mysql',true)],false); \ApexOmega\Core\TierManager::schedule_auto(); }
+        else { $auto=get_option('apex_omega_auto_tier',[]); if(!empty($auto['enabled'])){ update_option('apex_omega_auto_tier',['enabled'=>false],false); \ApexOmega\Core\TierManager::unschedule_auto(); } }
+        $res=\ApexOmega\Core\TierManager::start_distribution_job($clean,$filters,$chunk_size);
+        if(empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
+    }
+    private static function process_tier_chunk(): void {
+        $exec=sanitize_text_field($_POST['execution_id']??'');
+        if(!$exec) wp_send_json_error(['message'=>'execution_id الزامی است'],400);
+        $chunk_size=isset($_POST['chunk_size'])? (int)$_POST['chunk_size']:0;
+        $res=\ApexOmega\Core\TierManager::process_job_chunk($exec,$chunk_size);
+        if(empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
+    }
+    private static function tier_job_status(): void {
+        $exec=sanitize_text_field($_POST['execution_id']??'');
+        if(!$exec) wp_send_json_error(['message'=>'execution_id الزامی است'],400);
+        $res=\ApexOmega\Core\TierManager::get_job_status($exec);
+        if(empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
+    }
+    private static function send_post_comments(): void {
+        $post_id = isset($_POST['post_id']) ? (int) $_POST['post_id'] : 0;
+        $count = isset($_POST['count']) ? (int) $_POST['count'] : 3;
+        if (!$post_id || !get_post($post_id)) wp_send_json_error(['message'=>'نوشته نامعتبر'], 400);
+        if (!current_user_can('edit_post', $post_id) && !apex_omega_user_can_manage()) wp_send_json_error(['message'=>'دسترسی ندارید'], 403);
+        $res = \ApexOmega\Core\CommentGuardian::send_for_post($post_id, $count);
+        if (!empty($res['success'])) wp_send_json_success($res);
+        wp_send_json_error($res, 400);
     }
 }
