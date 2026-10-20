@@ -194,7 +194,8 @@ class TierManager {
             'no_found_rows' => true,
             'update_post_meta_cache' => false,
             'update_post_term_cache' => false,
-        ] // 1.9.3 COR-06: پایدار — جلوگیری از دوباره‌شمارش با orderby دوتایی;
+        ]; // 1.9.3 COR-06: پایدار — جلوگیری از دوباره‌شمارش با orderby دوتایی
+
         if ($category && $category !== 'all') {
             $base_args['cat'] = (int)$category;
             if (!is_numeric($category)) {
