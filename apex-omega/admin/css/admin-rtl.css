@@ -73,3 +73,14 @@ body.rtl, .apex-wrap { direction: rtl; text-align: right; font-family: "Vazirmat
 @keyframes apexFadeIn{ from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
 #apex-result-table th{ background:#f3f4f6; position:sticky; top:0; }
 #apex-result-table tr:nth-child(even){ background:#f9fafb; }
+
+/* 2.0-beta FE-04 RTL mobile 360px — فیکس برای موبایل کوچک */
+@media (max-width:360px){
+  .apex-hero{padding:14px}
+  .apex-hero-stats{flex-direction:column}
+  .apex-tier-grid{grid-template-columns:1fr}
+  .apex-tier-card{padding:12px}
+  .button-apex{width:100%; justify-content:center}
+  .apex-table th,.apex-table td{padding:6px 8px; font-size:12px}
+}
+

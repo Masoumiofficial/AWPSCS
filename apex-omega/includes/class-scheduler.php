@@ -114,7 +114,7 @@ class Scheduler {
     public static function ajax_heal_cron(): void {
         // جلوگیری از نشت HTML قبل از JSON (Warningها)
         while (ob_get_level() > 0) { ob_end_clean(); }
-        $nonce = $_REQUEST['nonce'] ?? $_REQUEST['_ajax_nonce'] ?? '';
+        $nonce = sanitize_text_field($_REQUEST['nonce'] ?? $_REQUEST['_ajax_nonce'] ?? ''); // SEC-02
         $valid = wp_verify_nonce($nonce, 'apex-omega-nonce') || wp_verify_nonce($nonce, 'apex_omega_nonce') || wp_verify_nonce($nonce, 'apex-omega-nonce');
         // همچنین dash/underscore هر دو — سازگاری عقب‌رو
         if (!$valid || !$nonce) {

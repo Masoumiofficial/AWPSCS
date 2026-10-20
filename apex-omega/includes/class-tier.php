@@ -568,6 +568,10 @@ class TierManager {
         $total = count($flat);
         // payload: flat already contains generated values — idempotent
         Database::create_job($exec, $user_id, $counts_per_tier, $filters, $flat, $total, $chunk_size);
+        // 2.0-beta: هم‌زمان در صف جدید هم ثبت کن تا REST /queue دیده شود
+        if (class_exists('\\ApexOmega\\Core\\QueueWorker')) {
+            try { \ApexOmega\Core\QueueWorker::enqueue('tier_distribution', ['execution_id'=>$exec,'total'=>$total,'counts'=>$counts_per_tier], 10); } catch (\Throwable $e) {}
+        }
         // snapshot برای Undo بعد از شروع (خالی تا پایان job پر می‌شود)
         return [
             'success' => true,

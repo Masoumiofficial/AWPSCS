@@ -57,30 +57,36 @@ class Evergreen {
             'tier_7' => 0.60, // تازه کندتر — طبیعی
             '' => 0.92,
         ]);
-        // برای جلوگیری از فشار، فقط 30 پست در هر تیک (چرخشی)
+        // 2.0-beta PERF-02: cursor pagination (ID > last_id) به‌جای OFFSET — برای 10K+ بدون کندی
         global $wpdb;
         $blog = get_current_blog_id();
-        // 1.9.4 JOB-03: transient به option پایدار — transient فقط کش، option منبع حقیقت (اگر flush شد offset صفر نمی‌شود)
-        $offset = (int) get_option("apex_evergreen_offset_{$blog}", 0);
-        $offset_transient = get_transient("apex_evergreen_offset_{$blog}");
-        if ($offset_transient !== false) $offset = (int)$offset_transient; // کش تازه‌تر باشد
-        $batch = 32; // حرفه‌ای: 32/تیک → 9216 روزانه
+        $lastId = (int) get_option("apex_evergreen_last_id_{$blog}", 0);
+        // سازگاری با نسخه قبلی offset
+        if (!$lastId) {
+            $oldOffset = (int) get_option("apex_evergreen_offset_{$blog}", 0);
+            if ($oldOffset) {
+                // تخمین lastId از offset (برای مهاجرت یک‌باره)
+                $lastId = (int) $wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' ORDER BY ID ASC LIMIT 1 OFFSET %d", $oldOffset));
+                $lastId = $lastId ?: 0;
+            }
+        }
+        $batch = 32; // 9216 روزانه
         $ids = $wpdb->get_col($wpdb->prepare(
-            "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' ORDER BY p.ID ASC LIMIT %d OFFSET %d",
-            $batch, $offset
+            "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' AND p.ID > %d ORDER BY p.ID ASC LIMIT %d",
+            $lastId, $batch
         ));
         if (empty($ids)) {
             // دور کامل شد → از اول
-            $offset = 0;
+            $lastId = 0;
             $ids = $wpdb->get_col($wpdb->prepare(
-                "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' ORDER BY p.ID ASC LIMIT %d OFFSET %d",
-                $batch, $offset
+                "SELECT p.ID FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' AND p.ID > %d ORDER BY p.ID ASC LIMIT %d",
+                $lastId, $batch
             ));
         }
-        // offset بعدی
-        $new_offset = $offset + $batch;
-        set_transient("apex_evergreen_offset_{$blog}", $new_offset, HOUR_IN_SECONDS);
-        update_option("apex_evergreen_offset_{$blog}", $new_offset, false); // پایدار
+        // ذخیره cursor جدید
+        if (!empty($ids)) $lastId = max($ids);
+        update_option("apex_evergreen_last_id_{$blog}", $lastId, false);
+        set_transient("apex_evergreen_offset_{$blog}", $lastId, HOUR_IN_SECONDS); // سازگاری
 
         if (empty($ids)) return;
         $exec = apex_omega_generate_uuid();

@@ -53,7 +53,7 @@ class Ajax {
             wp_send_json_error(['message' => 'دسترسی غیرمجاز.'], 403);
         }
         // نانس
-        $nonce = $_REQUEST['_ajax_nonce'] ?? $_REQUEST['nonce'] ?? '';
+        $nonce = sanitize_text_field($_REQUEST['_ajax_nonce'] ?? $_REQUEST['nonce'] ?? ''); // 2.0-beta SEC-02 sanitize
         // پاکسازی کامل بافر قبل از JSON — جلوگیری از Warning HTML که باعث SyntaxError < می‌شود (فیکس 1.9.1)
         while (ob_get_level() > 0) { @ob_end_clean(); }
         @ob_start();
