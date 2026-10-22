@@ -77,12 +77,21 @@ class Scheduler {
 
     public static function add_cron_schedules(array $schedules): array {
         $schedules[self::CRON_INTERVAL] = [
-            'interval' => 300,
-            'display' => __('هر ۵ دقیقه — APEX Ω', 'apex-omega'),
+            'interval' => 3600,
+            'display' => __('هر ۱ ساعت — APEX Ω (ریتم هرساعته)', 'apex-omega'),
         ];
         $schedules[self::COMMENT_INTERVAL] = [
+            'interval' => 3600,
+            'display' => __('هر ۱ ساعت — APEX Ω کامنت (ریتم هرساعته)', 'apex-omega'),
+        ];
+        // retain legacy for migration compatibility
+        $schedules['apex_omega_five_min'] = [
+            'interval' => 300,
+            'display' => __('هر ۵ دقیقه — APEX Ω (legacy)', 'apex-omega'),
+        ];
+        $schedules['apex_omega_six_hours'] = [
             'interval' => 21600,
-            'display' => __('هر ۶ ساعت — APEX Ω کامنت', 'apex-omega'),
+            'display' => __('هر ۶ ساعت — APEX Ω کامنت (legacy)', 'apex-omega'),
         ];
         return $schedules;
     }
@@ -90,15 +99,15 @@ class Scheduler {
     public static function ensure_cron(): void {
         $ts = wp_next_scheduled(self::CRON_HOOK);
         if (!$ts) {
-            wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+            wp_schedule_event(time() + 3600, self::CRON_INTERVAL, self::CRON_HOOK);
         } else {
             $sched = wp_get_schedule(self::CRON_HOOK);
             if ($sched !== self::CRON_INTERVAL) {
                 wp_clear_scheduled_hook(self::CRON_HOOK);
-                wp_schedule_event(time() + 60, self::CRON_INTERVAL, self::CRON_HOOK);
+                wp_schedule_event(time() + 3600, self::CRON_INTERVAL, self::CRON_HOOK);
             }
         }
-        // نگهبان کامنت — هر ۶ ساعت (۴ بار/روز) همهٔ پست‌ها
+        // نگهبان کامنت — هر ۱ ساعت (ریتم هرساعته) — همهٔ پست‌ها
         $ts_c = wp_next_scheduled(self::COMMENT_HOOK);
         if (!$ts_c) {
             wp_schedule_event(time() + 3600, self::COMMENT_INTERVAL, self::COMMENT_HOOK);
@@ -373,11 +382,11 @@ class Scheduler {
         if (class_exists('\\ApexOmega\\Core\\Evergreen')) {
             try { \ApexOmega\Core\Evergreen::tick(); } catch (\Throwable $e) { error_log('[APEX Ω] Evergreen tick error: '.$e->getMessage()); }
         }
-        // 💬 نگهبان کامنت حالا هر ۶ ساعت جدا اجرا می‌شود (apex_omega_commentor_tick) — اما fallback ایمنی هر ۵ دقیقه اگر گیت ۶ساعته جا ماند
+        // 💬 نگهبان کامنت هر ۱ ساعت (ریتم هرساعته) — fallback هر 5دقیقه اگر گیت 1ساعته جا ماند
         if (class_exists('\\ApexOmega\\Core\\CommentGuardian') && \ApexOmega\Core\CommentGuardian::is_enabled()) {
             try {
                 $last_ts = (int) get_option('apex_omega_commentor_last_tick_ts', 0);
-                if (!$last_ts || (time() - $last_ts >= 21600)) {
+                if (!$last_ts || (time() - $last_ts >= 3600)) {
                     \ApexOmega\Core\CommentGuardian::tick();
                 }
             } catch (\Throwable $e) { error_log('[APEX Ω] Commentor fallback tick error: '.$e->getMessage()); }

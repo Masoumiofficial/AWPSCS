@@ -126,10 +126,34 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
     <small>💡 این الگو در پیش‌نمایش و اعمال و همچنین در AI/سایت ایرانی لحاظ می‌شود. با فیلتر <code>apex_omega_hit_pairs</code> جفت‌های هیت واقعی خودت را اضافه کن.</small>
   </div>
 
+  <!-- اصلاح نوپاهای بادکرده — v2.1.0 -->
+  <div class="apex-card" style="margin-top:14px; border-top:4px solid #f59e0b; background:#fffbeb;">
+    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h3 style="margin:0;">🩹 اصلاح نوپاهای بادکرده (۸۹k→کمتر از ۵k)</h3>
+        <small style="color:#92400e;">وزن‌ها را تنظیم کردی ولی آهنگ‌های قبلی هنوز ۸۹٬۸۵۰ بازدید دارند؟ اینجا یک‌کلیک به استاندارد برگردان — <strong>فقط پست‌های نوپا (وزن ≤ آستانه)</strong> که بازدیدشان از سقف نوپا (&lt;۵k) بیشتر است اصلاح می‌شوند. تاریخچه + اسنپ‌شات ثبت می‌شود.</small>
+      </div>
+      <span class="apex-badge" style="background:#f59e0b;color:#fff;">جدید v2.1.0</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:12px;">
+      <label>حداکثر سن پست (روز):<br><input type="number" id="apex-recalib-age" value="60" min="1" max="365" style="width:100%;"></label>
+      <label>آستانه وزن نوپا:<br><input type="number" id="apex-recalib-thr" value="30" min="5" max="60" style="width:100%;"></label>
+      <label>سقف بررسی:<br><input type="number" id="apex-recalib-limit" value="500" min="10" max="2000" style="width:100%;"></label>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" id="apex-recalib-preview" class="button button-secondary">👁️ پیش‌نمایش (Dry-Run)</button>
+      <button type="button" id="apex-recalib-apply" class="button button-apex" style="background:#f59e0b;border-color:#f59e0b;">🩹 اصلاح نوپاها به استاندارد</button>
+      <span id="apex-recalib-result" style="font-weight:700;"></span>
+    </div>
+    <div id="apex-recalib-details" style="margin-top:10px; max-height:320px; overflow:auto; display:none; background:#fff; border:1px solid #fde68a; border-radius:10px; padding:8px;"></div>
+    <small style="color:#92400e;">💡 نکته: اول پیش‌نمایش بزن (تعداد و نمونه‌ها را ببین)، بعد اصلاح. برای هنرمند خاص، اول وزن او را در جدول بالا به 10-15 بگذار و ذخیره کن، بعد اینجا اصلاح بزن. Evergreen بعد از اصلاح از مقدار جدید ادامه می‌دهد (gradual 30روزه).</small>
+  </div>
+
   <!-- نوار ابزار سریع -->
   <div class="apex-card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0;">
     <strong>ابزار سریع:</strong>
     <button type="button" id="apex-preset-pyramid" class="button">🔺 هرم استاندارد</button>
+    <button type="button" id="apex-preset-famous" class="button" style="background:#7c3aed;color:#fff;border-color:#7c3aed;" title="۱۲۵۶ آهنگ معروف → فقط الماس/پرطرفدار/محبوب">💎 هرم ۱۲۵۶ معروف (فقط ۳ دسته بالا)</button>
     <button type="button" id="apex-preset-equal" class="button">⚖️ مساوی</button>
     <button type="button" id="apex-preset-clear" class="button">🧹 صفر</button>
     <span style="margin-right:auto;"></span>
@@ -198,7 +222,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
     <div class="apex-card" style="margin:12px 0; background:#f0fdfa; border:1px solid #14b8a6; border-right:4px solid #14b8a6;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>
-          <h4 style="margin:0;color:#0f766e;">🌱 رشد مداوم Evergreen — هر ۵ دقیقه افزایش خودکار  ✅ جدید v1.4.0</h4>
+          <h4 style="margin:0;color:#0f766e;">🌱 رشد مداوم Evergreen — هر ۱ ساعت افزایش خودکار (ریتم هرساعته) ✅ v2.0</h4>
           <small style="color:#134e4a;">بعد از توزیع اولیه، بازدید/امتیاز همه آهنگ‌ها به‌صورت کاملاً طبیعی و تدریجی تا سقف 1.5M رشد می‌کند — بدون نیاز به دخالت دستی، دقیقاً مثل ترافیک واقعی روزمره.</small>
         </div>
         <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #14b8a6;border-radius:999px;padding:6px 14px;font-weight:800;cursor:pointer;">
@@ -206,19 +230,19 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         </label>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:10px;">
-        <label>نرخ رشد هر ۵ دقیقه (%):<br><input type="number" id="apex-evergreen-rate" step="0.01" min="0.005" max="0.5" value="<?php echo esc_attr($evergreen['rate_percent']); ?>" style="width:110px;"></label>
+        <label>نرخ رشد هر ۱ ساعت (%):<br><input type="number" id="apex-evergreen-rate" step="0.01" min="0.005" max="0.5" value="<?php echo esc_attr($evergreen['rate_percent']); ?>" style="width:110px;"></label>
         <label>سقف بازدید:<br><input type="number" id="apex-evergreen-max" min="50000" max="5000000" value="<?php echo esc_attr($evergreen['max_views']); ?>" style="width:140px;"></label>
         <button id="apex-evergreen-save" type="button" class="button button-apex" style="background:#0f766e;border-color:#0f766e;">💾 ذخیره Evergreen</button>
         <span id="apex-evergreen-result" style="font-weight:700;"></span>
-        <small style="width:100%;color:#6b7280;">پیشنهاد: 0.03–0.05% = ≈ 5–8% رشد روزانه (واقع‌گرایانه). سقف 1.5M برای حفظ اعتبار — بالاتر نرو.</small>
+        <small style="width:100%;color:#6b7280;">پیشنهاد: 0.005–0.02% = روزانه 24-96 بازدید برای 1M (≈50/day) — fresh سریع‌تر. سقف 1.5M حفظ اعتبار.</small>
       </div>
-      <small>⏰ اجرا در <code>apex_omega_tick</code> هر ۵ دقيقه (Real-Cron). نیاز به بازدید سایت ندارد اگر سرور کرون دارد (یا WP-Cron با ترافیک).</small>
+      <small>⏰ ریتم هرساعته — اجرا در <code>apex_omega_tick</code> هر ۱ ساعت (Real-Cron). gradual increase هرگز کاهش نیابد.</small>
     </div>
     <?php $autowatch = \ApexOmega\Core\AutoWatch::get_settings(); $aw_enabled = !empty($autowatch['enabled']); $aw_last = get_option('apex_omega_autowatch_last_run', []); ?>
     <div class="apex-card" style="margin:12px 0; background:#fff7ed; border:1px solid #f97316; border-right:4px solid #f97316;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>
-          <h4 style="margin:0;color:#9a3412;">👀 نگهبان خودکار پست‌های تازه — هر چند دقیقه چک هوشمند  ✅ جدید v1.6.0</h4>
+          <h4 style="margin:0;color:#9a3412;">👀 نگهبان خودکار پست‌های تازه — هر ۱ ساعت چک هوشمند (ریتم هرساعته) ✅ v2.0</h4>
           <small style="color:#7c2d12;">پست‌های جدید اسکریپت که زیر 10K بازدید (یا صفر) هستند، خودکار شارژ می‌شوند تا سایت ضایع نباشد — تازه‌کار 500-10K، ویژه‌ها بیشتر + هر تیک رشد اصولی. کاملاً خودکار.</small>
         </div>
         <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #f97316;border-radius:999px;padding:6px 14px;font-weight:800;cursor:pointer;">
@@ -234,7 +258,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         <button id="apex-autowatch-save" type="button" class="button button-apex" style="background:#ea580c;border-color:#ea580c;">💾 ذخیره نگهبان</button>
       </div>
       <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-        <small style="color:#6b7280;">هر <code>apex_omega_tick</code> (5 دقیقه) تا <span id="apex-autowatch-batch-hint"><?php echo esc_html($autowatch['batch']); ?></span> پست کم‌بازدید چک می‌شود — با cooldown 24ساعته هر پست دوباره شارژ نمی‌شود.</small>
+        <small style="color:#6b7280;">هر <code>apex_omega_tick</code> (۱ ساعت) تا <span id="apex-autowatch-batch-hint"><?php echo esc_html($autowatch['batch']); ?></span> پست کم‌بازدید چک می‌شود — با cooldown 24ساعته هر پست دوباره شارژ نمی‌شود.</small>
         <span id="apex-autowatch-result" style="font-weight:700;"></span>
         <?php if (!empty($aw_last['at'])): ?><small style="color:#065f46;">آخرین اجرا: <?php echo esc_html($aw_last['at']); ?> — <?php echo esc_html($aw_last['done']); ?> پست شارژ شد <code><?php echo esc_html(substr($aw_last['exec']??'',0,8)); ?></code></small><?php endif; ?>
       </div>
@@ -256,14 +280,15 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         <label>حداقل کامنت تازه:<br><input type="number" id="apex-commentor-min" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['min_comments']); ?>" style="width:100%;"></label>
         <label>حداکثر کامنت تازه:<br><input type="number" id="apex-commentor-max" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['max_comments']); ?>" style="width:100%;"></label>
         <label>رشد روزانه پرطرفدار:<br><input type="number" id="apex-commentor-daily" min="1" max="5" step="1" value="<?php echo esc_attr($commentor['daily_growth']); ?>" style="width:100%;"></label>
-        <label>سقف هر پست:<br><input type="number" id="apex-commentor-maxpost" min="10" max="100" step="5" value="<?php echo esc_attr($commentor['max_per_post']); ?>" style="width:100%;"></label>
+        <label>سقف هر پست:<br><input type="number" id="apex-commentor-maxpost" min="10" max="500" step="5" value="<?php echo esc_attr($commentor['max_per_post']); ?>" style="width:100%;"><small>قابل افزایش تا 500 (hourly rhythm)</small></label>
         <label>پردازش روزانه:<br><input type="number" id="apex-commentor-batch" min="0" max="500" step="10" value="<?php echo esc_attr($commentor['batch']); ?>" style="width:100%;"> <small>0=همهٔ پست‌ها روزانه (توصیه) — بدون سقف 20</small></label>
         <label>فقط پست‌های چند روز اخیر:<br><input type="number" id="apex-commentor-recent" min="0" max="365" step="1" value="<?php echo esc_attr($commentor['only_recent_days']); ?>" style="width:100%;"> <small>0=همه</small></label>
+        <label style="background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;padding:8px;display:flex;align-items:center;gap:6px;"><input type="checkbox" id="apex-commentor-high" <?php checked(!empty($commentor['high_views_auto']), true); ?>> <span>🚀 <strong>کامنت خودکار برای پرطرفدارها<br><small>آهنگ > <input type="number" id="apex-commentor-high-thr" min="10000" max="1000000" step="10000" value="<?php echo esc_attr($commentor['high_views_threshold']); ?>" style="width:90px;"> بازدید — بدون دخالت انسانی</small></strong></span></label>
         <button type="button" id="apex-commentor-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💬 ذخیره نگهبان کامنت</button>
         <button type="button" id="apex-commentor-run" class="button button-apex secondary" style="background:#fff;color:#7c3aed;border-color:#7c3aed;">▶️ اجرای فوری (تست)</button>
       </div>
       <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
-        <small style="color:#6b7280;">روزانه <strong>هر چی پست داری</strong> بر اساس الگوی ریتم (بازدید+امتیاز+وزن خواننده) چک می‌شود — اول پر‌بازدیدها، بعد تازه‌ها — هر پست cooldown 24ساعته. خوانندهٔ معروف با آهنگ تازه هم متعادل 3-5 کامنت می‌گیرد نه انفجاری.</small>
+        <small style="color:#6b7280;">روزانه <strong>هر چی پست داری</strong> بر اساس الگوی ریتم (بازدید+امتیاز+وزن خواننده) چک می‌شود — اول پر‌بازدیدها، بعد تازه‌ها — هر پست cooldown 6ساعته (پرطرفدار >100k هر 2ساعت). خوانندهٔ معروف با آهنگ تازه هم متعادل 3-5 کامنت می‌گیرد نه انفجاری.</small>
         <span id="apex-commentor-result" style="font-weight:700;"></span>
         <?php if (!empty($cm_last['at'])): ?><small style="color:#065f46;">آخرین اجرا: <?php echo esc_html($cm_last['at']); ?> — <?php echo esc_html($cm_last['posts']); ?> پست → <?php echo esc_html($cm_last['comments']); ?> کامنت <code><?php echo esc_html(substr($cm_last['exec']??'',0,8)); ?></code></small><?php endif; ?>
       </div>
@@ -313,8 +338,9 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         bindOnce('apex-commentor-save', function(btn){
           btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
           var enabled=qs('apex-commentor-enabled')?.checked?1:0, threshold=parseInt(qs('apex-commentor-threshold')?.value)||10000, minc=parseInt(qs('apex-commentor-min')?.value)||2, maxc=parseInt(qs('apex-commentor-max')?.value)||4, daily=parseInt(qs('apex-commentor-daily')?.value)||2, maxpost=parseInt(qs('apex-commentor-maxpost')?.value)||60, batch=parseInt(qs('apex-commentor-batch')?.value), recent=parseInt(qs('apex-commentor-recent')?.value)||0; if(isNaN(batch)) batch=0;
+          var highAuto=qs('apex-commentor-high')?.checked?1:0, highThr=parseInt(qs('apex-commentor-high-thr')?.value)||100000;
           var resEl=qs('apex-commentor-result'); if(resEl) resEl.textContent='در حال ذخیره…';
-          apexPost('apex_save_commentor',{enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent}).then(function(j){
+          apexPost('apex_save_commentor',{enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent,high_views_auto:highAuto,high_views_threshold:highThr}).then(function(j){
             if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message+' — آستانه '+j.data.settings.threshold; resEl.style.color='#065f46';}}
             else if(resEl){resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b';}
           }).catch(function(err){ if(resEl){resEl.textContent='❌ خطا: '+err; resEl.style.color='#991b1b';}}).finally(function(){ btn.disabled=false; btn.textContent='💬 ذخیره نگهبان کامنت'; });
@@ -405,10 +431,28 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         bindOnce('apex-preset-pyramid', function(){
           var total=(window.ApexOmega&&ApexOmega.total_posts)||parseInt(document.querySelector('.apex-hero-stats .big')?.textContent.replace(/,/g,'')||'0');
           if(!total){ alert('تعداد کل آثار 0 است'); return;}
-          var perc={tier_1:0.02,tier_2:0.04,tier_3:0.10,tier_4:0.14,tier_5:0.20,tier_6:0.25,tier_7:0.25}; var sum=0, out={};
+          // اگر Artist-Aware روشنه و آرتیست پرکار (مثل شجریان 238 تا) داری، هرم رو بازتر می‌کنیم تا جا بشه
+          var isAware = document.getElementById('apex-artist-aware') && document.getElementById('apex-artist-aware').checked;
+          var perc = isAware ? {tier_1:0.06,tier_2:0.09,tier_3:0.13,tier_4:0.15,tier_5:0.18,tier_6:0.19,tier_7:0.20} : {tier_1:0.02,tier_2:0.04,tier_3:0.10,tier_4:0.14,tier_5:0.20,tier_6:0.25,tier_7:0.25}; var sum=0, out={};
           Object.keys(perc).forEach(function(k){ var c=Math.round(total*perc[k]); out[k]=c; sum+=c; var inp=document.querySelector('.apex-tier-count[data-tier="'+k+'"]'); if(inp) inp.value=c; var sl=document.querySelector('.apex-tier-slider[data-tier="'+k+'"]'); if(sl) sl.value=c;});
           out['tier_7']+= total - sum; var last=document.querySelector('.apex-tier-count[data-tier="tier_7"]'); if(last) last.value=out['tier_7']; var sl2=document.querySelector('.apex-tier-slider[data-tier="tier_7"]'); if(sl2) sl2.value=out['tier_7'];
           if(window.jQuery) jQuery('.apex-tier-count').first().trigger('input');
+        });
+        bindOnce('apex-preset-famous', function(){
+          var total=(window.ApexOmega&&ApexOmega.total_posts)||parseInt(document.querySelector('.apex-hero-stats .big')?.textContent.replace(/,/g,'')||'0');
+          if(!total){ alert('تعداد کل آثار 0 است'); return;}
+          // ۱۲۵۶ آهنگ معروف باید فقط تو ۳ دسته بالا برن — بقیه پایین‌ترین
+          var famous = 1256;
+          if(famous > total) famous = total; // اگر کل کمتر از ۱۲۵۶ بود
+          var rem = total - famous;
+          // تقسیم ۱۲۵۶ به نسبت هرم معروف: الماس 28% ، پرطرفدار 32% ، محبوب 40%
+          var c1=Math.round(famous*0.28), c2=Math.round(famous*0.32), c3=famous - c1 - c2;
+          // بقیه (مثلا 42 تا اگر total 1298) بین ۴ دسته پایین پخش کن
+          var c4 = Math.round(rem*0.40), c5 = Math.round(rem*0.30), c6 = Math.round(rem*0.20), c7 = rem - c4 - c5 - c6;
+          var out={tier_1:c1,tier_2:c2,tier_3:c3,tier_4:c4,tier_5:c5,tier_6:c6,tier_7:c7};
+          Object.keys(out).forEach(function(k){ var v=out[k]||0; var inp=document.querySelector('.apex-tier-count[data-tier="'+k+'"]'); if(inp) inp.value=v; var sl=document.querySelector('.apex-tier-slider[data-tier="'+k+'"]'); if(sl) sl.value=v;});
+          if(window.jQuery) jQuery('.apex-tier-count').first().trigger('input');
+          alert('هرم ۱۲۵۶ معروف اعمال شد: الماس '+c1+' + پرطرفدار '+c2+' + محبوب '+c3+' = '+famous+' آهنگ معروف فقط تو ۳ دسته بالا');
         });
         bindOnce('apex-preset-equal', function(){
           var total=(window.ApexOmega&&ApexOmega.total_posts)||0; if(!total) return; var per=Math.floor(total/7); var rem=total - per*7;
@@ -512,6 +556,45 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
             if(j.success){ if(resEl) resEl.textContent='✅ بازگردانی شد: '+j.data.restored+' آهنگ'; setTimeout(()=>location.reload(),800);}
             else if(resEl){resEl.textContent='❌ '+(j.data.message||'خطا'); resEl.style.color='#991b1b';}
           }).catch(e=>{ if(resEl) resEl.textContent='❌ '+e;}).finally(()=>{ btn.disabled=false; btn.textContent=o;});
+        });
+        // recalibrate novice — v2.1.0
+        bindOnce('apex-recalib-preview', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال پیش‌نمایش…';
+          var age=parseInt(qs('apex-recalib-age')?.value)||60, thr=parseInt(qs('apex-recalib-thr')?.value)||30, lim=parseInt(qs('apex-recalib-limit')?.value)||500;
+          var resEl=qs('apex-recalib-result'), detailsBox=qs('apex-recalib-details');
+          if(resEl) resEl.textContent='⏳ در حال اسکن…';
+          apexPost('apex_recalibrate_novice',{max_age_days:age,weight_threshold:thr,limit:lim,dry_run:1}).then(function(j){
+            if(j.success){
+              if(resEl){ resEl.style.color='#065f46'; resEl.textContent='✅ '+j.data.message+' — اسکن: '+j.data.scanned+' | اصلاحی: '+j.data.fixed+' (dry-run)';}
+              if(detailsBox && j.data.details && j.data.details.length){
+                detailsBox.style.display='block';
+                var html='<div class=\"apex-alert warning\" style=\"margin-bottom:8px;\">پیش‌نمایش — این‌ها به استاندارد برمی‌گردند (dry-run):</div><table class=\"apex-table\"><tr><th>#</th><th>عنوان</th><th>وزن</th><th>از دسته</th><th>به دسته</th><th>بازدید قبل→بعد</th><th>رأی قبل→بعد</th></tr>';
+                j.data.details.forEach(function(d,i){ html+='<tr><td>'+d.post_id+'</td><td>'+(d.post_title||'')+'</td><td>'+d.weight+'</td><td>'+d.old_tier+'</td><td>'+d.new_tier+'</td><td>'+d.old_views.toLocaleString('fa-IR')+' → <strong>'+d.new_views.toLocaleString('fa-IR')+'</strong></td><td>'+d.old_casts+' → '+d.new_casts+'</td></tr>';});
+                html+='</table>';
+                detailsBox.innerHTML=html;
+              } else if(detailsBox){ detailsBox.style.display='block'; detailsBox.innerHTML='<div class=\"apex-alert success\">پیش‌نمایش تمیز — '+j.data.scanned+' پست اسکن شد، هیچکدام نیاز به اصلاح ندارند.</div>';}
+            } else if(resEl){ resEl.textContent='❌ '+(j.data.message||'خطا'); resEl.style.color='#991b1b'; }
+          }).catch(function(e){ if(resEl){ resEl.textContent='❌ '+e; resEl.style.color='#991b1b'; }}).finally(()=>{ btn.disabled=false; btn.textContent=o;});
+        });
+        bindOnce('apex-recalib-apply', function(btn){
+          if(!confirm('آیا مطمئنی؟ '+ (parseInt(qs('apex-recalib-limit')?.value||500)) +' پست اخیر با وزن ≤'+(qs('apex-recalib-thr')?.value||30)+' که بازدیدشان >5k است به استاندارد برمی‌گردند. این عملیات با تاریخچه ثبت می‌شود و قابل Undo است.')) return;
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال اصلاح…';
+          var age=parseInt(qs('apex-recalib-age')?.value)||60, thr=parseInt(qs('apex-recalib-thr')?.value)||30, lim=parseInt(qs('apex-recalib-limit')?.value)||500;
+          var resEl=qs('apex-recalib-result'), detailsBox=qs('apex-recalib-details');
+          if(resEl) resEl.textContent='⏳ در حال اصلاح '+lim+' پست…';
+          apexPost('apex_recalibrate_novice',{max_age_days:age,weight_threshold:thr,limit:lim}).then(function(j){
+            if(j.success){
+              if(resEl){ resEl.style.color='#065f46'; resEl.textContent='✅ '+j.data.message+' — '+j.data.fixed+' پست از '+j.data.scanned+' اسکن شد.'; resEl.style.fontWeight='800';}
+              if(detailsBox && j.data.details){
+                detailsBox.style.display='block';
+                var html='<div class=\"apex-alert success\">✅ اصلاح انجام شد — شناسه: '+j.data.execution_id+'</div><table class=\"apex-table\"><tr><th>#</th><th>عنوان</th><th>وزن→دسته</th><th>بازدید</th><th>رأی</th></tr>';
+                j.data.details.forEach(function(d){ html+='<tr><td>'+d.post_id+'</td><td>'+d.post_title+'</td><td>'+d.weight+'→'+d.new_tier+'</td><td>'+d.old_views.toLocaleString('fa-IR')+' → <strong>'+d.new_views.toLocaleString('fa-IR')+'</strong></td><td>'+d.old_casts+'→'+d.new_casts+' ('+d.new_avg+'★)</td></tr>';});
+                html+='</table><small>برای Undo به پایین صفحه (آخرین توزیع) برو.</small>';
+                detailsBox.innerHTML=html;
+              }
+              setTimeout(()=>location.reload(),1800);
+            } else if(resEl){ resEl.textContent='❌ '+(j.data.message||'خطا'); resEl.style.color='#991b1b';}
+          }).catch(function(e){ if(resEl){ resEl.textContent='❌ '+e; resEl.style.color='#991b1b';} }).finally(()=>{ btn.disabled=false; btn.textContent=o;});
         });
         // rhythm live %
         var ratio=qs('apex-rhythm-artist-ratio'); if(ratio && !ratio.dataset.vanilla){

@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.0.0-beta
+Stable tag: 2.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,23 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.1.1 (2026-10-21) =
+* FIX: حذف کامل «پشمام» از کامنت‌ها و بهبود لحن (مودبانه، طبیعی، بدون slang)
+* FIX: کامنت صفر — پر کردن سریع (manual 120/تیک، auto تقویت 150)، صفرها در یک تیک تا هدف کامل می‌شوند (4-12 تا بسته به بازدید)
+* CHG: متن کامنت‌ها بازنویسی با دقت بیشتر — فارسی صحیح، اشاره به ملودی/صدا/حس، تنوع 14×3 دسته، نقد سازنده ملایم
+* IMP: AI prompt بهبود یافته برای کامنت طبیعی و متنوع
+
+= 2.1.0 (2026-10-21) =
+* BREAKING: نسخه از 2.0.0-beta.2 به 2.1.0 ارتقا یافت — ادامه نسخه‌گذاری به همین صورت (2.1.x → 2.2.0)
+* FEATURE: کامنت خودکار برای آهنگ‌های پرطرفدار >100,000 بازدید بدون دخالت انسانی — تیک جدید «کامنت خودکار برای پرطرفدارها» در نگهبان کامنت
+* FIX: 50→15 وزن پیش‌فرض نوپا (<5000 بازدید)، gradual 30روزه، evergreen سریع، 3% عنوان در کامنت
+
+= 2.0.0-beta.1 (2026-10-21) =
+* FIX: هرم استاندارد monotonic guard — عدم کاهش 1M→150k؛ افت >20% خودکار حفظ + log
+* FIX: سقف دستی کامنت 100→500 قابل‌تنظیم از هرم استاندارد (metabox max 500)
+* FEATURE: ریتم هرساعته — fresh 500-10000 با rating همبسته + 3-10 کامنت، بدون پیشوند عددی فارسی، عنوان آهنگ فقط 8% کامنت‌ها، million ~50/day، اولویت بازدید/امتیاز سپس کامنت، gradual increase هرگز کاهشی
+* CHG: Evergreen/AutoWatch/Comment هر 1 ساعت (3600) از 5m/6h؛ batch 55/h، tier-aware seasonal scaling
 
 = 2.0.0-beta =
 * Beta: SEC-02 sanitize nonce, PERF-02 cursor pagination (ID>last_id) برای evergreen, FE-04 mobile 360px, React build واقعی 22KB (vite), Queue unification (tier_distribution → apex_omega_queue)

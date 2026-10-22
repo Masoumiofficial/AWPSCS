@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Database {
-    const VERSION = '2.0.0-alpha'; // 2.0-alpha: timeseries+profiles+queue برای توزیع تکه‌تکه
+    const VERSION = '2.1.1'; // 2.1.1: remove پشمام + fast zero-fill + refined comments for >100k views without human intervention
 
     public static function table_history(): string {
         global $wpdb;

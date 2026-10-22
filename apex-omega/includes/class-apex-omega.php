@@ -20,6 +20,7 @@ class Plugin {
             }
         }, 5);
         Scheduler::init();
+        if (class_exists('\\ApexOmega\\Core\\TierManager')) \ApexOmega\Core\TierManager::init();
         Adapter_KKSR::register_display_filters();
 
         // هوک رأی واقعی جدید -> اگر برنامه فعال است، آن را به حالت نیازمند بررسی ببر

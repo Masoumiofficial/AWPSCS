@@ -57,13 +57,13 @@
 
       <div class="apex-card" style="margin:12px 0;background:#fef3ff;border:1px solid #e9d5ff;">
         <h4 style="margin:0 0 8px;">💬 کامنت دستی برای این پست</h4>
-        <p><small>تعداد دلخواه کامنت ایرانی واقع‌گرایانه (نام تمیز بدون عزیز/جون/کوچولو) برای همین آهنگ بفرست — جدا از زمان‌بندی خودکار هر ۶ ساعت.</small></p>
+        <p><small>تعداد دلخواه کامنت ایرانی واقع‌گرایانه (نام تمیز بدون عزیز/جون/کوچولو) برای همین آهنگ بفرست — جدا از زمان‌بندی خودکار هر ۱ ساعت (ریتم هرساعته).</small></p>
         <div class="apex-field" style="display:flex;gap:8px;align-items:center;">
           <label for="apex-manual-comment-count" style="white-space:nowrap;">تعداد کامنت:</label>
-          <input type="number" id="apex-manual-comment-count" min="1" max="60" value="3" style="width:80px;">
+          <input type="number" id="apex-manual-comment-count" min="1" max="500" value="3" style="width:80px;">
           <button type="button" id="apex-send-manual-comments" class="button-apex">ارسال کامنت 🚀</button>
         </div>
-        <small>سقف هر پست 60 کامنت — اگر قبلاً پر باشد، فقط باقی‌مانده ارسال می‌شود. گفت‌وگو اگر بسته باشد خودکار باز می‌شود.</small>
+        <small>سقف هر پست بر اساس تنظیمات (پیش‌فرض 500، قابل تغییر در هرم استاندارد) — اگر قبلاً پر باشد، فقط باقی‌مانده ارسال می‌شود. گفت‌وگو اگر بسته باشد خودکار باز می‌شود.</small>
         <div id="apex-manual-comment-result" style="margin-top:8px;"></div>
       </div>
 

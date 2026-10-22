@@ -81,9 +81,13 @@ class AutoWatch {
         return ['views'=>$views,'casts'=>$casts,'avg'=>$avg,'ratings'=>$ratings,'best'=>$best];
     }
 
-    // تیک هر 5 دقیقه — پیدا کردن پست‌های کم‌بازدید و شارژ
+    // تیک هر ۱ ساعت (ریتم هرساعته 2026-10-21) — پیدا کردن پست‌های کم‌بازدید و شارژ gradual never decrease
     public static function tick(): void {
         if (!self::is_enabled()) return;
+        // hourly gate
+        $last = (int) get_option('apex_autowatch_last_tick_ts', 0);
+        if ($last && (time() - $last < 3600)) return;
+        update_option('apex_autowatch_last_tick_ts', time(), false);
         $s = self::get_settings();
         $threshold = (int)$s['threshold'];
         $min_views = (int)$s['min_views'];

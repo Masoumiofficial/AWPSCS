@@ -74,7 +74,7 @@ class ArtistManager {
     /**
      * لیست آرتیست‌ها با تعداد آهنگ
      */
-    public static function get_all_artists(string $taxonomy = null, int $limit = 300): array {
+    public static function get_all_artists(?string $taxonomy = null, int $limit = 300): array {
         if (!$taxonomy) $taxonomy = self::detect_artist_taxonomy();
         if (!$taxonomy) return [];
 
@@ -95,8 +95,8 @@ class ArtistManager {
                 'name' => $t->name,
                 'slug' => $t->slug,
                 'count' => $t->count,
-                'weight' => isset($weights[$t->term_id]) ? (int)$weights[$t->term_id] : 50, // 0-100
-                'tier_hint' => self::weight_to_tier_hint($weights[$t->term_id] ?? 50),
+                'weight' => isset($weights[$t->term_id]) ? (int)$weights[$t->term_id] : 15, // 0-100
+                'tier_hint' => self::weight_to_tier_hint($weights[$t->term_id] ?? 15),
             ];
         }
         return $out;
@@ -133,14 +133,14 @@ class ArtistManager {
             if (!empty($terms) && !is_wp_error($terms)) {
                 foreach ($terms as $tm) {
                     $tid = is_object($tm) ? $tm->term_id : (int)$tm;
-                    $w = $weights[$tid] ?? 50;
+                    $w = $weights[$tid] ?? 15;
                     if ($w > $max) $max = $w;
                     if (is_object($tm)) $artist_names[] = $tm->name;
                 }
             }
         }
         // اگر تاکسونومی نداشتیم، سعی کن خواننده را از عنوان استخراج کنی (fallback)
-        if (!$max) $max = 50; // بی‌طرف — اما با قاب پایین می‌ماند
+        if (!$max) $max = 15; // نوپا — زیر 5000 بازدید
 
         $title = get_the_title($post_id);
         // خواننده اصلی برای ترکیب — اولین نام
@@ -361,12 +361,12 @@ class ArtistManager {
             $terms = wp_get_post_terms($post_id, $tax, ['fields'=>'ids']);
             if (!empty($terms) && !is_wp_error($terms)) {
                 foreach ($terms as $tid) {
-                    $w = $weights[$tid] ?? 50;
+                    $w = $weights[$tid] ?? 15;
                     if ($w > $max) $max = $w;
                 }
             }
         }
-        return $max ?: 50;
+        return $max ?: 15;
     }
 
     public static function score_pair_via_ai(string $artist, string $title): ?int {

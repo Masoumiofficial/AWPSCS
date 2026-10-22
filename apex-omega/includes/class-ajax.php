@@ -37,6 +37,7 @@ class Ajax {
             'apex_send_post_comments',
             'apex_commentor_diag',
             'apex_dismiss_notice',
+            'apex_recalibrate_novice',
             'apex_start_tier_job',
             'apex_process_tier_chunk',
             'apex_tier_job_status',
@@ -154,6 +155,9 @@ class Ajax {
             case 'apex_commentor_diag':
                 self::commentor_diag();
                 break;
+            case 'apex_recalibrate_novice':
+                self::recalibrate_novice();
+                break;
             case 'apex_start_tier_job':
                 self::start_tier_job();
                 break;
@@ -270,9 +274,14 @@ class Ajax {
         update_post_meta($post_id, '_apex_mode', $mode);
         Database::release_lock($lock_key);
 
-        if ($has_error && !isset($results['views']['success']) && !isset($results['kksr']['success'])) {
-            // اگر هیچ موفقیتی نبود
-            // اما اگر بخشی موفق بود، همچنان success کلی بفرست با جزئیات
+        // v2.1.0 — اگر امتیاز نیاز به تأیید داشت، خطا برگردان تا UI هشدار نشان دهد (ویدو رفت امتیاز نه حل شد)
+        foreach ($results as $rk=>$rv) {
+            if (!empty($rv['requires_confirm'])) {
+                wp_send_json_error(['message'=> ($rv['message'] ?? 'تأیید لازم است'), 'warnings'=> $rv['warnings'] ?? [], 'requires_confirm'=>true, 'results'=>$results, 'execution_id'=>$exec], 400);
+            }
+            if (isset($rv['success']) && $rv['success']===false && !empty($rv['errors'])) {
+                wp_send_json_error(['message'=> implode(' ', (array)$rv['errors']), 'results'=>$results, 'execution_id'=>$exec], 400);
+            }
         }
 
         wp_send_json_success(['results'=>$results, 'execution_id'=>$exec]);
@@ -603,6 +612,8 @@ class Ajax {
             'max_per_post' => isset($_POST['max_per_post']) ? (int)$_POST['max_per_post'] : null,
             'batch' => isset($_POST['batch']) ? (int)$_POST['batch'] : null,
             'only_recent_days' => isset($_POST['only_recent_days']) ? (int)$_POST['only_recent_days'] : null,
+            'high_views_auto' => isset($_POST['high_views_auto']) ? !empty($_POST['high_views_auto']) : null,
+            'high_views_threshold' => isset($_POST['high_views_threshold']) ? (int)$_POST['high_views_threshold'] : null,
         ];
         $data = array_filter($data, function($v){ return $v !== null; });
         \ApexOmega\Core\CommentGuardian::save_settings($data);
@@ -644,6 +655,15 @@ class Ajax {
         if(!$exec) wp_send_json_error(['message'=>'execution_id الزامی است'],400);
         $res=\ApexOmega\Core\TierManager::get_job_status($exec);
         if(empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
+    }
+    private static function recalibrate_novice(): void {
+        $max_age = isset($_POST['max_age_days']) ? max(1, min(365, (int)$_POST['max_age_days'])) : 60;
+        $threshold = isset($_POST['weight_threshold']) ? max(5, min(60, (int)$_POST['weight_threshold'])) : 30;
+        $limit = isset($_POST['limit']) ? max(10, min(2000, (int)$_POST['limit'])) : 500;
+        $dry = !empty($_POST['dry_run']);
+        $res = \ApexOmega\Core\TierManager::recalibrate_novice_posts($max_age, $threshold, $limit, $dry);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
         wp_send_json_success($res);
     }
     private static function send_post_comments(): void {

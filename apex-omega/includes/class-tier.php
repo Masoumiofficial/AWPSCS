@@ -272,7 +272,8 @@ class TierManager {
         }
 
         // تصادفی‌سازی منصفانه: shuffle - یا آرتیست‌محور
-        $artist_aware = !empty($filters['artist_aware']);
+        // 2026-10-21: پیش‌فرض روشن — طبق درخواست کاربر: دیگر تصادفی نچینه، معروف‌ها → الماس
+        $artist_aware = array_key_exists('artist_aware', $filters) ? !empty($filters['artist_aware']) : true;
         if ($artist_aware) {
             // مرتب‌سازی بر اساس وزن آرتیست (پرطرفدارها اول)
             $weights = [];
@@ -412,6 +413,26 @@ class TierManager {
                 $old_views = Adapter_Views::get_views($pid);
                 $old_kksr = Adapter_KKSR::get_stats($pid);
                 $detect = Adapter_KKSR::detect();
+
+                // 2.0.0-beta hotfix — monotonic guard: never drop 1M→150k (volatility check)
+                // If new views < old, check drop % against threshold (default 20%); if exceeds, keep old + small increment
+                if ($old_views > 1000 && (int)$item['views'] < $old_views) {
+                    $drop_pct = ($old_views - (int)$item['views']) / $old_views * 100;
+                    $apex_settings = get_option('apex_omega_settings', []);
+                    $thr = isset($apex_settings['large_drop_threshold_percent']) ? (float)$apex_settings['large_drop_threshold_percent'] : 20.0;
+                    if ($drop_pct > $thr) {
+                        // preserve old with gentle +0.5%~0.8% increase (never decrease)
+                        $inc_guard = mt_rand(1, max(5, (int)($old_views * 0.008)));
+                        $item['views'] = $old_views + $inc_guard;
+                        // also prevent rating drop
+                        $item['casts'] = max((int)$item['casts'], (int)$old_kksr['casts']);
+                        $item['avg'] = max((float)$item['avg'], (float)$old_kksr['avg']);
+                        if ($item['casts'] > 0 && $detect['best'] > 0) {
+                            $item['ratings'] = round((float)$item['avg'] * (int)$item['casts'] / (int)$detect['best'] * 5, 2);
+                        }
+                        error_log('[APEX Ω] monotonic guard: pid '.$pid.' old '.$old_views.' → kept '.$item['views'].' (drop '.round($drop_pct,1).'% > '.$thr.'%)');
+                    }
+                }
 
                 // Single transaction per post: views + kksr + tier meta atomically
                 global $wpdb;
@@ -628,6 +649,22 @@ class TierManager {
             $old_views = Adapter_Views::get_views($pid);
             $old_kksr = Adapter_KKSR::get_stats($pid);
             $detect = Adapter_KKSR::detect();
+            // 2.0 monotonic guard (same as apply_distribution)
+            if ($old_views > 1000 && (int)$item['views'] < $old_views) {
+                $drop_pct = ($old_views - (int)$item['views']) / $old_views * 100;
+                $apex_settings = get_option('apex_omega_settings', []);
+                $thr = isset($apex_settings['large_drop_threshold_percent']) ? (float)$apex_settings['large_drop_threshold_percent'] : 20.0;
+                if ($drop_pct > $thr) {
+                    $inc_guard = mt_rand(1, max(5, (int)($old_views * 0.008)));
+                    $item['views'] = $old_views + $inc_guard;
+                    $item['casts'] = max((int)$item['casts'], (int)$old_kksr['casts']);
+                    $item['avg'] = max((float)$item['avg'], (float)$old_kksr['avg']);
+                    if ($item['casts'] > 0 && $detect['best'] > 0) {
+                        $item['ratings'] = round((float)$item['avg'] * (int)$item['casts'] / (int)$detect['best'] * 5, 2);
+                    }
+                    error_log('[APEX Ω] monotonic guard (chunk): pid '.$pid.' old '.$old_views.' → '.$item['views'].' (drop '.round($drop_pct,1).'%)');
+                }
+            }
             $wpdb->query('START TRANSACTION');
             try {
                 update_post_meta($pid, Adapter_Views::META_KEY, (int)$item['views']);
@@ -715,6 +752,218 @@ class TierManager {
     }
 
     // توزیع هوشمند پیش‌فرض بر اساس هرم: تعداد آثار کم در صدر، زیاد در قاعده
+    // نگاشت خودکار وزن 0-100 به دسته (برای آهنگ‌های جدید) — درخواست شما: جدیدها خودکار برن دسته مورد نظر
+    public static function tier_for_weight(int $weight): string {
+        $weight = max(0, min(100, $weight));
+        if ($weight >= 90) return 'tier_1'; // الماس 90-100
+        if ($weight >= 78) return 'tier_2'; // پرطرفدار
+        if ($weight >= 60) return 'tier_3'; // محبوب
+        if ($weight >= 45) return 'tier_4'; // متوسط رو به بالا
+        if ($weight >= 30) return 'tier_5'; // متوسط
+        if ($weight >= 15) return 'tier_6'; // در حال رشد
+        return 'tier_7'; // تازه
+    }
+
+    public static function init(): void {
+        // وقتی آهنگ جدید منتشر می‌شه، خودکار بر اساس امتیاز هنرمند بره دسته درست — دیگر نیازی به هرم دستی برای جدیدها نیست
+        add_action('transition_post_status', [__CLASS__, 'on_new_post'], 10, 3);
+    }
+
+    public static function on_new_post(string $new_status, string $old_status, \WP_Post $post): void {
+        if ($new_status !== 'publish' || $old_status === 'publish') return; // فقط انتشار اول
+        if ($post->post_type !== 'post') return;
+        $pid = (int) $post->ID;
+        // اگر قبلا دسته داره (مثلا هرم دستی زده) دست نزن
+        $existing = get_post_meta($pid, self::META_TIER, true);
+        if ($existing) return;
+        // وزن هنرمند از 0-100 که دادی
+        $weight = 15; // نوپا پیش‌فرض <5000 بازدید
+        try { $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid); } catch (\Throwable $e) {}
+        $tier_id = self::tier_for_weight((int) $weight);
+        $tiers = self::get_tiers();
+        $tier = null;
+        foreach ($tiers as $tt) if ($tt['id'] === $tier_id) { $tier = $tt; break; }
+        if (!$tier) return;
+        $best = (int) get_option('kksr_stars', 5); if ($best < 1) $best = 5;
+        // زمان‌بندی طبیعی: آهنگ جدید یک‌شبه 1.2M نمی‌گیره — اول کم، بعد طی 30 روز تدریجی تا سقف دسته
+        $full = self::generate_values($tier, $best);
+        // مقدار اولیه 8-12% سقف دسته + وزن هنرمند (تا فیک نباشه) — مثلا الماس 900k-1.5M → شروع 45k-110k
+        $tier_span = (int)$tier['views_max'] - (int)$tier['views_min'];
+        $initial_ratio = 0.08 + ($weight / 100) * 0.04; // 8% نوپا تا 12% ستاره
+        $initial_views = (int) round((int)$tier['views_min'] + $tier_span * $initial_ratio * (0.6 + mt_rand(0,40)/100));
+        $initial_views = max(600, min($full['views'], $initial_views + mt_rand(-8000, 8000)));
+        // برای تازه‌ها حتی کمتر
+        if ($tier_id === 'tier_7') $initial_views = mt_rand(500, 1800);
+        if ($tier_id === 'tier_6') $initial_views = mt_rand(1200, 4000);
+        $vals = $full;
+        $vals['views'] = $initial_views;
+        // امتیاز اولیه هم پایین‌تر — با بازدید رشد می‌کنه (همبسته)
+        $vals['casts'] = max(8, (int) round($initial_views / 220));
+        if ($weight >= 85) $vals['casts'] = (int) round($vals['casts'] * 1.2);
+        $vals['casts'] = min($vals['casts'], (int) $tier['casts_max']);
+        $vals['avg'] = round((float)$tier['avg_min'] + 0.2 + mt_rand(0,10)/100, 1);
+        $vals['avg'] = min($vals['avg'], (float)$tier['avg_max']);
+        $vals['avg'] = min($vals['avg'], $best);
+        $vals['ratings'] = $best > 0 ? round($vals['avg'] * $vals['casts'] / $best * 5, 2) : 0;
+        // هدف نهایی برای زمان‌بندی (evergreen می‌بره تا سقف)
+        update_post_meta($pid, '_apex_target_views', (int) $full['views']);
+        update_post_meta($pid, '_apex_target_casts', (int) $full['casts']);
+        update_post_meta($pid, '_apex_target_avg', (float) $full['avg']);
+        $detect = \ApexOmega\Core\Adapter_KKSR::detect();
+        // ننویس اگر قبلا بازدید بالایی داره (مثلا واردات)
+        $cur_views = (int) get_post_meta($pid, 'views', true);
+        if ($cur_views > 0) return;
+        update_post_meta($pid, \ApexOmega\Core\Adapter_Views::META_KEY, (int) $vals['views']);
+        update_post_meta($pid, $detect['meta_casts'], (int) $vals['casts']);
+        update_post_meta($pid, $detect['meta_ratings'], (float) $vals['ratings']);
+        update_post_meta($pid, $detect['meta_avg'], (float) $vals['avg']);
+        update_post_meta($pid, self::META_TIER, $tier_id);
+        update_post_meta($pid, '_apex_managed_views', (int) $vals['views']);
+        update_post_meta($pid, '_apex_tier_applied_at', current_time('mysql', true));
+        wp_cache_delete($pid, 'post_meta');
+        // تاریخچه
+        try { \ApexOmega\Core\History::log($pid, 'views', 0, $vals['views'], 'auto_new_post', 0, wp_generate_uuid4() ?: uniqid(), null, ['tier'=>$tier_id,'weight'=>$weight]); } catch (\Throwable $e) {}
+    }
+
+    /**
+     * v2.1.0 — اصلاح نوپاهای بادکرده (89k→<5000): وزن‌های جدید را اعمال کن
+     * پست‌های X روز اخیر که وزن فعلی <= threshold ولی بازدید فعلی > سقف دسته نوپا دارند را به استاندارد برمی‌گرداند
+     */
+    public static function recalibrate_novice_posts(int $max_age_days = 60, int $weight_threshold = 30, int $limit = 500, bool $dry_run = false): array {
+        if (function_exists('set_time_limit')) @set_time_limit(120);
+        $tiers = self::get_tiers();
+        $tiers_by_id = [];
+        foreach ($tiers as $tt) $tiers_by_id[$tt['id']] = $tt;
+        $best = (int) get_option('kksr_stars', 5); if ($best < 1) $best = 5;
+        $detect = \ApexOmega\Core\Adapter_KKSR::detect();
+
+        // فقط پست‌های اخیر (پیش‌فرض 60 روز) — برای برگردانی 1 دقیقه‌ای تا 60 روزه
+        $since = gmdate('Y-m-d H:i:s', time() - max(1, $max_age_days) * DAY_IN_SECONDS);
+        $args = [
+            'post_type' => get_post_types(['public'=>true], 'names'),
+            'post_status' => 'publish',
+            'fields' => 'ids',
+            'posts_per_page' => min(2000, max(50, $limit)),
+            'date_query' => [['after' => $since, 'inclusive' => true]],
+            'orderby' => 'date ID',
+            'order' => 'DESC',
+            'no_found_rows' => true,
+            'update_post_meta_cache' => true,
+            'update_post_term_cache' => true,
+        ];
+        unset($args['post_type']['attachment']);
+        $q = new \WP_Query($args);
+        $ids = $q->posts ?: [];
+        $scanned = count($ids);
+        $fixed = 0;
+        $details = [];
+        $skipped = 0;
+        $exec = apex_omega_generate_uuid();
+
+        foreach ($ids as $pid) {
+            $weight = 15;
+            try { $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post((int)$pid); } catch (\Throwable $e) {}
+            if ($weight > $weight_threshold) { $skipped++; continue; } // فقط نوپا/نیمه‌نوپا
+            $cur_views = (int) get_post_meta($pid, \ApexOmega\Core\Adapter_Views::META_KEY, true);
+            if ($cur_views <= 0) $cur_views = (int) get_post_meta($pid, 'views', true);
+            $cur_tier = get_post_meta($pid, self::META_TIER, true);
+            $expected_tier_id = self::tier_for_weight((int)$weight);
+            $expected_tier = $tiers_by_id[$expected_tier_id] ?? null;
+            if (!$expected_tier) continue;
+            // اگر بازدید از سقف دسته مورد انتظار بیشتر باشد → بادکرده
+            $ceiling = (int) $expected_tier['views_max'];
+            // برای tier_7 سقف 10000 ولی استاندارد نوپا <5000 — با 5000 بسنج
+            $strict_ceiling = ($expected_tier_id === 'tier_7' || $expected_tier_id === 'tier_6') ? 5000 : $ceiling;
+            if ($cur_views <= $strict_ceiling) { $skipped++; continue; }
+
+            // محاسبه مقدار استاندارد جدید (همان منطق on_new_post اما بدون قفل _apex_target)
+            $tier_span = (int)$expected_tier['views_max'] - (int)$expected_tier['views_min'];
+            $initial_ratio = 0.08 + ($weight / 100) * 0.04;
+            $initial_views = (int) round((int)$expected_tier['views_min'] + $tier_span * $initial_ratio * (0.85 + mt_rand(0,20)/100));
+            $initial_views = max(500, min($expected_tier['views_max'], $initial_views + mt_rand(-500, 800)));
+            if ($expected_tier_id === 'tier_7') $initial_views = mt_rand(500, 1800);
+            if ($expected_tier_id === 'tier_6') $initial_views = mt_rand(1200, 4000);
+            // سن پست: اگر 3+ روز گذشته، کمی رشد evergreen لحاظ کن (حداکثر 30% تا سقف)
+            $post_date = get_post_time('U', true, $pid);
+            $age_days = $post_date ? (time() - $post_date) / DAY_IN_SECONDS : 0;
+            if ($age_days > 3) {
+                $growth = min(0.30, $age_days / 90 * 0.35); // 90 روز → 35%
+                $initial_views = (int) round($initial_views + ($expected_tier['views_max'] - $initial_views) * $growth * 0.25);
+                $initial_views = min($initial_views, $strict_ceiling);
+            }
+
+            $full = self::generate_values($expected_tier, $best);
+            $vals = $full;
+            $vals['views'] = $initial_views;
+            $vals['casts'] = max(5, (int) round($initial_views / 220));
+            if ($weight >= 85) $vals['casts'] = (int) round($vals['casts'] * 1.15);
+            $vals['casts'] = min($vals['casts'], (int) $expected_tier['casts_max']);
+            $vals['avg'] = round((float)$expected_tier['avg_min'] + 0.2 + mt_rand(0,8)/100, 1);
+            $vals['avg'] = min($vals['avg'], (float)$expected_tier['avg_max']);
+            $vals['avg'] = min($vals['avg'], $best);
+            $vals['ratings'] = $best > 0 ? round($vals['avg'] * $vals['casts'] / $best * 5, 2) : 0;
+
+            $details[] = [
+                'post_id' => $pid,
+                'post_title' => get_the_title($pid),
+                'weight' => $weight,
+                'old_tier' => $cur_tier ?: '—',
+                'new_tier' => $expected_tier_id,
+                'old_views' => $cur_views,
+                'new_views' => $vals['views'],
+                'old_casts' => (int) get_post_meta($pid, $detect['meta_casts'], true),
+                'new_casts' => $vals['casts'],
+                'old_avg' => (float) get_post_meta($pid, $detect['meta_avg'], true),
+                'new_avg' => $vals['avg'],
+            ];
+
+            if ($dry_run) { $fixed++; continue; }
+
+            $lock = 'apex_recalib_' . $pid;
+            if (!\ApexOmega\Core\Database::acquire_lock($lock, 15)) continue;
+
+            $old_views = $cur_views;
+            $old_casts = (int) get_post_meta($pid, $detect['meta_casts'], true);
+            $old_avg = (float) get_post_meta($pid, $detect['meta_avg'], true);
+
+            update_post_meta($pid, \ApexOmega\Core\Adapter_Views::META_KEY, (int) $vals['views']);
+            update_post_meta($pid, $detect['meta_casts'], (int) $vals['casts']);
+            update_post_meta($pid, $detect['meta_ratings'], (float) $vals['ratings']);
+            update_post_meta($pid, $detect['meta_avg'], (float) $vals['avg']);
+            update_post_meta($pid, self::META_TIER, $expected_tier_id);
+            update_post_meta($pid, '_apex_target_views', (int) $full['views']);
+            update_post_meta($pid, '_apex_target_casts', (int) $full['casts']);
+            update_post_meta($pid, '_apex_target_avg', (float) $full['avg']);
+            update_post_meta($pid, '_apex_managed_views', (int) $vals['views']);
+            update_post_meta($pid, '_apex_tier_applied_at', current_time('mysql', true));
+            wp_cache_delete($pid, 'post_meta');
+
+            try {
+                \ApexOmega\Core\History::log($pid, 'views', $old_views, $vals['views'], 'recalibrate_novice', get_current_user_id(), $exec, null, ['tier'=>$expected_tier_id,'weight'=>$weight,'old_tier'=>$cur_tier]);
+                \ApexOmega\Core\History::log($pid, 'kksr_combined', wp_json_encode(['casts'=>$old_casts,'avg'=>$old_avg], JSON_UNESCAPED_UNICODE), wp_json_encode(['casts'=>$vals['casts'],'avg'=>$vals['avg']], JSON_UNESCAPED_UNICODE), 'recalibrate_novice', get_current_user_id(), $exec);
+            } catch (\Throwable $e) {}
+
+            \ApexOmega\Core\Database::release_lock($lock);
+            $fixed++;
+            if ($fixed >= $limit) break;
+        }
+
+        if (!$dry_run && $fixed > 0) {
+            update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, ['execution_id'=>$exec,'time'=>current_time('mysql', true),'type'=>'recalibrate_novice','fixed'=>$fixed,'scanned'=>$scanned], false);
+        }
+
+        return [
+            'success' => true,
+            'execution_id' => $exec,
+            'scanned' => $scanned,
+            'fixed' => $fixed,
+            'skipped' => $skipped,
+            'details' => array_slice($details, 0, 50),
+            'dry_run' => $dry_run,
+            'message' => $dry_run ? "پیش‌نمایش: {$fixed} از {$scanned} پست نوپا نیاز به اصلاح دارند (89k→<5k)" : "اصلاح شد: {$fixed} پست نوپا به استاندارد برگشت — تاریخچه+اسنپ‌شات ثبت شد",
+        ];
+    }
+
     public static function suggested_pyramid(int $total): array {
         // درصد هر دسته از کل
         $percents = [
