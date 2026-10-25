@@ -26,8 +26,8 @@ class TierManager {
                 'color' => '#7c3aed',
                 'views_min' => 900000,
                 'views_max' => 10000000,
-                'casts_min' => 2500,
-                'casts_max' => 6000,
+                'casts_min' => 3500,
+                'casts_max' => 22000,
                 'avg_min' => 4.7,
                 'avg_max' => 5.0,
                 'desc' => 'ابرآهنگ‌ها — بهت قول میدم / پرطرفدارترین‌ها',
@@ -39,8 +39,8 @@ class TierManager {
                 'color' => '#ef4444',
                 'views_min' => 500000,
                 'views_max' => 900000,
-                'casts_min' => 1200,
-                'casts_max' => 3500,
+                'casts_min' => 1500,
+                'casts_max' => 8500,
                 'avg_min' => 4.5,
                 'avg_max' => 4.8,
                 'desc' => 'ترند هفته',
@@ -52,8 +52,8 @@ class TierManager {
                 'color' => '#f59e0b',
                 'views_min' => 200000,
                 'views_max' => 500000,
-                'casts_min' => 600,
-                'casts_max' => 1800,
+                'casts_min' => 700,
+                'casts_max' => 4200,
                 'avg_min' => 4.3,
                 'avg_max' => 4.6,
                 'desc' => 'پلی‌لیست پیشنهادی',
@@ -65,8 +65,8 @@ class TierManager {
                 'color' => '#10b981',
                 'views_min' => 80000,
                 'views_max' => 200000,
-                'casts_min' => 300,
-                'casts_max' => 900,
+                'casts_min' => 350,
+                'casts_max' => 2200,
                 'avg_min' => 4.1,
                 'avg_max' => 4.4,
                 'desc' => 'شنیده‌شده',
@@ -78,8 +78,8 @@ class TierManager {
                 'color' => '#06b6d4',
                 'views_min' => 30000,
                 'views_max' => 80000,
-                'casts_min' => 120,
-                'casts_max' => 450,
+                'casts_min' => 150,
+                'casts_max' => 900,
                 'avg_min' => 3.9,
                 'avg_max' => 4.2,
                 'desc' => 'در حال رشد',
@@ -136,28 +136,93 @@ class TierManager {
         delete_option(self::OPTION_TIERS);
     }
 
+    public static function get_tier_weight_range(string $tier_id): array {
+        // نگاشت وزن 0-100 به تیره — باید با ArtistManager::weight_to_tier_hint هم‌خوان باشد
+        $map = [
+            'tier_1' => ['min'=>90,'max'=>100],
+            'tier_2' => ['min'=>75,'max'=>89],
+            'tier_3' => ['min'=>60,'max'=>74],
+            'tier_4' => ['min'=>45,'max'=>59],
+            'tier_5' => ['min'=>30,'max'=>44],
+            'tier_6' => ['min'=>15,'max'=>29],
+            'tier_7' => ['min'=>0, 'max'=>14],
+        ];
+        return $map[$tier_id] ?? ['min'=>0,'max'=>100];
+    }
+
     /**
-     * تولید مقدار تصادفی منطقی برای یک دسته
+     * تولید مقدار تصادفی منطقی برای یک دسته — وزن‌محور + هیت + همبستگی واقعی
+     * @param int|null $weight وزن هنرمند 0-100 — اگر null باشد رفتار قدیمی رندم حفظ می‌شود (سازگاری عقب‌رو)
+     * @param bool $is_hit آیا اثر هیت/معروف است؟ اگر true بازدید به سقف تیره می‌رود (9-10M)
      */
-    public static function generate_values(array $tier, int $best = 5): array {
-        $views = mt_rand((int)$tier['views_min'], (int)$tier['views_max']);
-        $casts = mt_rand((int)$tier['casts_min'], (int)$tier['casts_max']);
-        // میانگین با وزن: اگر بازدید بالاتر، avg متمایل به max
-        $range = (float)$tier['avg_max'] - (float)$tier['avg_min'];
-        // jitter 30% bias to high for popular tiers
-        $bias = 0;
-        if (strpos($tier['id'], 'tier_1') !== false || strpos($tier['id'], 'tier_2') !== false) $bias = 0.25;
-        $rand = mt_rand(0, 1000) / 1000;
-        $rand = min(1, max(0, $rand + $bias * (mt_rand(0,100)/100)));
-        $avg = round((float)$tier['avg_min'] + $range * $rand, 1);
+    public static function generate_values(array $tier, int $best = 5, ?int $weight = null, bool $is_hit = false): array {
+        $vmin = (int)$tier['views_min']; $vmax = (int)$tier['views_max'];
+        $range = $vmax - $vmin;
+
+        // وزن‌محور: 85 با 86 فرق داشته باشد — در همان تیره جایگاه متفاوت
+        if ($weight !== null) {
+            $wr = self::get_tier_weight_range($tier['id'] ?? '');
+            $wSpan = max(1, $wr['max'] - $wr['min']);
+            $norm = max(0, min(1, ($weight - $wr['min']) / $wSpan)); // 0-1 داخل تیره
+            // هیت: سقف تیره (برای tier1 => 9-10M)، معمولی: کف تا میانه (2-4M برای tier1)
+            if ($is_hit) {
+                // هیت: 88-100% رنج + وزن تأثیر 12%
+                $baseFactor = 0.88 + $norm * 0.12;
+                $jitter = mt_rand(-250, 250) / 10000; // ±2.5% رنج
+                $factor = max(0.85, min(1, $baseFactor + $jitter));
+                $views = (int) round($vmin + $range * $factor);
+            } else {
+                // معمولی: 15% + norm*35% => برای tier1 (900K-10M) با وزن 95 (norm 0.5) => 900K + (0.15+0.175)*9.1M ≈ 3.85M → 2-4M مطلوب
+                $baseFactor = 0.15 + $norm * 0.35;
+                $jitter = mt_rand(-400, 400) / 10000; // ±4%
+                $factor = max(0.05, min(0.75, $baseFactor + $jitter));
+                $views = (int) round($vmin + $range * $factor);
+            }
+        } else {
+            $views = mt_rand($vmin, $vmax);
+        }
+
+        // رای‌ها همبسته با بازدید — واقعی: ~1 رای per 400-650 بازدید
+        if ($weight !== null) {
+            $divisor = 520 + mt_rand(-70, 70) + ($is_hit ? -70 : 0) + ($weight >= 90 ? -30 : 0);
+            $divisor = max(320, min(850, $divisor));
+            $casts = (int) round($views / $divisor);
+            // کلیمپ با محدوده تیره برای جلوگیری از پرت
+            $casts = max((int)$tier['casts_min'], min((int)$tier['casts_max'] + 8000, $casts));
+            // برای هیت‌های 9M دیگر 5600 کم است — الان 9M/500≈18000 می‌شود
+            if ($views >= 8000000 && $casts < 9000) $casts = mt_rand(11000, 19000);
+            if ($views >= 5000000 && $views < 8000000 && $casts < 6000) $casts = mt_rand(6500, 11000);
+        } else {
+            $casts = mt_rand((int)$tier['casts_min'], (int)$tier['casts_max']);
+        }
+
+        // میانگین وزن‌محور + هیت
+        $avgRange = (float)$tier['avg_max'] - (float)$tier['avg_min'];
+        if ($weight !== null) {
+            $wr = self::get_tier_weight_range($tier['id'] ?? '');
+            $wSpan = max(1, $wr['max'] - $wr['min']);
+            $norm = max(0, min(1, ($weight - $wr['min']) / $wSpan));
+            $avg = (float)$tier['avg_min'] + $avgRange * (0.35 + $norm * 0.55);
+            if ($is_hit) $avg += 0.18;
+            $avg += mt_rand(-8, 8) / 100; // ±0.08
+        } else {
+            $bias = 0;
+            if (strpos($tier['id'], 'tier_1') !== false || strpos($tier['id'], 'tier_2') !== false) $bias = 0.25;
+            $rand = mt_rand(0, 1000) / 1000;
+            $rand = min(1, max(0, $rand + $bias * (mt_rand(0,100)/100)));
+            $avg = round((float)$tier['avg_min'] + $avgRange * $rand, 1);
+        }
         $avg = min(max($avg, (float)$tier['avg_min']), (float)$tier['avg_max']);
         $avg = min($avg, $best);
-
-        // همبستگی بازدید↔امتیاز: هر 10K بازدید ≈ +0.02 میانگین نهفته (نامحسوس)
-        $views_factor = min(0.15, max(0, ($views - 10000) / 10000000 * 0.12)); // 0..0.12
-        $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
+        if ($is_hit) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.85);
         $avg = round($avg, 1);
-        // محاسبه ratings سازگار — فرمول استاندارد KKSR
+
+        // همبستگی بازدید↔امتیاز (نامحسوس)
+        if ($weight === null) {
+            $views_factor = min(0.15, max(0, ($views - 10000) / 10000000 * 0.12));
+            $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
+            $avg = round($avg, 1);
+        }
         $ratings = $best > 0 ? round($avg * $casts / $best * 5, 2) : 0;
 
         return [

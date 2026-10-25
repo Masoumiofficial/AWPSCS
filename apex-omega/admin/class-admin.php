@@ -69,6 +69,14 @@ class Admin {
         );
         add_submenu_page(
             'apex-omega',
+            'آثار منتخب — APEX Ω',
+            'آثار منتخب ⭐',
+            'apex_manage_statistics',
+            'apex-omega-hits',
+            [$this, 'render_hits']
+        );
+        add_submenu_page(
+            'apex-omega',
             'آنالیتیکس — APEX Ω',
             'آنالیتیکس 📊',
             'apex_manage_statistics',
@@ -282,6 +290,10 @@ class Admin {
     public function render_weight_sync(): void {
         global $wpdb;
         include APEX_OMEGA_DIR . 'admin/views/weight-sync.php';
+    }
+    public function render_hits(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/hits-hub.php';
     }
     public function render_analytics(): void {
         global $wpdb;

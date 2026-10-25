@@ -44,6 +44,10 @@ class Ajax {
             'apex_apply_weight_sync',
             'apex_start_weight_sync_job',
             'apex_process_weight_chunk',
+            'apex_toggle_hit',
+            'apex_save_hits',
+            'apex_suggest_hits',
+            'apex_clear_hits',
         ];
         foreach ($actions as $a) {
             add_action('wp_ajax_' . $a, [__CLASS__, 'router']);
@@ -178,6 +182,18 @@ class Ajax {
                 break;
             case 'apex_process_weight_chunk':
                 self::process_weight_chunk();
+                break;
+            case 'apex_toggle_hit':
+                self::toggle_hit();
+                break;
+            case 'apex_save_hits':
+                self::save_hits();
+                break;
+            case 'apex_suggest_hits':
+                self::suggest_hits();
+                break;
+            case 'apex_clear_hits':
+                self::clear_hits();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -757,6 +773,31 @@ class Ajax {
         $res = \ApexOmega\Core\ArtistManager::process_weight_chunk($exec, $chunk_size);
         if (empty($res['success'])) wp_send_json_error($res, 400);
         wp_send_json_success($res);
+    }
+    private static function toggle_hit(): void {
+        $pid = (int)($_POST['post_id'] ?? 0);
+        if (!$pid) wp_send_json_error(['message'=>'post_id لازم است'],400);
+        $res = \ApexOmega\Core\ArtistManager::toggle_hit($pid);
+        wp_send_json_success($res);
+    }
+    private static function save_hits(): void {
+        $ids = $_POST['post_ids'] ?? [];
+        if (is_string($ids)) $ids = json_decode(stripslashes($ids), true) ?: explode(',', $ids);
+        $ids = array_map('intval', (array)$ids);
+        $clear = !empty($_POST['clear_first']);
+        $res = \ApexOmega\Core\ArtistManager::save_hits($ids, $clear);
+        wp_send_json_success($res);
+    }
+    private static function suggest_hits(): void {
+        $term_id = isset($_POST['term_id']) ? (int)$_POST['term_id'] : null;
+        $limit = isset($_POST['limit']) ? max(5,min(50,(int)$_POST['limit'])) : 20;
+        $res = \ApexOmega\Core\ArtistManager::suggest_hits_via_ai($term_id, $limit);
+        if (empty($res['success'])) wp_send_json_error($res,400);
+        wp_send_json_success($res);
+    }
+    private static function clear_hits(): void {
+        \ApexOmega\Core\ArtistManager::clear_hits();
+        wp_send_json_success(['message'=>'تمام هیت‌ها پاک شد']);
     }
 
 }

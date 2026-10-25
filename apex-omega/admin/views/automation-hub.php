@@ -24,6 +24,13 @@ $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings();
     </div>
   </div>
 
+  <div style="display:flex;gap:8px;margin:14px 0;flex-wrap:wrap">
+    <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-artists')); ?>" style="padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;border:1px solid #d1d5db;background:#fff;color:#334155">🎤 هنرمندان</a>
+    <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-automation')); ?>" style="padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;border:1px solid #0e7490;background:#0e7490;color:#fff">⚙️ اتوماسیون</a>
+    <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-weight-sync')); ?>" style="padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;border:1px solid #d1d5db;background:#fff;color:#334155">⚡ همگام‌سازی</a>
+    <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-hits')); ?>" style="padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;border:1px solid #d1d5db;background:#fff;color:#334155">⭐ آثار منتخب</a>
+  </div>
+
   <div class="apex-card" style="margin-top:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <h3 style="margin:0;">📈 وضعیت کلی اتوماسیون</h3>

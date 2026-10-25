@@ -12,6 +12,8 @@ class ArtistManager {
     const META_WEIGHT = '_apex_artist_weight';
 
     const OPTION_TAXONOMY = 'apex_omega_artist_taxonomy';
+    const META_HIT = '_apex_hit';
+    const META_SELECTED = '_apex_selected';
 
     /**
      * تشخیص تاکسونومی آرتیست: اول انتخاب دستی کاربر، سپس حدس خودکار
@@ -558,14 +560,52 @@ class ArtistManager {
         ];
         return apply_filters('apex_omega_ir_providers', $providers);
     }
+    private static function get_weights_batch_fast(array $pids): array {
+        if (empty($pids)) return [];
+        $tax = self::detect_artist_taxonomy();
+        $weights_opt = get_option(self::OPTION_WEIGHTS, []);
+        $map = array_fill_keys($pids, 50);
+        if (!$tax) return $map;
+        global $wpdb;
+        $chunks = array_chunk($pids, 800);
+        $term_map = [];
+        foreach ($chunks as $chunk) {
+            $in = implode(',', array_map('intval', $chunk));
+            $rows = $wpdb->get_results("SELECT tr.object_id, tt.term_id FROM {$wpdb->term_relationships} tr INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tt.taxonomy = '" . esc_sql($tax) . "' AND tr.object_id IN ($in)", ARRAY_A);
+            if ($rows) foreach ($rows as $r) { $oid=(int)$r['object_id']; $tid=(int)$r['term_id']; $term_map[$oid][]=$tid; }
+        }
+        foreach ($map as $pid => $def) {
+            $tids = $term_map[$pid] ?? [];
+            $max=0; foreach($tids as $tid){ $w=$weights_opt[$tid] ?? 50; if($w>$max) $max=$w; }
+            if($max) $map[$pid]=$max;
+        }
+        return $map;
+    }
+    public static function is_hit(int $post_id): bool { return (bool) get_post_meta($post_id, self::META_HIT, true); }
+    public static function set_hit(int $post_id, bool $hit): void { if ($hit) update_post_meta($post_id, self::META_HIT, 1); else delete_post_meta($post_id, self::META_HIT); }
+    public static function save_hits(array $ids): void { foreach($ids as $pid) self::set_hit((int)$pid, true); }
+    public static function clear_hits(): void { global $wpdb; $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_apex_hit'"); }
 
     /* ─── v2.1.8: همگام‌سازی یک‌کلیک وزن→بازه — هیچ آهنگ 95 وزنی 10k نمی‌ماند ─── */
-        // گروه‌بندی بر اساس وزن هر پست — FAST batch (بدون get_weight_for_post سنگین + بدون عنوان AI)
+    public static function preview_weight_sync(array $filters = []): array {
+        if (function_exists('set_time_limit')) @set_time_limit(90);
+        $tiers = \ApexOmega\Core\TierManager::get_tiers();
+        $tiers_by_id = [];
+        foreach ($tiers as $tt) $tiers_by_id[$tt['id']] = $tt;
+        $best = (int) get_option('kksr_stars', 5);
+        if ($best < 1) $best = 5;
+        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $total = count($eligible_ids);
+        if ($total === 0) {
+            return ['success'=>false,'message'=>'هیچ آهنگی با این فیلتر یافت نشد.','total'=>0];
+        }
+        // گروه‌بندی بر اساس وزن هر پست — FAST batch + وزن‌محور
         $grouped = [];
         foreach (array_keys($tiers_by_id) as $tid) $grouped[$tid] = [];
         $weights_batch = self::get_weights_batch_fast($eligible_ids);
         foreach ($eligible_ids as $pid) {
-            $w = $weights_batch[$pid] ?? 50;            $tier_hint = self::weight_to_tier_hint((int)$w);
+            $w = $weights_batch[$pid] ?? 50;
+            $tier_hint = self::weight_to_tier_hint((int)$w);
             if (!isset($grouped[$tier_hint])) $tier_hint = 'tier_7';
             $grouped[$tier_hint][] = (int)$pid;
         }
@@ -581,24 +621,22 @@ class ArtistManager {
             if ($count === 0) continue;
             $slice_preview = [];
             $sum_v = 0; $sum_c = 0; $sum_a = 0;
-            // برای پیش‌نمایش فقط نمونه 3 تا نگه می‌داریم تا JSON سبک بماند — summary دقیق است
-            $sample_limit = 3;
-            $sample_i = 0;
             foreach ($ids as $pid) {
-                $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best);
+                $w = $weights_batch[$pid] ?? 50; $is_hit = self::is_hit((int)$pid);
+                $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$w, $is_hit);
                 $sum_v += $vals['views'];
                 $sum_c += $vals['casts'];
                 $sum_a += $vals['avg'];
-                if ($sample_i < $sample_limit) {
-                    $slice_preview[] = [
-                        'post_id' => $pid,
-                        'views' => $vals['views'],
-                        'casts' => $vals['casts'],
-                        'avg' => $vals['avg'],
-                        'ratings' => $vals['ratings'],
-                    ];
-                    $sample_i++;
-                }            }
+                $slice_preview[] = [
+                    'post_id' => $pid,
+                    'views' => $vals['views'],
+                    'casts' => $vals['casts'],
+                    'avg' => $vals['avg'],
+                    'ratings' => $vals['ratings'],
+                    'weight' => $w,
+                    'is_hit' => $is_hit,
+                ];
+            }
             $grand_views += $sum_v;
             $summary[$tier_id] = [
                 'label' => $tier['label'],
@@ -631,28 +669,25 @@ class ArtistManager {
         @ini_set('memory_limit','256M');
         $preview = self::preview_weight_sync($filters);
         if (empty($preview['success'])) return $preview;
-        // برای apply تک‌درخواستی هم flat کامل بساز (preview فقط 3 نمونه دارد)
-        $tiers = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id=[]; foreach($tiers as $tt) $tiers_by_id[$tt['id']]=$tt;
         $best = (int) get_option('kksr_stars', 5);
         if ($best < 1) $best = 5;
-        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
-        $weights_batch = self::get_weights_batch_fast($eligible_ids);
-        $flat_map = []; // tier_id => [items]
-        $tier_counts = $preview['tier_counts'] ?? [];
-        $total = (int)$preview['total'];
         $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();
-        // ساخت preview کامل داخلی برای snapshot (نه preview سبک)
+        $total = (int)$preview['total'];
+        // v2.2.0: بازسازی کامل وزن‌محور + هیت برای اعمال (preview سبک فقط 3 نمونه دارد)
+        $tiers2 = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id2=[]; foreach($tiers2 as $tt) $tiers_by_id2[$tt['id']]=$tt;
+        $eligible_ids2 = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
         $full_preview = [];
-        foreach ($eligible_ids as $pid) {
-            $w = $weights_batch[$pid] ?? 50;
+        foreach ($eligible_ids2 as $pid) {
+            $w = $weights_batch2[$pid] ?? 50;
             $tier_id = self::weight_to_tier_hint((int)$w);
-            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_7';
-            $tier=$tiers_by_id[$tier_id];
-            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best);
-                        $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings']];
+            if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
+            $tier=$tiers_by_id2[$tier_id];
+            $is_hit = self::is_hit((int)$pid);
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit);
+            $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit];
         }
-        // برای snapshot از full_preview استفاده کن، نه preview سبک
         $preview['preview'] = $full_preview;
         $ttl = apex_omega_lock_ttl($total, 30, 600, 2);
         $master_lock = 'apex_weight_sync_master';
@@ -724,20 +759,20 @@ class ArtistManager {
         if (function_exists('set_time_limit')) @set_time_limit(60);
         $preview = self::preview_weight_sync($filters);
         if (empty($preview['success'])) return $preview;
-        // برای job باید همه پست‌ها را با مقدار رندم بسازی — نه فقط نمونه 3تایی preview
-        $tiers = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id=[]; foreach($tiers as $tt) $tiers_by_id[$tt['id']]=$tt;
-        $best=(int)get_option('kksr_stars',5); if($best<1) $best=5;
-        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
-        $weights_batch = self::get_weights_batch_fast($eligible_ids);
+        $tiers2 = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id2=[]; foreach($tiers2 as $tt) $tiers_by_id2[$tt['id']]=$tt;
+        $eligible_ids2 = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
         $flat=[];
-        foreach ($eligible_ids as $pid) {
-            $w = $weights_batch[$pid] ?? 50;
+        foreach ($eligible_ids2 as $pid) {
+            $w = $weights_batch2[$pid] ?? 50;
             $tier_id = self::weight_to_tier_hint((int)$w);
-            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_7';
-            $tier=$tiers_by_id[$tier_id];
-            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best);
-            $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings']];
-        }        $exec = apex_omega_generate_uuid();
+            if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
+            $tier=$tiers_by_id2[$tier_id];
+            $is_hit = self::is_hit((int)$pid);
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit);
+            $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit];
+        }
+        $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();
         $total = count($flat);
         \ApexOmega\Core\Database::create_job($exec,$user_id,$preview['tier_counts']??[],$filters,$flat,$total,$chunk_size);
@@ -805,4 +840,73 @@ class ArtistManager {
         }
         return ['success'=>true,'status'=>$is_done?'done':'running','processed'=>$new_processed,'total'=>$total,'applied_in_chunk'=>$applied,'errors'=>$errors,'remaining'=>$total-$new_processed,'percent'=>$total?round($new_processed/$total*100,1):0];
     }
+
+    // ── v2.2.0: مدیریت هیت‌ها (معروف‌ترین آثار) ──
+    public static function get_hit_posts(int $limit = 100): array {
+        global $wpdb;
+        $ids = $wpdb->get_col($wpdb->prepare("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key=%s LIMIT %d", self::META_HIT, $limit));
+        if (!$ids) return [];
+        $out=[]; foreach($ids as $pid){ $p=get_post($pid); if($p) $out[]=['post_id'=>(int)$pid,'post_title'=>$p->post_title,'post_url'=>get_permalink($pid)]; }
+        return $out;
+    }
+    public static function get_all_hit_ids(): array {
+        global $wpdb;
+        return array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key=%s", self::META_HIT)) ?: []);
+    }
+    public static function save_hits(array $post_ids, bool $clear_first = false): array {
+        if ($clear_first) self::clear_hits();
+        $saved=0; $errors=[];
+        foreach($post_ids as $pid){
+            $pid=(int)$pid; if(!$pid || !get_post($pid)){ $errors[]="پست $pid یافت نشد"; continue; }
+            update_post_meta($pid, self::META_HIT, 1);
+            update_post_meta($pid, self::META_SELECTED, 1);
+            $saved++;
+        }
+        return ['success'=>true,'saved'=>$saved,'errors'=>$errors];
+    }
+    public static function remove_hit(int $post_id): array {
+        delete_post_meta($post_id, self::META_HIT);
+        return ['success'=>true];
+    }
+    public static function toggle_hit(int $post_id): array {
+        $is = self::is_hit($post_id);
+        if ($is) { delete_post_meta($post_id, self::META_HIT); return ['success'=>true,'is_hit'=>false]; }
+        else { update_post_meta($post_id, self::META_HIT, 1); return ['success'=>true,'is_hit'=>true]; }
+    }
+    public static function suggest_hits_via_ai(?int $term_id = null, int $limit = 20): array {
+        $tax = self::detect_artist_taxonomy();
+        if (!$tax) return ['success'=>false,'message'=>'تاکسونومی یافت نشد'];
+        $settings = \ApexOmega\Core\AI_Helper::get_settings();
+        if (empty($settings['api_key'])) return ['success'=>false,'message'=>'کلید AI تنظیم نشده — به تنظیمات برو'];
+        // جمع‌آوری پست‌های هنرمند یا همه
+        if ($term_id) {
+            $q = new \WP_Query(['post_type'=>'post','post_status'=>'publish','posts_per_page'=>$limit,'tax_query'=>[['taxonomy'=>$tax,'field'=>'term_id','terms'=>$term_id]],'fields'=>'ids']);
+            $ids = $q->posts ?: [];
+            $term = get_term($term_id, $tax);
+            $artist_name = $term ? $term->name : 'نامشخص';
+        } else {
+            // برای کل سایت: 30 پست پر بازدید اخیر
+            global $wpdb;
+            $ids = $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish' ORDER BY post_date DESC LIMIT 30");
+            $artist_name = 'مختلف';
+        }
+        if (!$ids) return ['success'=>false,'message'=>'پستی یافت نشد'];
+        $titles=[]; foreach($ids as $pid){ $t=get_the_title($pid); $titles[]="$pid: $t"; }
+        $list = implode("\n", $titles);
+        $prompt = "تو متخصص موسیقی ایرانی هستی. برای هنرمند «{$artist_name}» این آهنگ‌ها را داریم:\n{$list}\nکدام 5 تا معروف‌ترین و هیت‌ترین هستند که باید 10M بازدید بگیرد؟ فقط JSON آرایه‌ای از IDها برگردان مثل [123,456] بدون توضیح.";
+        $payload = [
+            'model' => $settings['model'] ?: 'gpt-4o-mini',
+            'messages' => [['role'=>'system','content'=>'فقط JSON آرایه برگردان'],['role'=>'user','content'=>$prompt]],
+            'temperature'=>0.4,'max_tokens'=>500,
+        ];
+        $resp = wp_remote_post($settings['endpoint'], ['headers'=>['Authorization'=>'Bearer '.$settings['api_key'],'Content-Type'=>'application/json'],'body'=>wp_json_encode($payload, JSON_UNESCAPED_UNICODE),'timeout'=>25]);
+        if (is_wp_error($resp)) return ['success'=>false,'message'=>$resp->get_error_message()];
+        $body=wp_remote_retrieve_body($resp); $data=json_decode($body,true);
+        $content=$data['choices'][0]['message']['content'] ?? '';
+        if (preg_match('/\[.*\]/s',$content,$m)) $arr=json_decode($m[0],true); else $arr=json_decode(trim($content),true);
+        if (!is_array($arr)) return ['success'=>false,'message'=>'پاسخ AI نامعتبر','raw'=>$content];
+        $clean=[]; foreach($arr as $pid){ $pid=(int)$pid; if(in_array($pid,$ids)) $clean[]=$pid; }
+        return ['success'=>true,'suggested'=>$clean,'raw'=>$content,'artist'=>$artist_name];
+    }
+
 }
