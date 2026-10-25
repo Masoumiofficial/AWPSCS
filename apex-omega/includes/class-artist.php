@@ -560,27 +560,12 @@ class ArtistManager {
     }
 
     /* ─── v2.1.8: همگام‌سازی یک‌کلیک وزن→بازه — هیچ آهنگ 95 وزنی 10k نمی‌ماند ─── */
-    public static function preview_weight_sync(array $filters = []): array {
-        if (function_exists('set_time_limit')) @set_time_limit(90);
-        $tiers = \ApexOmega\Core\TierManager::get_tiers();
-        $tiers_by_id = [];
-        foreach ($tiers as $tt) $tiers_by_id[$tt['id']] = $tt;
-        $best = (int) get_option('kksr_stars', 5);
-        if ($best < 1) $best = 5;
-        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
-        $total = count($eligible_ids);
-        if ($total === 0) {
-            return ['success'=>false,'message'=>'هیچ آهنگی با این فیلتر یافت نشد.','total'=>0];
-        }
-        // گروه‌بندی بر اساس وزن هر پست (max weight از ترم‌ها)
+        // گروه‌بندی بر اساس وزن هر پست — FAST batch (بدون get_weight_for_post سنگین + بدون عنوان AI)
         $grouped = [];
         foreach (array_keys($tiers_by_id) as $tid) $grouped[$tid] = [];
-        $artist_tax = self::detect_artist_taxonomy();
-        // کش وزن برای سرعت
-        $weights_opt = get_option(self::OPTION_WEIGHTS, []);
+        $weights_batch = self::get_weights_batch_fast($eligible_ids);
         foreach ($eligible_ids as $pid) {
-            $w = self::get_weight_for_post((int)$pid);
-            $tier_hint = self::weight_to_tier_hint((int)$w);
+            $w = $weights_batch[$pid] ?? 50;            $tier_hint = self::weight_to_tier_hint((int)$w);
             if (!isset($grouped[$tier_hint])) $tier_hint = 'tier_7';
             $grouped[$tier_hint][] = (int)$pid;
         }
@@ -596,22 +581,24 @@ class ArtistManager {
             if ($count === 0) continue;
             $slice_preview = [];
             $sum_v = 0; $sum_c = 0; $sum_a = 0;
+            // برای پیش‌نمایش فقط نمونه 3 تا نگه می‌داریم تا JSON سبک بماند — summary دقیق است
+            $sample_limit = 3;
+            $sample_i = 0;
             foreach ($ids as $pid) {
                 $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best);
-                $post = get_post($pid);
                 $sum_v += $vals['views'];
                 $sum_c += $vals['casts'];
                 $sum_a += $vals['avg'];
-                $slice_preview[] = [
-                    'post_id' => $pid,
-                    'post_title' => $post ? $post->post_title : "ID $pid",
-                    'post_url' => get_edit_post_link($pid),
-                    'views' => $vals['views'],
-                    'casts' => $vals['casts'],
-                    'avg' => $vals['avg'],
-                    'ratings' => $vals['ratings'],
-                ];
-            }
+                if ($sample_i < $sample_limit) {
+                    $slice_preview[] = [
+                        'post_id' => $pid,
+                        'views' => $vals['views'],
+                        'casts' => $vals['casts'],
+                        'avg' => $vals['avg'],
+                        'ratings' => $vals['ratings'],
+                    ];
+                    $sample_i++;
+                }            }
             $grand_views += $sum_v;
             $summary[$tier_id] = [
                 'label' => $tier['label'],
@@ -644,11 +631,29 @@ class ArtistManager {
         @ini_set('memory_limit','256M');
         $preview = self::preview_weight_sync($filters);
         if (empty($preview['success'])) return $preview;
+        // برای apply تک‌درخواستی هم flat کامل بساز (preview فقط 3 نمونه دارد)
+        $tiers = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id=[]; foreach($tiers as $tt) $tiers_by_id[$tt['id']]=$tt;
         $best = (int) get_option('kksr_stars', 5);
         if ($best < 1) $best = 5;
+        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $weights_batch = self::get_weights_batch_fast($eligible_ids);
+        $flat_map = []; // tier_id => [items]
+        $tier_counts = $preview['tier_counts'] ?? [];
+        $total = (int)$preview['total'];
         $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();
-        $total = (int)$preview['total'];
+        // ساخت preview کامل داخلی برای snapshot (نه preview سبک)
+        $full_preview = [];
+        foreach ($eligible_ids as $pid) {
+            $w = $weights_batch[$pid] ?? 50;
+            $tier_id = self::weight_to_tier_hint((int)$w);
+            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_7';
+            $tier=$tiers_by_id[$tier_id];
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best);
+                        $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings']];
+        }
+        // برای snapshot از full_preview استفاده کن، نه preview سبک
+        $preview['preview'] = $full_preview;
         $ttl = apex_omega_lock_ttl($total, 30, 600, 2);
         $master_lock = 'apex_weight_sync_master';
         if (!\ApexOmega\Core\Database::acquire_lock($master_lock, $ttl)) {
@@ -719,9 +724,20 @@ class ArtistManager {
         if (function_exists('set_time_limit')) @set_time_limit(60);
         $preview = self::preview_weight_sync($filters);
         if (empty($preview['success'])) return $preview;
+        // برای job باید همه پست‌ها را با مقدار رندم بسازی — نه فقط نمونه 3تایی preview
+        $tiers = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id=[]; foreach($tiers as $tt) $tiers_by_id[$tt['id']]=$tt;
+        $best=(int)get_option('kksr_stars',5); if($best<1) $best=5;
+        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $weights_batch = self::get_weights_batch_fast($eligible_ids);
         $flat=[];
-        foreach ($preview['preview'] as $tier_id=>$items) foreach($items as $it) $flat[]=array_merge($it,['tier_id'=>$tier_id]);
-        $exec = apex_omega_generate_uuid();
+        foreach ($eligible_ids as $pid) {
+            $w = $weights_batch[$pid] ?? 50;
+            $tier_id = self::weight_to_tier_hint((int)$w);
+            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_7';
+            $tier=$tiers_by_id[$tier_id];
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best);
+            $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings']];
+        }        $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();
         $total = count($flat);
         \ApexOmega\Core\Database::create_job($exec,$user_id,$preview['tier_counts']??[],$filters,$flat,$total,$chunk_size);

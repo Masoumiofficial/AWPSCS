@@ -4,8 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.1.8
-License: GPLv2 or later
+Stable tag: 2.1.9License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 مدیریت دقیق، امن و زمان‌بندی‌شده بازدید و امتیاز آهنگ‌ها با سازگاری کامل kk Star Ratings.
@@ -57,6 +56,14 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 
 == Changelog ==
 
+<<<<<<< HEAD
+=======
+= 2.1.9 (2026-10-27) =
+* FIX: پیش‌نمایش وزن‌محور 503 — batch سریع (یک کوئری برای همه پست‌ها، نمونه 3تایی سبک) + job کامل جدا — دیگه HTML به‌جای JSON نمی‌دهد
+* FEATURE: پنل فوق‌حرفه‌ای تفکیک‌شده — 3 منوی جدید: هنرمندان 🎤 (وزن + ریتم + درصد)، اتوماسیون ⚙️ (Evergreen/AutoWatch/Comment با درصد)، همگام‌سازی ⚡ (یک‌کلیک با درصد و progress) — توزیع هوشمند سبک شد + هاب ناوبری
+* FIX: Evergreen tier خوانده نمی‌شد — $tier از post_meta
+
+>>>>>>> 48dba26 (2.1.9: fix 503 weight preview + pro panel split)
 = 2.1.8 (2026-10-27) =
 * FEATURE: همگام‌سازی یک‌کلیک وزن→بازه — تمام آهنگ‌های هر هنرمند بر اساس وزنش داخل بازه تیره‌اش می‌رود (مثلاً 95 → 900K-10M) — هیچ آهنگ 95ای 10k نمی‌ماند، هر پست رندم جدا داخل بازه (حل درخواست alireza-ghorbani)
 * FEATURE: راهنمای اصولی ۳لایه (توزیع اولیه + Evergreen + نگهبان تازه‌ها) اضافه شد — بعد همگام‌سازی Evergreen تا سقف تیره (الماس 10M، تازه 10K) نگه می‌دارد، رشد طبیعی S-curve

@@ -12,7 +12,14 @@ $saved_tax = get_option(\ApexOmega\Core\ArtistManager::OPTION_TAXONOMY, '');
 $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
 ?>
 <div class="wrap apex-wrap">
-  <div class="apex-hero">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;">
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-artists')); ?>" class="button" style="background:#f59e0b;color:#fff;border-color:#f59e0b;">🎤 پنل هنرمندان</a>
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-automation')); ?>" class="button" style="background:#0e7490;color:#fff;border-color:#0e7490;">⚙️ اتوماسیون</a>
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-weight-sync')); ?>" class="button" style="background:#059669;color:#fff;border-color:#059669;">⚡ همگام‌سازی یک‌کلیک</a>
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-analytics')); ?>" class="button button-secondary">📊 آنالیتیکس</a>
+  <span style="margin-right:auto;color:#6b7280;font-size:12px;">پنل جدید v2.1.9 — هر بخش تفکیک‌شده + درصد پیشرفت</span>
+</div>
+<div class="apex-hero">
     <div>
       <h1 style="margin:0;font-size:26px;">🚀 توزیع هوشمند دسته‌ای</h1>
       <p style="margin:6px 0 0;color:#50575e;">بدون انتخاب تکی — فقط بگو هر دسته چند آهنگ داشته باشد، بقیه خودکار و منطقی تنظیم می‌شود. <strong>کاملاً خودکار + آرتیست‌محور + Evergreen — v1.5.0 (بدون حالت ساده/حرفه‌ای — الگوی ریتم + Evergreen تیره‌محور)</strong></p>
