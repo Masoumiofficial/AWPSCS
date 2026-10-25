@@ -1,7 +1,7 @@
 <?php
 if (!defined('ABSPATH')) exit;
 $tax = \ApexOmega\Core\ArtistManager::detect_artist_taxonomy();
-$artists = $tax ? \ApexOmega\Core\ArtistManager::list_artists(200) : [];
+$artists = $tax ? \ApexOmega\Core\ArtistManager::get_all_artists($tax, 200) : [];
 $weights = get_option(\ApexOmega\Core\ArtistManager::OPTION_WEIGHTS, []);
 $hit_ids = \ApexOmega\Core\ArtistManager::get_all_hit_ids();
 $hit_set = array_flip($hit_ids);
