@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.7
+Stable tag: 2.2.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,13 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.8 (2026-10-27) =
+* FIX یکنواختی 600k علیرضا قربانی: محافظ هرگز کم نکن حالا با تنوع 0.8–3٪ بر اساس ID (به جای نگه داشتن مقدار یکسان) — از 600k یکسان به 605k–618k متنوع صعودی
+* FEATURE دکمه تنوع‌دهی هر هنرمند: در هنرمندان کنار هر ردیف «🔀 تنوع‌دهی» — تمام آهنگ‌های آن هنرمند فورس بدون cooldown/lower_only متنوع می‌شود (هرگز کم نمی‌کند) — برای رفع 151 آهنگ 600k یکسان
+* FIX get_eligible_post_ids: فیلتر artist_term/artist_taxonomy اضافه (همگام‌سازی وزن‌محور/هنرمندمحور دقیق)
+* FIX Tier گسترش تنوع: base 10%+norm45% → 12%+norm52% و jitter 12%→14% برای tier_2/3 — وزن 80 دیگر 600k تکراری نمی‌دهد (556k–652k → 540k–680k)
+* AJAX reseed: apex_reseed_artist با Snapshot/History و پراکندگی اجباری ترتیبی ±9% بازه
 
 = 2.2.7 (2026-10-27) =
 * FIX پنل تنظیمات: layout شبکه شکسته ترمیم — wrappers .apex-g-panels بازگردانی شد (تب عمومی/ایمنی دیگر همپوشانی نمی‌کند، فقط پنل فعال نمایش)

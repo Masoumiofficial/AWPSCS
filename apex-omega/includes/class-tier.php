@@ -184,10 +184,10 @@ class TierManager {
                 $factor = max(0.85, min(1, $baseFactor + $jitter));
                 $views = (int) round($vmin + $range * $factor);
             } else {
-                // معمولی: 10% + norm*45% => بازه وسیع‌تر 1.8M-6.5M برای tier1 — ضد گیر 5M
-                $baseFactor = 0.10 + $norm * 0.45;
-                $jitter = mt_rand(-700, 700) / 10000 + $hashJitter; // ±7% + هش ±5% = تا ±12% پراکندگی
-                $factor = max(0.05, min(0.85, $baseFactor + $jitter));
+                // معمولی: 12% + norm*52% => بازه وسیع‌تر 1.9M-6.9M برای tier1 — ضد گیر 5M و شکستن 600k یکسان
+                $baseFactor = 0.12 + $norm * 0.52;
+                $jitter = mt_rand(-800, 800) / 10000 + $hashJitter * 1.15; // ±8% + هش ±5.7% = تا ±14% پراکندگی
+                $factor = max(0.06, min(0.88, $baseFactor + $jitter));
                 $views = (int) round($vmin + $range * $factor);
             }
         } else {
@@ -287,6 +287,23 @@ class TierManager {
                     'terms' => sanitize_text_field($category),
                 ]];
                 unset($base_args['cat']);
+            }
+        }
+        // فیلتر هنرمند خاص — برای تنوع‌دهی مجدد علیرضا قربانی و امثالهم
+        if (!empty($filters['artist_term']) && !empty($filters['artist_taxonomy'])) {
+            $tax_q = ['taxonomy'=>sanitize_text_field($filters['artist_taxonomy']),'field'=>'term_id','terms'=>(int)$filters['artist_term']];
+            if (empty($base_args['tax_query'])) $base_args['tax_query'] = [$tax_q];
+            else {
+                $base_args['tax_query'][] = $tax_q;
+                if (count($base_args['tax_query']) > 1) $base_args['tax_query']['relation'] = 'AND';
+            }
+        } elseif (!empty($filters['artist_term'])) {
+            // fallback auto detect
+            $auto_tax = \ApexOmega\Core\ArtistManager::detect_artist_taxonomy();
+            if ($auto_tax) {
+                $tax_q = ['taxonomy'=>$auto_tax,'field'=>'term_id','terms'=>(int)$filters['artist_term']];
+                if (empty($base_args['tax_query'])) $base_args['tax_query'] = [$tax_q];
+                else { $base_args['tax_query'][] = $tax_q; $base_args['tax_query']['relation']='AND'; }
             }
         }
         // فیلتر 7 روزه: فقط پست‌هایی که _apex_tier_applied_at قدیمی‌تر از N روز است یا خالی است
@@ -494,7 +511,7 @@ class TierManager {
                 $old_views = Adapter_Views::get_views($pid);
                 $old_kksr = Adapter_KKSR::get_stats($pid);
                 // 🛡️ محافظ هرگز کم نکن — اگر توزیع مقدار کمتری پیشنهاد داد، نادیده بگیر (فقط دستی می‌تواند کم کند)
-                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false);
+                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false, $pid);
                 $item['casts'] = $guarded['casts']; $item['avg'] = $guarded['avg']; $item['ratings'] = $guarded['ratings']; $item['views'] = $guarded['views'];
                 if ($item['views'] === $old_views && $item['casts'] === $old_kksr['casts'] && $item['avg'] === $old_kksr['avg']) { Database::release_lock($lock); continue; }
                 // مقدار قدیمی ممکن است با guard تغییر کرده باشد، snapshot را هم به‌روزرسانی کن بعداً؟

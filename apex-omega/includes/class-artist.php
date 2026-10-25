@@ -845,7 +845,7 @@ class ArtistManager {
                 $old_views = \ApexOmega\Core\Adapter_Views::get_views($pid);
                 $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
                 // 🛡️ محافظ کاهش — خودکار هرگز کم نکند
-                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false);
+                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false, $pid);
                 $item['casts'] = $guarded['casts']; $item['avg'] = $guarded['avg']; $item['ratings'] = $guarded['ratings']; $item['views'] = $guarded['views'];
                 if ($item['views'] === $old_views && $item['casts'] === $old_kksr['casts'] && $item['avg'] === $old_kksr['avg']) { \ApexOmega\Core\Database::release_lock($lock); continue; }
                 $detect = \ApexOmega\Core\Adapter_KKSR::detect();
@@ -941,7 +941,7 @@ class ArtistManager {
             $old_views=\ApexOmega\Core\Adapter_Views::get_views($pid);
             $old_kksr=\ApexOmega\Core\Adapter_KKSR::get_stats($pid);
             // 🛡️ محافظ کاهش
-            $g2 = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false);
+            $g2 = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false, $pid);
             $item['casts']=$g2['casts']; $item['avg']=$g2['avg']; $item['ratings']=$g2['ratings']; $item['views']=$g2['views'];
             if ($item['views']===$old_views && $item['casts']===$old_kksr['casts'] && $item['avg']===$old_kksr['avg']) { \ApexOmega\Core\Database::release_lock($plock); continue; }
             $detect=\ApexOmega\Core\Adapter_KKSR::detect();
@@ -1016,7 +1016,7 @@ class ArtistManager {
             $old_views = \ApexOmega\Core\Adapter_Views::get_views($pid);
             $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
             // guard: فقط افزایش
-            $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']], false);
+            $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']], false, $pid);
             $vals['casts']=$guarded['casts']; $vals['avg']=$guarded['avg']; $vals['ratings']=$guarded['ratings']; $vals['views']=$guarded['views'];
             if ($vals['views']===$old_views && $vals['casts']===$old_kksr['casts'] && $vals['avg']===$old_kksr['avg']) {
                 continue; // قبلا پرمیوم است
@@ -1076,6 +1076,92 @@ class ArtistManager {
         $GLOBALS['apex_allow_decrease_'. $post_id] = true;
         try { return $fn(); } finally { unset($GLOBALS['apex_allow_decrease_'. $post_id]); }
     }
+
+    // تنوع‌دهی مجدد برای هنرمندی با آثار یکنواخت (مثل علیرضا قربانی 600k یکسان) — فورس بدون cooldown/lower_only
+    public static function reseed_artist_variance(int $term_id, string $taxonomy = ''): array {
+        if (!$term_id) return ['success'=>false,'message'=>'شناسه هنرمند نامعتبر'];
+        if (!$taxonomy) $taxonomy = self::detect_artist_taxonomy();
+        if (!$taxonomy) return ['success'=>false,'message'=>'تاکسونومی هنرمند یافت نشد'];
+        $term = get_term($term_id, $taxonomy);
+        if (!$term || is_wp_error($term)) return ['success'=>false,'message'=>'هنرمند یافت نشد'];
+        // تمام آهنگ‌های این هنرمند
+        $q = new \WP_Query(['post_type'=>'post','post_status'=>'publish','posts_per_page'=>2000,'fields'=>'ids','no_found_rows'=>true,'tax_query'=>[['taxonomy'=>$taxonomy,'field'=>'term_id','terms'=>$term_id]]]);
+        $ids = $q->posts ?: [];
+        if (empty($ids)) return ['success'=>false,'message'=>'این هنرمند هیچ آهنگی ندارد (ترم خالی)'];
+        $weight = (int)(get_option(self::OPTION_WEIGHTS, [])[$term_id] ?? 20);
+        // اگر وزن پیش‌فرض 20 است، سعی کن وزن هوشمند حدس بزنی (برای تنوع بهتر)
+        if ($weight === 20) {
+            // حدس بر اساس نام: اگر تعداد آهنگ زیاد است، احتمالا مشهور — وزن متوسط بده
+            $weight = max(55, min(85, 50 + (int)($term->count / 5)));
+        }
+        $tier_id = self::weight_to_tier_hint($weight);
+        $tiers = \ApexOmega\Core\TierManager::get_tiers();
+        $tmap=[]; foreach($tiers as $t) $tmap[$t['id']]=$t;
+        $tier = $tmap[$tier_id] ?? $tmap['tier_4'];
+        $best = (int) get_option('kksr_stars', 5); if($best<1) $best=5;
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        $total = count($ids);
+        $applied=0; $errors=[]; $details=[]; $snapshot_rows=[];
+        $before_views = [];
+        foreach($ids as $pid) $before_views[$pid]=(int)get_post_meta($pid,'views',true);
+        // برای شکستن یکنواختی، حتی اگر تنوع فعلی وجود دارد، یک offset ترتیبی اضافه کن
+        // هر پست با هش ID تنوع دارد، اما اگر همه 600k بودند، guard قبلی آنها را با +1-3% متنوع می‌کند — اینجا عمدا بیشتر تنوع می‌دهیم
+        foreach($ids as $idx=>$pid) {
+            $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
+            $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$weight, $is_hit, $pid, $is_premium);
+            $old_views = $before_views[$pid];
+            $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            // شکستن یکنواختی: اگر oldها همه یکسان هستند، یک jitter ترتیبی اضافه کن تا دیگر مساوی نمانند
+            // برای اولین اجرا، val ممکن است نزدیک old باشد — یک پراکندگی اجباری ترتیبی
+            $pidHash = (($pid * 9301 + 49297) % 233280)/233280; // 0-1
+            // اگر old تکراری است (اکثر پست‌ها هم‌مقدار)، یک variance بیشتر
+            $spread = (int) round($tier['views_max'] - $tier['views_min']);
+            $forcedVar = (int) round(($pidHash - 0.5) * $spread * 0.18); // ±9% بازه — برای tier_2 => ±36k
+            $vals['views'] = max($vals['views'], $vals['views'] + $forcedVar);
+            // محافظ هرگز کم نکن اما با تنوع
+            $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']], false, $pid);
+            $vals['casts']=$guarded['casts']; $vals['avg']=$guarded['avg']; $vals['ratings']=$guarded['ratings']; $vals['views']=$guarded['views'];
+            // اگر هنوز مساوی old ماند (چون guard + forcedVar کم بود)، یک افزایش حداقل اجباری
+            if ($vals['views'] === $old_views) {
+                $minInc = (int) round($old_views * (0.012 + $pidHash * 0.025)); // 1.2–3.7%
+                $vals['views'] = $old_views + max(2500, $minInc);
+                // رای و امتیاز هم حداقل کمی بیشتر
+                if ($vals['casts'] <= $old_kksr['casts']) $vals['casts'] = $old_kksr['casts'] + (int)round($pidHash*8)+1;
+                if ($vals['avg'] <= $old_kksr['avg']) $vals['avg'] = min((float)$tier['avg_max'], round($old_kksr['avg']+0.1,1));
+                $vals['ratings'] = round($vals['avg'] * $vals['casts'] / $best * 5, 2);
+            }
+            if ($vals['views'] < $old_views) continue; // هرگز کم نکن — اضافی
+            $detect = \ApexOmega\Core\Adapter_KKSR::detect();
+            global $wpdb;
+            $lock="apex_tier_{$pid}"; if(!\ApexOmega\Core\Database::acquire_lock($lock, 20)) { $errors[]="پست $pid قفل"; continue; }
+            $wpdb->query('START TRANSACTION');
+            try {
+                update_post_meta($pid, \ApexOmega\Core\Adapter_Views::META_KEY, (int)$vals['views']);
+                $rv=get_post_meta($pid,'_apex_real_views',true); if($rv===''){ update_post_meta($pid,'_apex_real_views',$old_views); update_post_meta($pid,'_apex_real_views_captured_at', current_time('mysql',true));}
+                update_post_meta($pid,'_apex_managed_views',(int)$vals['views']);
+                update_post_meta($pid,'_apex_views_last_source','reseed_variance');
+                update_post_meta($pid,'_apex_views_last_exec',$exec);
+                update_post_meta($pid,$detect['meta_casts'],(int)$vals['casts']);
+                update_post_meta($pid,$detect['meta_ratings'],(float)$vals['ratings']);
+                update_post_meta($pid,$detect['meta_avg'],(float)$vals['avg']);
+                update_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER, $tier_id);
+                update_post_meta($pid,'_apex_tier_applied_at', current_time('mysql',true));
+                wp_cache_delete($pid,'post_meta');
+                $snapshot_rows[]=['post_id'=>$pid,'post_title'=>get_the_title($pid)?:(string)$pid,'tier'=>$tier_id,'old_views'=>$old_views,'new_views'=>$vals['views'],'old_casts'=>$old_kksr['casts'],'old_avg'=>$old_kksr['avg'],'old_ratings'=>$old_kksr['ratings'],'best'=>$best,'new_casts'=>$vals['casts'],'new_avg'=>$vals['avg'],'new_ratings'=>$vals['ratings']];
+                $wpdb->query('COMMIT');
+                \ApexOmega\Core\History::log($pid,'views',$old_views,$vals['views'],'reseed_variance',$user_id,$exec,null,['tier'=>$tier_id,'weight'=>$weight,'term_id'=>$term_id]);
+                $applied++; $details[]=['post_id'=>$pid,'old'=>$old_views,'new'=>$vals['views']];
+            } catch(\Throwable $e){ $wpdb->query('ROLLBACK'); $errors[]="پست $pid: ".$e->getMessage(); }
+            \ApexOmega\Core\Database::release_lock($lock);
+        }
+        if ($snapshot_rows) {
+            try { \ApexOmega\Core\Database::create_snapshot($exec,$user_id,[],['artist_term'=>$term_id,'reseed'=>true],$total,$applied,$snapshot_rows); } catch(\Throwable $e){}
+            update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, ['counts'=>[],'filters'=>['artist_term'=>$term_id],'applied'=>$applied,'exec'=>$exec,'at'=>current_time('mysql',true),'errors'=>$errors,'reseed'=>true], false);
+        }
+        return ['success'=>true,'applied'=>$applied,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'message'=> $applied ? "✅ تنوع‌دهی انجام شد: {$applied} آهنگ «{$term->name}» از {$total} — از 600k یکسان به بازه متنوع (هرگز کم نشد)" : 'هیچ تغییری اعمال نشد (همه قفل یا قبلا متنوع)'];
+    }
+
 
     // ── v2.2.0: مدیریت هیت‌ها (معروف‌ترین آثار) ──
     public static function get_hit_posts(int $limit = 100): array {

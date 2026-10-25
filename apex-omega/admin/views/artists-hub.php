@@ -70,7 +70,7 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
       </div>
       <div style="max-height:420px;overflow:auto;margin-top:10px;border:1px solid #e5e7eb;border-radius:10px;">
         <table class="apex-table" style="margin:0;">
-          <thead><tr><th>آرتیست</th><th>تعداد آهنگ</th><th>وزن (0–100)</th><th>دسته پیشنهادی</th><th>اسلایدر</th></tr></thead>
+          <thead><tr><th>آرتیست</th><th>تعداد</th><th>وزن</th><th>دسته</th><th>اسلایدر</th><th>تنوع</th></tr></thead>
           <tbody>
             <?php foreach ($artists as $a): ?>
               <tr data-tid="<?php echo esc_attr($a['term_id']); ?>">
@@ -78,7 +78,8 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
                 <td><?php echo esc_html($a['count']); ?> <small style="color:#6b7280;">(<?php echo $total_posts? round($a['count']/$total_posts*100,1):0; ?>٪ کل)</small></td>
                 <td><input type="number" class="apex-artist-weight" data-tid="<?php echo esc_attr($a['term_id']); ?>" value="<?php echo esc_attr($a['weight']); ?>" min="0" max="100" style="width:80px;text-align:center;font-weight:800;"></td>
                 <td><span class="apex-badge" style="background:<?php echo esc_attr($tiers[array_search($a['tier_hint'], array_column($tiers,'id'))]['color'] ?? '#6b7280'); ?>;color:#fff;"><?php echo esc_html($tiers[array_search($a['tier_hint'], array_column($tiers,'id'))]['label'] ?? $a['tier_hint']); ?></span></td>
-                <td><input type="range" class="apex-artist-slider" data-tid="<?php echo esc_attr($a['term_id']); ?>" min="0" max="100" value="<?php echo esc_attr($a['weight']); ?>" style="width:140px;accent-color:#f59e0b;"></td>
+                <td><input type="range" class="apex-artist-slider" data-tid="<?php echo esc_attr($a['term_id']); ?>" min="0" max="100" value="<?php echo esc_attr($a['weight']); ?>" style="width:120px;accent-color:#f59e0b;"></td>
+                <td><button type="button" class="button button-apex secondary apex-reseed-btn" data-tid="<?php echo esc_attr($a['term_id']); ?>" style="padding:2px 8px;font-size:11px;white-space:nowrap">🔀 تنوع‌دهی</button></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -171,6 +172,7 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
       }).catch(function(err){ if(resEl) resEl.textContent='❌ '+err; }).finally(function(){ btn.disabled=false; btn.textContent='💾 ذخیره الگوی ریتم';});
     });
     var ratio=qs('apex-rhythm-artist-ratio'); if(ratio && !ratio.dataset.vanilla){ ratio.dataset.vanilla='1'; ratio.addEventListener('input', function(){ var v=parseInt(this.value||85); var a=qs('apex-rhythm-artist-val'); if(a) a.textContent=v+'%'; var t=qs('apex-rhythm-title-val'); if(t) t.textContent=(100-v)+'%';});}
+    document.querySelectorAll('.apex-reseed-btn').forEach(function(btn){ btn.addEventListener('click', function(){ var tid=this.dataset.tid; if(!confirm('تنوع‌دهی مجدد برای این هنرمند؟ همه آهنگ‌هایش متنوع می‌شود (هرگز کم نمی‌کند)')) return; var orig=this.textContent; this.disabled=true; this.textContent='در حال تنوع…'; apexPost('apex_reseed_artist',{term_id:tid,taxonomy:qs('apex-artist-taxonomy')?.value||''}).then(function(j){ if(j.success){ alert('✅ '+j.data.message+' — '+j.data.applied+' آهنگ'); } else alert('❌ '+(j.data.message||'خطا')); }).catch(function(e){ alert('❌ '+e.message); }).finally(function(btn2){ return function(){ btn2.disabled=false; btn2.textContent=orig; }; }(this)); }); });
     document.querySelectorAll('.apex-artist-slider').forEach(function(sl){ sl.addEventListener('input', function(){ var tid=this.dataset.tid; var inp=document.querySelector('.apex-artist-weight[data-tid=\"'+tid+'\"]'); if(inp) inp.value=this.value; }); });
     document.querySelectorAll('.apex-artist-weight').forEach(function(inp){ inp.addEventListener('input', function(){ var tid=this.dataset.tid; var sl=document.querySelector('.apex-artist-slider[data-tid=\"'+tid+'\"]'); if(sl) sl.value=this.value; }); });
   }

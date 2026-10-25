@@ -106,23 +106,32 @@ if (!function_exists('apex_omega_never_decrease_enabled')) {
 if (!function_exists('apex_omega_guard_views')) {
     /**
      * محافظ کاهش — اگر never_decrease فعال باشد و مقدار جدید کمتر از قدیمی باشد، قدیمی را نگه دار
+     * اما برای شکستن یکنواختی (مثل 600k تکراری) یک افزایش ریز 0.8–2.8٪ بر اساس ID اضافه می‌کند
      * برای automated sources فقط؛ manual با $allow_decrease=true فراخوانی شود
      */
-    function apex_omega_guard_views(int $old, int $new, bool $allow_decrease = false): int {
+    function apex_omega_guard_views(int $old, int $new, bool $allow_decrease = false, ?int $post_id = null): int {
         if ($allow_decrease) return $new;
         if (!apex_omega_never_decrease_enabled()) return $new;
-        return ($new < $old) ? $old : $new;
+        if ($new >= $old) return $new;
+        // به جای نگه داشتن مقدار یکسان 600k برای همه، یک تنوع صعودی کوچک اضافه کن — هنوز هرگز کم نمی‌شود
+        $pidHash = $post_id ? ((($post_id * 9301 + 49297) % 233280) / 233280) : (mt_rand(0,1000)/1000);
+        $inc = (int) round($old * (0.008 + $pidHash * 0.022)); // 0.8% تا 3% — برای 600k => 4.8k–18k
+        $inc = max(1200, $inc); // حداقل 1.2k برای دیده شدن تفاوت
+        return $old + $inc;
     }
 }
 if (!function_exists('apex_omega_guard_stats')) {
-    function apex_omega_guard_stats(array $old_stats, array $new_vals, bool $allow_decrease = false): array {
+    function apex_omega_guard_stats(array $old_stats, array $new_vals, bool $allow_decrease = false, ?int $post_id = null): array {
         if ($allow_decrease || !apex_omega_never_decrease_enabled()) return $new_vals;
-        // old_stats: ['casts'=>int,'avg'=>float,'ratings'=>float]
-        // new_vals: ['casts'=>int,'avg'=>float,'ratings'=>float,'views'=>int]
         if (isset($new_vals['casts']) && $new_vals['casts'] < (int)($old_stats['casts'] ?? 0)) $new_vals['casts'] = (int)$old_stats['casts'];
         if (isset($new_vals['avg']) && $new_vals['avg'] < (float)($old_stats['avg'] ?? 0)) $new_vals['avg'] = (float)$old_stats['avg'];
         if (isset($new_vals['ratings']) && $new_vals['ratings'] < (float)($old_stats['ratings'] ?? 0)) $new_vals['ratings'] = (float)$old_stats['ratings'];
-        if (isset($new_vals['views']) && $new_vals['views'] < (int)($old_stats['views'] ?? 0)) $new_vals['views'] = (int)$old_stats['views'];
+        if (isset($new_vals['views']) && $new_vals['views'] < (int)($old_stats['views'] ?? 0)) {
+            $pidHash = $post_id ? ((($post_id * 9301 + 49297) % 233280) / 233280) : (mt_rand(0,1000)/1000);
+            $inc = (int) round((int)$old_stats['views'] * (0.008 + $pidHash * 0.022));
+            $inc = max(1200, $inc);
+            $new_vals['views'] = (int)$old_stats['views'] + $inc;
+        }
         return $new_vals;
     }
 }
