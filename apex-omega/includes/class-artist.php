@@ -583,8 +583,7 @@ class ArtistManager {
     }
     public static function is_hit(int $post_id): bool { return (bool) get_post_meta($post_id, self::META_HIT, true); }
     public static function set_hit(int $post_id, bool $hit): void { if ($hit) update_post_meta($post_id, self::META_HIT, 1); else delete_post_meta($post_id, self::META_HIT); }
-    public static function save_hits(array $ids): void { foreach($ids as $pid) self::set_hit((int)$pid, true); }
-    public static function clear_hits(): void { global $wpdb; $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_apex_hit'"); }
+
 
     /* ─── v2.1.8: همگام‌سازی یک‌کلیک وزن→بازه — هیچ آهنگ 95 وزنی 10k نمی‌ماند ─── */
     public static function preview_weight_sync(array $filters = []): array {
@@ -853,6 +852,7 @@ class ArtistManager {
         global $wpdb;
         return array_map('intval', $wpdb->get_col($wpdb->prepare("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key=%s", self::META_HIT)) ?: []);
     }
+    public static function clear_hits(): void { global $wpdb; $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_apex_hit'"); }
     public static function save_hits(array $post_ids, bool $clear_first = false): array {
         if ($clear_first) self::clear_hits();
         $saved=0; $errors=[];
