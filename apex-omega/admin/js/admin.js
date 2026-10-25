@@ -42,7 +42,30 @@ jQuery(function($){
   $(document).on('click','.apex-resume',function(){ const id=$(this).data('id'); $.post(getAjax(),{action:'apex_resume_schedule',_ajax_nonce:getNonce(),schedule_id:id},r=> r.success?location.reload():alert(r.data.message||r.data?.message||'خطا')).fail(function(xhr){ alert('❌ '+(xhr.responseJSON?.data?.message||'خطا')); }); });
   $(document).on('click','.apex-cancel',function(){ if(!confirm('لغو؟'))return; const id=$(this).data('id'); $.post(getAjax(),{action:'apex_cancel_schedule',_ajax_nonce:getNonce(),schedule_id:id},r=> r.success?location.reload():alert(r.data.message||'خطا')).fail(function(xhr){ alert('❌ '+(xhr.responseJSON?.data?.message||'خطا')); }); });
   $(document).on('click','.apex-rollback',function(){ if(!confirm('بازگردانی؟'))return; const hid=$(this).data('id'); $.post(getAjax(),{action:'apex_rollback',_ajax_nonce:getNonce(),history_id:hid},r=> r.success?(alert('بازگردانی شد'),location.reload()):alert(r.data.message||'خطا')).fail(function(xhr){ alert('❌ '+(xhr.responseJSON?.data?.message||'خطا')); }); });
-  $(document).on('click','#apex-bulk-apply',function(e){ e.preventDefault(); if(!confirm(APX().i18n.confirm_bulk))return; const data={action:'apex_bulk_apply',_ajax_nonce:getNonce(),post_ids:$('#apex_bulk_ids').val(),field_type:$('#apex_bulk_field').val(),value:$('#apex_bulk_value').val(),mode:$('#apex_bulk_mode').val()}; const $btn=$(this); $btn.prop('disabled',true).text('در حال اعمال…'); $.post(getAjax(),data,r=>{ if(r.success) $('#apex-bulk-result').html('<div class="apex-alert success">موفق: '+r.data.success_count+'</div>'); else $('#apex-bulk-result').html('<div class="apex-alert error">'+(r.data.message||'خطا')+'</div>'); }).always(()=> $btn.prop('disabled',false).text('اعمال گروهی')); });
+  // باند بازه تصادفی برای ویرایش گروهی
+  $(document).on('change','#apex_bulk_range_toggle',function(){ if($(this).is(':checked')){ $('#apex-bulk-range-fields').slideDown(120); $('#apex_bulk_value').prop('disabled',true).css('opacity',0.5); } else { $('#apex-bulk-range-fields').slideUp(120); $('#apex_bulk_value').prop('disabled',false).css('opacity',1); } });
+  $(document).on('click','#apex-bulk-apply',function(e){
+    e.preventDefault(); if(!confirm(APX().i18n.confirm_bulk))return;
+    const isRange = $('#apex_bulk_range_toggle').is(':checked');
+    const data={action:'apex_bulk_apply',_ajax_nonce:getNonce(),post_ids:$('#apex_bulk_ids').val(),field_type:$('#apex_bulk_field').val(),mode:$('#apex_bulk_mode').val()};
+    if(isRange){
+      data.range_min=$('#apex_bulk_min').val();
+      data.range_max=$('#apex_bulk_max').val();
+      if(data.range_min===''||data.range_max===''){ alert('حداقل و حداکثر بازه را پر کنید'); return; }
+    } else {
+      data.value=$('#apex_bulk_value').val();
+      if(data.value===''){ alert('مقدار جدید را وارد کنید'); return; }
+    }
+    const $btn=$(this); $btn.prop('disabled',true).text('در حال اعمال…');
+    $.post(getAjax(),data,r=>{
+      if(r.success){
+        const detail = r.data.range_mode ? ' (بازه تصادفی: '+r.data.range_min+' تا '+r.data.range_max+')' : '';
+        $('#apex-bulk-result').html('<div class="apex-alert success">موفق: '+r.data.success_count+' پست به‌روزرسانی شد'+detail+'<br><small>exec: '+r.data.execution_id+'</small></div>');
+      } else {
+        $('#apex-bulk-result').html('<div class="apex-alert error">'+(r.data.message||'خطا')+'</div>');
+      }
+    }).fail(function(xhr){ $('#apex-bulk-result').html('<div class="apex-alert error">'+formatAjaxError(xhr)+'</div>'); }).always(()=> $btn.prop('disabled',false).text('اعمال گروهی'));
+  });
   $(document).on('change','#_apex_mode',function(){ if($(this).val()==='scheduled') $('#apex-schedule-panel').show(); else $('#apex-schedule-panel').hide(); });
 
   // ======== توزیع هوشمند TIER ====

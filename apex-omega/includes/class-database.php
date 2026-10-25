@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Database {
-    const VERSION = '2.1.5'; // 2.1.3: کامنت 100% طبیعی رز موزیک + پراکندگی بازدید وزن 95
+    const VERSION = '2.1.6'; // 2.1.3: کامنت 100% طبیعی رز موزیک + پراکندگی بازدید وزن 95
 
     public static function table_history(): string {
         global $wpdb;
