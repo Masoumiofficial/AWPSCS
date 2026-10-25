@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.8
+Stable tag: 2.2.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,11 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.9 (2026-10-27) =
+* FIX آثار منتخب 68 تایی خیلی کم تغییر کرد چون وزن پایین بود → منتخب همیشه tier_1 (الماس 900k-10M → 9.5-11.8M) مستقل از وزن — وزن فقط برای تنوع جزئی داخل الماس (0.92-1.06 factor) — همگام‌سازی/Job/Premium/Reseed همه جا tier_1 اجباری شد
+* FIX lower_only هم برای منتخب کف 900k (نه vmin وزن پایین) — دیگر به اشتباه رد نمی‌شود
+* TEST selected-works صفحه بررسی شد — دکمه پرمیوم حالا واقعا پرمیوم می‌کند حتی برای وزن 20
 
 = 2.2.8 (2026-10-27) =
 * FIX یکنواختی 600k علیرضا قربانی: محافظ هرگز کم نکن حالا با تنوع 0.8–3٪ بر اساس ID (به جای نگه داشتن مقدار یکسان) — از 600k یکسان به 605k–618k متنوع صعودی

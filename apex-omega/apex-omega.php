@@ -3,7 +3,7 @@
  * Plugin Name:       APEX Ω — Advanced WordPress Statistics Control System
  * Plugin URI:        https://etehadwp.com/plugins/apex-omega
  * Description:       مدیریت دقیق، امن و زمان‌بندی‌شده آمار بازدید، امتیاز ستاره‌ای و آراء آهنگ‌ها با سازگاری کامل با kk Star Ratings. کنترل نوسان، تاریخچه کامل و بازگردانی هوشمند.
- * Version:           2.2.8 * Requires at least: 5.8
+ * Version:           2.2.9 * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            اتحاد وردپرس | EtehadWP
  * Author URI:        https://etehadwp.com
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('APEX_OMEGA_VERSION', '2.2.8');define('APEX_OMEGA_FILE', __FILE__);
+define('APEX_OMEGA_VERSION', '2.2.9');define('APEX_OMEGA_FILE', __FILE__);
 define('APEX_OMEGA_DIR', plugin_dir_path(__FILE__));
 define('APEX_OMEGA_URL', plugin_dir_url(__FILE__));
 define('APEX_OMEGA_BASENAME', plugin_basename(__FILE__));
@@ -96,7 +96,7 @@ add_action('plugins_loaded', function () {
     // مهاجرت 1.9.3 → 2.1.7: سقف 1.5M → 10M + پاکسازی حالت ساده/حرفه‌ای منسوخ + فعال‌سازی نگهبان خودکار
     add_action('init', function() {
         $stored = get_option(\ApexOmega\Core\TierManager::OPTION_TIERS, null);
-        // FIX 2.2.8: مهاجرت معکوس قبلی — اگر max قدیمی 1.5M بود، به 10M مهاجرت کن
+        // FIX 2.2.9: مهاجرت معکوس قبلی — اگر max قدیمی 1.5M بود، به 10M مهاجرت کن
         if (is_array($stored) && !empty($stored)) {
             $max = 0; foreach ($stored as $t) $max = max($max, (int)($t['views_max'] ?? 0));
             if ($max > 0 && $max < 9000000 && $max <= 1500000) {

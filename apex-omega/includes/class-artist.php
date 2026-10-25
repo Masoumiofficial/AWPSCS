@@ -698,11 +698,16 @@ class ArtistManager {
                     }
                 } elseif ($ws['mode'] === 'lower_only') {
                     $cur = (int)get_post_meta($pid,'views',true);
-                    $w = self::get_weight_for_post($pid);
-                    $hint = self::weight_to_tier_hint((int)$w);
-                    $tiers_tmp = \ApexOmega\Core\TierManager::get_tiers();
-                    $tmap=[]; foreach($tiers_tmp as $tt) $tmap[$tt['id']]=$tt;
-                    $vmin = $tmap[$hint]['views_min'] ?? 0;
+                    // برای منتخب، کف واقعی tier_1 است (900k) نه وزن پایین
+                    if (self::is_in_selected_works((int)$pid)) {
+                        $vmin = 900000;
+                    } else {
+                        $w = self::get_weight_for_post($pid);
+                        $hint = self::weight_to_tier_hint((int)$w);
+                        $tiers_tmp = \ApexOmega\Core\TierManager::get_tiers();
+                        $tmap=[]; foreach($tiers_tmp as $tt) $tmap[$tt['id']]=$tt;
+                        $vmin = $tmap[$hint]['views_min'] ?? 0;
+                    }
                     if ($cur >= $vmin) continue;
                 }
                 if ($ws['protect_manual']) {
@@ -721,10 +726,17 @@ class ArtistManager {
         $grouped = [];
         foreach (array_keys($tiers_by_id) as $tid) $grouped[$tid] = [];
         $weights_batch = self::get_weights_batch_fast($eligible_ids);
+        // کش دسته منتخب برای گروه‌بندی سریع — منتخب همیشه tier_1 (الماس 900k-10M) حتی اگر وزن پایین باشد
+        $selected_map_fast = array_flip(self::get_selected_works_ids(5000));
         foreach ($eligible_ids as $pid) {
-            $w = $weights_batch[$pid] ?? 20;
-            $tier_hint = self::weight_to_tier_hint((int)$w);
-            if (!isset($grouped[$tier_hint])) $tier_hint = 'tier_7';
+            // پرمیوم (selected-works) همیشه الماس — مستقل از وزن
+            if (isset($selected_map_fast[$pid])) {
+                $tier_hint = 'tier_1';
+            } else {
+                $w = $weights_batch[$pid] ?? 20;
+                $tier_hint = self::weight_to_tier_hint((int)$w);
+                if (!isset($grouped[$tier_hint])) $tier_hint = 'tier_7';
+            }
             $grouped[$tier_hint][] = (int)$pid;
         }
         // تولید preview + summary
@@ -799,16 +811,22 @@ class ArtistManager {
         $eligible_ids2 = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
         // اعمال حالت محافظ — همسان با preview
         if ($ws2['mode'] !== 'all' && !empty($eligible_ids2)) {
-            $flt=[]; foreach($eligible_ids2 as $pid){ if($ws2['mode']==='unsynced'){ $h=get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER,true); if($h!=='' && $h!==false) continue; } elseif($ws2['mode']==='cooldown'){ $last=get_post_meta($pid,'_apex_tier_applied_at',true); if($last){ $ts=strtotime($last); if($ts && (time()-$ts) < $ws2['cooldown_hours']*3600) continue; } } elseif($ws2['mode']==='lower_only'){ $cur=(int)get_post_meta($pid,'views',true); $w=self::get_weight_for_post($pid); $hint=self::weight_to_tier_hint((int)$w); $tmap=[]; foreach($tiers2 as $tt) $tmap[$tt['id']]=$tt; $vmin=$tmap[$hint]['views_min']??0; if($cur >= $vmin) continue; } if($ws2['protect_manual']){ $src=get_post_meta($pid,'_apex_views_last_source',true); if($src==='manual'||$src==='bulk_manual') continue; } $flt[]=$pid; } $eligible_ids2=$flt;
+            $flt=[]; foreach($eligible_ids2 as $pid){ if($ws2['mode']==='unsynced'){ $h=get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER,true); if($h!=='' && $h!==false) continue; } elseif($ws2['mode']==='cooldown'){ $last=get_post_meta($pid,'_apex_tier_applied_at',true); if($last){ $ts=strtotime($last); if($ts && (time()-$ts) < $ws2['cooldown_hours']*3600) continue; } } elseif($ws2['mode']==='lower_only'){ $cur=(int)get_post_meta($pid,'views',true); if (self::is_in_selected_works((int)$pid)) $vmin=900000; else { $w=self::get_weight_for_post($pid); $hint=self::weight_to_tier_hint((int)$w); $tmap=[]; foreach($tiers2 as $tt) $tmap[$tt['id']]=$tt; $vmin=$tmap[$hint]['views_min']??0; } if($cur >= $vmin) continue; } if($ws2['protect_manual']){ $src=get_post_meta($pid,'_apex_views_last_source',true); if($src==='manual'||$src==='bulk_manual') continue; } $flt[]=$pid; } $eligible_ids2=$flt;
         }
         $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
+        $selected_map2 = array_flip(self::get_selected_works_ids(5000));
         $full_preview = [];
         foreach ($eligible_ids2 as $pid) {
-            $w = $weights_batch2[$pid] ?? 20;
-            $tier_id = self::weight_to_tier_hint((int)$w);
-            if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
+            $is_premium_pre = isset($selected_map2[$pid]);
+            if ($is_premium_pre) {
+                $tier_id = 'tier_1';
+            } else {
+                $w = $weights_batch2[$pid] ?? 20;
+                $tier_id = self::weight_to_tier_hint((int)$w);
+                if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
+            }
             $tier=$tiers_by_id2[$tier_id];
-            $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
+            $is_hit = self::is_hit((int)$pid); $is_premium = $is_premium_pre; $w = $weights_batch2[$pid] ?? 20;
             $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid,$is_premium);
             $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit,'is_premium'=>$is_premium];
         }
@@ -894,16 +912,22 @@ class ArtistManager {
         $eligible_ids2 = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
         // اعمال حالت محافظ — همسان با preview
         if ($ws2['mode'] !== 'all' && !empty($eligible_ids2)) {
-            $flt=[]; foreach($eligible_ids2 as $pid){ if($ws2['mode']==='unsynced'){ $h=get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER,true); if($h!=='' && $h!==false) continue; } elseif($ws2['mode']==='cooldown'){ $last=get_post_meta($pid,'_apex_tier_applied_at',true); if($last){ $ts=strtotime($last); if($ts && (time()-$ts) < $ws2['cooldown_hours']*3600) continue; } } elseif($ws2['mode']==='lower_only'){ $cur=(int)get_post_meta($pid,'views',true); $w=self::get_weight_for_post($pid); $hint=self::weight_to_tier_hint((int)$w); $tmap=[]; foreach($tiers2 as $tt) $tmap[$tt['id']]=$tt; $vmin=$tmap[$hint]['views_min']??0; if($cur >= $vmin) continue; } if($ws2['protect_manual']){ $src=get_post_meta($pid,'_apex_views_last_source',true); if($src==='manual'||$src==='bulk_manual') continue; } $flt[]=$pid; } $eligible_ids2=$flt;
+            $flt=[]; foreach($eligible_ids2 as $pid){ if($ws2['mode']==='unsynced'){ $h=get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER,true); if($h!=='' && $h!==false) continue; } elseif($ws2['mode']==='cooldown'){ $last=get_post_meta($pid,'_apex_tier_applied_at',true); if($last){ $ts=strtotime($last); if($ts && (time()-$ts) < $ws2['cooldown_hours']*3600) continue; } } elseif($ws2['mode']==='lower_only'){ $cur=(int)get_post_meta($pid,'views',true); if (self::is_in_selected_works((int)$pid)) $vmin=900000; else { $w=self::get_weight_for_post($pid); $hint=self::weight_to_tier_hint((int)$w); $tmap=[]; foreach($tiers2 as $tt) $tmap[$tt['id']]=$tt; $vmin=$tmap[$hint]['views_min']??0; } if($cur >= $vmin) continue; } if($ws2['protect_manual']){ $src=get_post_meta($pid,'_apex_views_last_source',true); if($src==='manual'||$src==='bulk_manual') continue; } $flt[]=$pid; } $eligible_ids2=$flt;
         }
         $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
+        $selected_map3 = array_flip(self::get_selected_works_ids(5000));
         $flat=[];
         foreach ($eligible_ids2 as $pid) {
-            $w = $weights_batch2[$pid] ?? 20;
-            $tier_id = self::weight_to_tier_hint((int)$w);
-            if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
+            $is_premium_pre = isset($selected_map3[$pid]);
+            if ($is_premium_pre) {
+                $tier_id = 'tier_1';
+            } else {
+                $w = $weights_batch2[$pid] ?? 20;
+                $tier_id = self::weight_to_tier_hint((int)$w);
+                if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
+            }
             $tier=$tiers_by_id2[$tier_id];
-            $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
+            $is_hit = self::is_hit((int)$pid); $is_premium = $is_premium_pre; $w = $weights_batch2[$pid] ?? 20;
             $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid,$is_premium);
             $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit,'is_premium'=>$is_premium];
         }
@@ -1001,14 +1025,8 @@ class ArtistManager {
         $snapshot_rows=[]; $applied=0; $errors=[]; $details=[];
         foreach ($ids as $pid) {
             $w = $weights[$pid] ?? max(20, self::get_weight_for_post($pid));
-            // وزن هنرمند را محترم بشمار ولی پرمیوم اجباری: tier_1 یا tier_2 بر اساس وزن
-            $tier_id = self::weight_to_tier_hint((int)$w);
-            // برای پرمیوم، حداقل tier_2 (برای وزن‌های متوسط هم پرمیوم شود)
-            if (in_array($tier_id, ['tier_6','tier_7','tier_5'], true)) {
-                // اگر وزن کم ولی در دسته منتخب است، باز هم پرمیوم قابل توجه بده (نه 1K): ارتقا به tier_3 حداقل
-                $tier_id = 'tier_3';
-            }
-            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_2';
+            // FIX v2.2.9: منتخب همیشه الماس tier_1 (900k-10M → 9.5-11.8M) مستقل از وزن — وزن فقط برای تنوع جزئی داخل tier_1
+            $tier_id = 'tier_1';
             $tier = $tiers_by_id[$tier_id];
             $is_hit = true; // پرمیوم = هیت
             $is_premium = true;
@@ -1109,14 +1127,16 @@ class ArtistManager {
         // هر پست با هش ID تنوع دارد، اما اگر همه 600k بودند، guard قبلی آنها را با +1-3% متنوع می‌کند — اینجا عمدا بیشتر تنوع می‌دهیم
         foreach($ids as $idx=>$pid) {
             $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
-            $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$weight, $is_hit, $pid, $is_premium);
+            // اگر منتخب است، tier را الماس کن — حتی اگر وزن پایین باشد
+            $cur_tier = $tier; if ($is_premium) $cur_tier = $tmap['tier_1'] ?? $tier;
+            $vals = \ApexOmega\Core\TierManager::generate_values($cur_tier, $best, (int)$weight, $is_hit, $pid, $is_premium);
             $old_views = $before_views[$pid];
             $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
             // شکستن یکنواختی: اگر oldها همه یکسان هستند، یک jitter ترتیبی اضافه کن تا دیگر مساوی نمانند
             // برای اولین اجرا، val ممکن است نزدیک old باشد — یک پراکندگی اجباری ترتیبی
             $pidHash = (($pid * 9301 + 49297) % 233280)/233280; // 0-1
             // اگر old تکراری است (اکثر پست‌ها هم‌مقدار)، یک variance بیشتر
-            $spread = (int) round($tier['views_max'] - $tier['views_min']);
+            $spread = (int) round($cur_tier['views_max'] - $cur_tier['views_min']);
             $forcedVar = (int) round(($pidHash - 0.5) * $spread * 0.18); // ±9% بازه — برای tier_2 => ±36k
             $vals['views'] = max($vals['views'], $vals['views'] + $forcedVar);
             // محافظ هرگز کم نکن اما با تنوع
@@ -1128,7 +1148,7 @@ class ArtistManager {
                 $vals['views'] = $old_views + max(2500, $minInc);
                 // رای و امتیاز هم حداقل کمی بیشتر
                 if ($vals['casts'] <= $old_kksr['casts']) $vals['casts'] = $old_kksr['casts'] + (int)round($pidHash*8)+1;
-                if ($vals['avg'] <= $old_kksr['avg']) $vals['avg'] = min((float)$tier['avg_max'], round($old_kksr['avg']+0.1,1));
+                if ($vals['avg'] <= $old_kksr['avg']) $vals['avg'] = min((float)$cur_tier['avg_max'], round($old_kksr['avg']+0.1,1));
                 $vals['ratings'] = round($vals['avg'] * $vals['casts'] / $best * 5, 2);
             }
             if ($vals['views'] < $old_views) continue; // هرگز کم نکن — اضافی
