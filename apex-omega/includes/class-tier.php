@@ -155,7 +155,7 @@ class TierManager {
      * @param int|null $weight وزن هنرمند 0-100 — اگر null باشد رفتار قدیمی رندم حفظ می‌شود (سازگاری عقب‌رو)
      * @param bool $is_hit آیا اثر هیت/معروف است؟ اگر true بازدید به سقف تیره می‌رود (9-10M)
      */
-    public static function generate_values(array $tier, int $best = 5, ?int $weight = null, bool $is_hit = false): array {
+    public static function generate_values(array $tier, int $best = 5, ?int $weight = null, bool $is_hit = false, ?int $post_id = null): array {
         $vmin = (int)$tier['views_min']; $vmax = (int)$tier['views_max'];
         $range = $vmax - $vmin;
 
@@ -165,17 +165,20 @@ class TierManager {
             $wSpan = max(1, $wr['max'] - $wr['min']);
             $norm = max(0, min(1, ($weight - $wr['min']) / $wSpan)); // 0-1 داخل تیره
             // هیت: سقف تیره (برای tier1 => 9-10M)، معمولی: کف تا میانه (2-4M برای tier1)
+            // هش: هر پست حتی با وزن یکسان بازدید متفاوت بگیرد — ضد گیرکردن 5M
+            $pidHash = $post_id ? ((($post_id * 9301 + 49297) % 233280) / 233280) : (mt_rand(0,1000)/1000);
+            $hashJitter = ($pidHash - 0.5) * 0.10; // ±5% بر اساس ID
             if ($is_hit) {
-                // هیت: 88-100% رنج + وزن تأثیر 12%
+                // هیت: 88-100% رنج + وزن تأثیر 12% + هش + جیتر
                 $baseFactor = 0.88 + $norm * 0.12;
-                $jitter = mt_rand(-250, 250) / 10000; // ±2.5% رنج
+                $jitter = mt_rand(-300, 300) / 10000 + $hashJitter * 0.5; // ±3% + هش
                 $factor = max(0.85, min(1, $baseFactor + $jitter));
                 $views = (int) round($vmin + $range * $factor);
             } else {
-                // معمولی: 15% + norm*35% => برای tier1 (900K-10M) با وزن 95 (norm 0.5) => 900K + (0.15+0.175)*9.1M ≈ 3.85M → 2-4M مطلوب
-                $baseFactor = 0.15 + $norm * 0.35;
-                $jitter = mt_rand(-400, 400) / 10000; // ±4%
-                $factor = max(0.05, min(0.75, $baseFactor + $jitter));
+                // معمولی: 10% + norm*45% => بازه وسیع‌تر 1.8M-6.5M برای tier1 — ضد گیر 5M
+                $baseFactor = 0.10 + $norm * 0.45;
+                $jitter = mt_rand(-700, 700) / 10000 + $hashJitter; // ±7% + هش ±5% = تا ±12% پراکندگی
+                $factor = max(0.05, min(0.85, $baseFactor + $jitter));
                 $views = (int) round($vmin + $range * $factor);
             }
         } else {

@@ -97,8 +97,8 @@ class ArtistManager {
                 'name' => $t->name,
                 'slug' => $t->slug,
                 'count' => $t->count,
-                'weight' => isset($weights[$t->term_id]) ? (int)$weights[$t->term_id] : 50, // 0-100
-                'tier_hint' => self::weight_to_tier_hint($weights[$t->term_id] ?? 50),
+                'weight' => isset($weights[$t->term_id]) ? (int)$weights[$t->term_id] : 20, // نوپا 20 // 0-100
+                'tier_hint' => self::weight_to_tier_hint($weights[$t->term_id] ?? 20),
             ];
         }
         return $out;
@@ -135,14 +135,14 @@ class ArtistManager {
             if (!empty($terms) && !is_wp_error($terms)) {
                 foreach ($terms as $tm) {
                     $tid = is_object($tm) ? $tm->term_id : (int)$tm;
-                    $w = $weights[$tid] ?? 50;
+                    $w = $weights[$tid] ?? 20;
                     if ($w > $max) $max = $w;
                     if (is_object($tm)) $artist_names[] = $tm->name;
                 }
             }
         }
         // اگر تاکسونومی نداشتیم، سعی کن خواننده را از عنوان استخراج کنی (fallback)
-        if (!$max) $max = 50; // بی‌طرف — اما با قاب پایین می‌ماند
+        if (!$max) $max = 20; // نوپا — پیش‌فرض 20 (نه 50) — اما با قاب پایین می‌ماند
 
         $title = get_the_title($post_id);
         // خواننده اصلی برای ترکیب — اولین نام
@@ -363,12 +363,12 @@ class ArtistManager {
             $terms = wp_get_post_terms($post_id, $tax, ['fields'=>'ids']);
             if (!empty($terms) && !is_wp_error($terms)) {
                 foreach ($terms as $tid) {
-                    $w = $weights[$tid] ?? 50;
+                    $w = $weights[$tid] ?? 20;
                     if ($w > $max) $max = $w;
                 }
             }
         }
-        return $max ?: 50;
+        return $max ?: 20;
     }
 
     public static function score_pair_via_ai(string $artist, string $title): ?int {
@@ -564,7 +564,7 @@ class ArtistManager {
         if (empty($pids)) return [];
         $tax = self::detect_artist_taxonomy();
         $weights_opt = get_option(self::OPTION_WEIGHTS, []);
-        $map = array_fill_keys($pids, 50);
+        $map = array_fill_keys($pids, 20); // نوپا 20
         if (!$tax) return $map;
         global $wpdb;
         $chunks = array_chunk($pids, 800);
@@ -576,7 +576,7 @@ class ArtistManager {
         }
         foreach ($map as $pid => $def) {
             $tids = $term_map[$pid] ?? [];
-            $max=0; foreach($tids as $tid){ $w=$weights_opt[$tid] ?? 50; if($w>$max) $max=$w; }
+            $max=0; foreach($tids as $tid){ $w=$weights_opt[$tid] ?? 20; if($w>$max) $max=$w; }
             if($max) $map[$pid]=$max;
         }
         return $map;
@@ -603,7 +603,7 @@ class ArtistManager {
         foreach (array_keys($tiers_by_id) as $tid) $grouped[$tid] = [];
         $weights_batch = self::get_weights_batch_fast($eligible_ids);
         foreach ($eligible_ids as $pid) {
-            $w = $weights_batch[$pid] ?? 50;
+            $w = $weights_batch[$pid] ?? 20;
             $tier_hint = self::weight_to_tier_hint((int)$w);
             if (!isset($grouped[$tier_hint])) $tier_hint = 'tier_7';
             $grouped[$tier_hint][] = (int)$pid;
@@ -621,8 +621,8 @@ class ArtistManager {
             $slice_preview = [];
             $sum_v = 0; $sum_c = 0; $sum_a = 0;
             foreach ($ids as $pid) {
-                $w = $weights_batch[$pid] ?? 50; $is_hit = self::is_hit((int)$pid);
-                $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$w, $is_hit);
+                $w = $weights_batch[$pid] ?? 20; $is_hit = self::is_hit((int)$pid);
+                $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$w, $is_hit, $pid);
                 $sum_v += $vals['views'];
                 $sum_c += $vals['casts'];
                 $sum_a += $vals['avg'];
@@ -679,12 +679,12 @@ class ArtistManager {
         $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
         $full_preview = [];
         foreach ($eligible_ids2 as $pid) {
-            $w = $weights_batch2[$pid] ?? 50;
+            $w = $weights_batch2[$pid] ?? 20;
             $tier_id = self::weight_to_tier_hint((int)$w);
             if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
             $tier=$tiers_by_id2[$tier_id];
             $is_hit = self::is_hit((int)$pid);
-            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit);
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid);
             $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit];
         }
         $preview['preview'] = $full_preview;
@@ -764,12 +764,12 @@ class ArtistManager {
         $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
         $flat=[];
         foreach ($eligible_ids2 as $pid) {
-            $w = $weights_batch2[$pid] ?? 50;
+            $w = $weights_batch2[$pid] ?? 20;
             $tier_id = self::weight_to_tier_hint((int)$w);
             if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
             $tier=$tiers_by_id2[$tier_id];
             $is_hit = self::is_hit((int)$pid);
-            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit);
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid);
             $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit];
         }
         $exec = apex_omega_generate_uuid();
