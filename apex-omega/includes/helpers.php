@@ -93,3 +93,37 @@ if (!function_exists('apex_omega_lock_ttl')) {
         return $ttl;
     }
 }
+
+if (!function_exists('apex_omega_never_decrease_enabled')) {
+    function apex_omega_never_decrease_enabled(): bool {
+        $s = get_option('apex_omega_settings', []);
+        // پیش‌فرض فعال برای جلوگیری از کاهش ناخواسته پس از آپدیت
+        if (!is_array($s)) return true;
+        if (!array_key_exists('never_decrease_views', $s)) return true;
+        return !empty($s['never_decrease_views']);
+    }
+}
+if (!function_exists('apex_omega_guard_views')) {
+    /**
+     * محافظ کاهش — اگر never_decrease فعال باشد و مقدار جدید کمتر از قدیمی باشد، قدیمی را نگه دار
+     * برای automated sources فقط؛ manual با $allow_decrease=true فراخوانی شود
+     */
+    function apex_omega_guard_views(int $old, int $new, bool $allow_decrease = false): int {
+        if ($allow_decrease) return $new;
+        if (!apex_omega_never_decrease_enabled()) return $new;
+        return ($new < $old) ? $old : $new;
+    }
+}
+if (!function_exists('apex_omega_guard_stats')) {
+    function apex_omega_guard_stats(array $old_stats, array $new_vals, bool $allow_decrease = false): array {
+        if ($allow_decrease || !apex_omega_never_decrease_enabled()) return $new_vals;
+        // old_stats: ['casts'=>int,'avg'=>float,'ratings'=>float]
+        // new_vals: ['casts'=>int,'avg'=>float,'ratings'=>float,'views'=>int]
+        if (isset($new_vals['casts']) && $new_vals['casts'] < (int)($old_stats['casts'] ?? 0)) $new_vals['casts'] = (int)$old_stats['casts'];
+        if (isset($new_vals['avg']) && $new_vals['avg'] < (float)($old_stats['avg'] ?? 0)) $new_vals['avg'] = (float)$old_stats['avg'];
+        if (isset($new_vals['ratings']) && $new_vals['ratings'] < (float)($old_stats['ratings'] ?? 0)) $new_vals['ratings'] = (float)$old_stats['ratings'];
+        if (isset($new_vals['views']) && $new_vals['views'] < (int)($old_stats['views'] ?? 0)) $new_vals['views'] = (int)$old_stats['views'];
+        return $new_vals;
+    }
+}
+

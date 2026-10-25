@@ -69,6 +69,17 @@ $both = count(array_intersect($hit_ids,$selected_ids));
     <p class="desc" style="margin-top:10px">هر نوشته در دسته با نامک <code>selected-works</code> خودکار پرمیوم است — بدون تیک. اگر هر دو باشد، پرمیوم لحاظ می‌شود. اشتراک: <?php echo esc_html($both); ?> مورد.</p>
   </div>
 
+  <div class="apex-glass-card" style="border-top:3px solid #7c3aed;background:linear-gradient(135deg,#ede9fe 0%,#ecfdf5 100%)">
+    <h3><span class="dot" style="background:#7c3aed"></span>✨ پرمیوم‌سازی دسته آثار منتخب — یک‌کلیک</h3>
+    <p class="desc">تمام آهنگ‌های دسته <code>selected-works</code> (<?php echo esc_html($auto_count); ?> مورد) را همین الان به حالت پرمیومِ مدنظرت می‌برد: بازدید ۹٫۵–۱۱٫۸M، امتیاز ۱۶–۲۴K، میانگین ۴٫۹–۵٫۰، با محافظ عدم‌کاهش (۵M هرگز ۴M نمی‌شود). ویرایش دستی همچنان آزاد است.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button type="button" class="apex-btn-primary" id="apex-premium-apply" style="background:#7c3aed;border-color:#7c3aed">✨ اعمال پرمیوم به <?php echo esc_html($auto_count); ?> آهنگ دسته منتخب</button>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="apex-premium-with-comments"> همراه با کامنت پرمیوم</label>
+      <span id="apex-premium-result" class="apex-pill" style="display:none"></span>
+    </div>
+    <div class="apex-help" style="margin-top:8px">اگر آهنگی قبلا پرمیوم بود، رد می‌شود (محافظ کاهش جلوی پایین آمدن را می‌گیرد). تاریخچه و Snapshot برای Undo ثبت می‌شود.</div>
+  </div>
+
   <div class="apex-glass-card">
     <h3><span class="dot" style="background:#7c3aed"></span>فیلتر و جستجو — سبک</h3>
     <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
@@ -181,6 +192,17 @@ $both = count(array_intersect($hit_ids,$selected_ids));
     if(!confirm('همه هیت‌های دستی پاک شود؟')) return;
     const fd=new FormData(); fd.append('action','apex_clear_hits'); fd.append('_ajax_nonce',getNonce());
     fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(j=>{ alert(j.data.message||'پاک شد'); location.reload(); });
+  });
+  document.getElementById('apex-premium-apply')?.addEventListener('click',function(){
+    if(!confirm('اعمال پرمیوم به کل دسته selected-works؟ بازدید/امتیاز به 9.5-11.8M ارتقا می‌یابد و هرگز کم نمی‌شود.')) return;
+    const btn=this; btn.disabled=true; const o=btn.textContent; btn.textContent='در حال اعمال پرمیوم...';
+    const with_comments=document.getElementById('apex-premium-with-comments')?.checked?1:0;
+    const fd=new FormData(); fd.append('action','apex_apply_premium_selected'); fd.append('_ajax_nonce',getNonce()); fd.append('with_comments',with_comments);
+    const resEl=document.getElementById('apex-premium-result');
+    fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(j=>{
+      if(resEl){ resEl.style.display='inline-flex'; resEl.textContent=j.success ? (j.data.message||'انجام شد: '+j.data.applied+' پرمیوم') : (j.data.message||'خطا'); resEl.style.background=j.success?'#dcfce7':'#fee2e2'; resEl.style.color=j.success?'#166534':'#991b1b'; }
+      if(j.success) setTimeout(()=>location.reload(),1200);
+    }).catch(e=>{ if(resEl){ resEl.style.display='inline-flex'; resEl.textContent='خطا: '+e; resEl.style.background='#fee2e2';}}).finally(()=>{btn.disabled=false; btn.textContent=o;});
   });
   document.getElementById('apex-ai-suggest')?.addEventListener('click',function(){
     const term=document.getElementById('apex-ai-artist')?.value||''; const btn=this; btn.disabled=true; const o=btn.textContent; btn.textContent='AI...';

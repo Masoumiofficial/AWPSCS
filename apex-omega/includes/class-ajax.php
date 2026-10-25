@@ -48,6 +48,7 @@ class Ajax {
             'apex_save_hits',
             'apex_suggest_hits',
             'apex_clear_hits',
+            'apex_apply_premium_selected',
         ];
         foreach ($actions as $a) {
             add_action('wp_ajax_' . $a, [__CLASS__, 'router']);
@@ -194,6 +195,9 @@ class Ajax {
                 break;
             case 'apex_clear_hits':
                 self::clear_hits();
+                break;
+            case 'apex_apply_premium_selected':
+                self::apply_premium_selected();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -798,6 +802,12 @@ class Ajax {
     private static function clear_hits(): void {
         \ApexOmega\Core\ArtistManager::clear_hits();
         wp_send_json_success(['message'=>'تمام هیت‌ها پاک شد']);
+    }
+    private static function apply_premium_selected(): void {
+        $with_comments = !empty($_POST['with_comments']);
+        $res = \ApexOmega\Core\ArtistManager::apply_premium_to_selected_works(0, $with_comments);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
     }
 
 }

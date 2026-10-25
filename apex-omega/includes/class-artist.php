@@ -844,6 +844,10 @@ class ArtistManager {
                 if(!\ApexOmega\Core\Database::acquire_lock($lock, max(15,min(120,$ttl)))){ $errors[]="پست $pid قفل است"; continue; }
                 $old_views = \ApexOmega\Core\Adapter_Views::get_views($pid);
                 $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+                // 🛡️ محافظ کاهش — خودکار هرگز کم نکند
+                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false);
+                $item['casts'] = $guarded['casts']; $item['avg'] = $guarded['avg']; $item['ratings'] = $guarded['ratings']; $item['views'] = $guarded['views'];
+                if ($item['views'] === $old_views && $item['casts'] === $old_kksr['casts'] && $item['avg'] === $old_kksr['avg']) { \ApexOmega\Core\Database::release_lock($lock); continue; }
                 $detect = \ApexOmega\Core\Adapter_KKSR::detect();
                 global $wpdb;
                 $wpdb->query('START TRANSACTION');
@@ -936,6 +940,10 @@ class ArtistManager {
             if(!\ApexOmega\Core\Database::acquire_lock($plock,20)){ $errors[]="پست $pid قفل است"; continue; }
             $old_views=\ApexOmega\Core\Adapter_Views::get_views($pid);
             $old_kksr=\ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            // 🛡️ محافظ کاهش
+            $g2 = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false);
+            $item['casts']=$g2['casts']; $item['avg']=$g2['avg']; $item['ratings']=$g2['ratings']; $item['views']=$g2['views'];
+            if ($item['views']===$old_views && $item['casts']===$old_kksr['casts'] && $item['avg']===$old_kksr['avg']) { \ApexOmega\Core\Database::release_lock($plock); continue; }
             $detect=\ApexOmega\Core\Adapter_KKSR::detect();
             $wpdb->query('START TRANSACTION');
             try {
@@ -970,6 +978,103 @@ class ArtistManager {
             try { $counts=json_decode($job['counts_json'],true)?:[]; $filters=json_decode($job['filters_json'],true)?:[]; \ApexOmega\Core\Database::create_snapshot($execution_id,(int)$job['user_id'],$counts,$filters,$total,$new_processed,$acc); delete_option($opt_key); update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION,['counts'=>$counts,'filters'=>$filters,'applied'=>$new_processed,'exec'=>$execution_id,'at'=>current_time('mysql',true),'errors'=>$errors,'chunked'=>true,'weight_sync'=>true],false); } catch(\Throwable $e){ error_log('[APEX Ω] weight chunk snapshot fail '.$e->getMessage()); }
         }
         return ['success'=>true,'status'=>$is_done?'done':'running','processed'=>$new_processed,'total'=>$total,'applied_in_chunk'=>$applied,'errors'=>$errors,'remaining'=>$total-$new_processed,'percent'=>$total?round($new_processed/$total*100,1):0];
+    }
+
+
+    // پرمیوم‌سازی دسته آثار منتخب — دکمه‌ای برای اعمال 9.5-11.8M به همه اعضای دسته
+    public static function apply_premium_to_selected_works(int $chunk_size = 0, bool $with_comments = false): array {
+        if (function_exists('set_time_limit')) @set_time_limit(180);
+        $ids = self::get_selected_works_ids(5000);
+        if (empty($ids)) return ['success'=>false,'message'=>'هیچ پستی در دسته selected-works یافت نشد. ابتدا چند نوشته را به این دسته اضافه کنید.'];
+        // فیلتر: فقط آنهایی که واقعا زیر 9M هستند یا هنوز پرمیوم اعمال نشده؟ ولی با guard همه قابل اعمال است
+        $tiers = \ApexOmega\Core\TierManager::get_tiers();
+        $tiers_by_id = []; foreach($tiers as $t) $tiers_by_id[$t['id']]=$t;
+        $best = (int) get_option('kksr_stars', 5); if($best<1) $best=5;
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        $total = count($ids);
+        $ttl = apex_omega_lock_ttl($total, 30, 600, 2);
+        if (!\ApexOmega\Core\Database::acquire_lock('apex_selected_premium_master', $ttl)) {
+            return ['success'=>false,'message'=>'عملیات دیگری در حال اجراست. '.$ttl.' ثانیه صبر کنید.'];
+        }
+        $weights = self::get_weights_batch_fast($ids);
+        $snapshot_rows=[]; $applied=0; $errors=[]; $details=[];
+        foreach ($ids as $pid) {
+            $w = $weights[$pid] ?? max(20, self::get_weight_for_post($pid));
+            // وزن هنرمند را محترم بشمار ولی پرمیوم اجباری: tier_1 یا tier_2 بر اساس وزن
+            $tier_id = self::weight_to_tier_hint((int)$w);
+            // برای پرمیوم، حداقل tier_2 (برای وزن‌های متوسط هم پرمیوم شود)
+            if (in_array($tier_id, ['tier_6','tier_7','tier_5'], true)) {
+                // اگر وزن کم ولی در دسته منتخب است، باز هم پرمیوم قابل توجه بده (نه 1K): ارتقا به tier_3 حداقل
+                $tier_id = 'tier_3';
+            }
+            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_2';
+            $tier = $tiers_by_id[$tier_id];
+            $is_hit = true; // پرمیوم = هیت
+            $is_premium = true;
+            $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$w, $is_hit, $pid, $is_premium);
+            $old_views = \ApexOmega\Core\Adapter_Views::get_views($pid);
+            $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            // guard: فقط افزایش
+            $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']], false);
+            $vals['casts']=$guarded['casts']; $vals['avg']=$guarded['avg']; $vals['ratings']=$guarded['ratings']; $vals['views']=$guarded['views'];
+            if ($vals['views']===$old_views && $vals['casts']===$old_kksr['casts'] && $vals['avg']===$old_kksr['avg']) {
+                continue; // قبلا پرمیوم است
+            }
+            $detect = \ApexOmega\Core\Adapter_KKSR::detect();
+            global $wpdb;
+            $lock="apex_tier_{$pid}";
+            if (!\ApexOmega\Core\Database::acquire_lock($lock, 30)) { $errors[]="پست $pid قفل"; continue; }
+            $wpdb->query('START TRANSACTION');
+            try {
+                update_post_meta($pid, \ApexOmega\Core\Adapter_Views::META_KEY, (int)$vals['views']);
+                $rv=get_post_meta($pid,'_apex_real_views',true); if($rv===''){ update_post_meta($pid,'_apex_real_views',$old_views); update_post_meta($pid,'_apex_real_views_captured_at', current_time('mysql',true));}
+                update_post_meta($pid,'_apex_managed_views',(int)$vals['views']);
+                update_post_meta($pid,'_apex_views_last_source','selected_premium');
+                update_post_meta($pid,'_apex_views_last_exec',$exec);
+                update_post_meta($pid,$detect['meta_casts'],(int)$vals['casts']);
+                update_post_meta($pid,$detect['meta_ratings'],(float)$vals['ratings']);
+                update_post_meta($pid,$detect['meta_avg'],(float)$vals['avg']);
+                update_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER, $tier_id);
+                update_post_meta($pid,'_apex_tier_applied_at', current_time('mysql',true));
+                wp_cache_delete($pid,'post_meta');
+                $snapshot_rows[]=['post_id'=>$pid,'post_title'=>get_the_title($pid)?:(string)$pid,'tier'=>$tier_id,'old_views'=>$old_views,'new_views'=>$vals['views'],'old_casts'=>$old_kksr['casts'],'old_avg'=>$old_kksr['avg'],'old_ratings'=>$old_kksr['ratings'],'best'=>$best,'new_casts'=>$vals['casts'],'new_avg'=>$vals['avg'],'new_ratings'=>$vals['ratings']];
+                $wpdb->query('COMMIT');
+                \ApexOmega\Core\History::log($pid,'views',$old_views,$vals['views'],'selected_premium',$user_id,$exec,null,['tier'=>$tier_id,'premium'=>true]);
+                \ApexOmega\Core\History::log($pid,'kksr_combined',wp_json_encode(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings']],JSON_UNESCAPED_UNICODE),wp_json_encode(['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings']],JSON_UNESCAPED_UNICODE),'selected_premium',$user_id,$exec,null,['tier'=>$tier_id]);
+                do_action('apex_omega_views_updated',$pid,$old_views,(int)$vals['views'],'selected_premium',$exec);
+                $applied++; $details[]=['post_id'=>$pid,'old_views'=>$old_views,'new_views'=>$vals['views'],'tier'=>$tier_id];
+            } catch(\Throwable $e){ $wpdb->query('ROLLBACK'); $errors[]="پست $pid: ".$e->getMessage(); }
+            \ApexOmega\Core\Database::release_lock($lock);
+            // کامنت پرمیوم (اختیاری)
+            if ($with_comments && $applied % 1 === 0) {
+                try {
+                    // اگر نگهبان دیدگاه فعال باشد، یک دیدگاه پرمیوم اضافه کن
+                    if (\ApexOmega\Core\CommentGuardian::is_enabled()) {
+                        // یک دیدگاه مصنوعی سبک
+                        // استفاده از متد داخلی generate_text + wp_insert_comment
+                        $title = get_the_title($pid);
+                        $text = \ApexOmega\Core\CommentGuardian::generate_text($pid, '', $title, (int)$w, (int)$vals['views'], true);
+                        if ($text && !\ApexOmega\Core\CommentGuardian::has_duplicate($pid, $text)) {
+                            wp_insert_comment(['comment_post_ID'=>$pid,'comment_content'=>$text,'comment_approved'=>1,'comment_author'=>'کاربر تاییدشده','comment_author_email'=>'verified@ahangban.local','comment_author_IP'=>'127.0.0.1','comment_agent'=>'APEX-Selected-Premium']);
+                        }
+                    }
+                } catch(\Throwable $e){}
+            }
+        }
+        if ($snapshot_rows) {
+            try { \ApexOmega\Core\Database::create_snapshot($exec,$user_id,[],['source'=>'selected_premium'],$total,$applied,$snapshot_rows); } catch(\Throwable $e){}
+            update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, ['counts'=>[],'filters'=>['source'=>'selected_premium'],'applied'=>$applied,'exec'=>$exec,'at'=>current_time('mysql',true),'errors'=>$errors,'weight_sync'=>false,'premium_selected'=>true], false);
+        }
+        \ApexOmega\Core\Database::release_lock('apex_selected_premium_master');
+        return ['success'=>true,'applied'=>$applied,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'message'=> $applied ? "✅ {$applied} از {$total} آهنگ دسته منتخب پرمیوم شد (9.5-11.8M، امتیاز 4.9-5.0)" : 'همه قبلا پرمیوم بودند یا محافظ جلوی کاهش را گرفت'];
+    }
+
+    public static function allow_manual_decrease(int $post_id, callable $fn) {
+        // helper برای ویرایش دستی: به guard بگو کاهش مجاز است (از bulk/metabox صدا بزن)
+        // فعلا فقط flag موقت ست می‌کند
+        $GLOBALS['apex_allow_decrease_'. $post_id] = true;
+        try { return $fn(); } finally { unset($GLOBALS['apex_allow_decrease_'. $post_id]); }
     }
 
     // ── v2.2.0: مدیریت هیت‌ها (معروف‌ترین آثار) ──

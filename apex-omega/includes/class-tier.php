@@ -493,6 +493,11 @@ class TierManager {
 
                 $old_views = Adapter_Views::get_views($pid);
                 $old_kksr = Adapter_KKSR::get_stats($pid);
+                // 🛡️ محافظ هرگز کم نکن — اگر توزیع مقدار کمتری پیشنهاد داد، نادیده بگیر (فقط دستی می‌تواند کم کند)
+                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false);
+                $item['casts'] = $guarded['casts']; $item['avg'] = $guarded['avg']; $item['ratings'] = $guarded['ratings']; $item['views'] = $guarded['views'];
+                if ($item['views'] === $old_views && $item['casts'] === $old_kksr['casts'] && $item['avg'] === $old_kksr['avg']) { Database::release_lock($lock); continue; }
+                // مقدار قدیمی ممکن است با guard تغییر کرده باشد، snapshot را هم به‌روزرسانی کن بعداً؟
                 $detect = Adapter_KKSR::detect();
 
                 // Single transaction per post: views + kksr + tier meta atomically

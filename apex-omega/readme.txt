@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.6
+Stable tag: 2.2.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,12 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.7 (2026-10-27) =
+* FIX پنل تنظیمات: layout شبکه شکسته ترمیم — wrappers .apex-g-panels بازگردانی شد (تب عمومی/ایمنی دیگر همپوشانی نمی‌کند، فقط پنل فعال نمایش)
+* FEATURE دکمه پرمیوم دسته منتخب: تمام آهنگ‌های دسته selected-works یک‌کلیک به 9.5-11.8M/16-24K/4.9-5.0 پرمیوم (با Snapshot/History و کامنت اختیاری پرمیوم)
+* FEATURE محافظ جهانی هرگز کم نکن: تنظیمات عمومی — هرگز خودکار کم نکن (views/ratings/casts فقط افزایش یا ثابت) — هر بروزرسانی وزن‌محور/tier/evergreen/autowatch دیگر 5M→4M نمی‌کند؛ ویرایش دستی آزاد و نیاز به ویرایش اشتباهی با متاباکس/گروهی قابل اصلاح
+* FIX هسته محافظ: apex_omega_guard_views/guard_stats در Evergreen/AutoWatch/Tier/WeightSync اعمال شد؛ helpers.php helper اضافه
 
 = 2.2.6 (2026-10-27) =
 * FIX تنظیمات: layout شکسته به flex+noscript fallback اصلاح، تب ششم همگام‌سازی (mode/cooldown/batch/exclude_recent/protect_selected/protect_manual) با ذخیره apex_omega_weight_sync

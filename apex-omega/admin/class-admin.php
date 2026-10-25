@@ -156,6 +156,7 @@ class Admin {
         if (isset($input['max_default_percent'])) $out['max_default_percent'] = max(1, min(100, (float)$input['max_default_percent']));
         if (isset($input['enable_real_cron_hint'])) $out['enable_real_cron_hint'] = !empty($input['enable_real_cron_hint']);
         if (isset($input['remove_data_on_uninstall'])) $out['remove_data_on_uninstall'] = !empty($input['remove_data_on_uninstall']);
+        if (isset($input['never_decrease_views'])) $out['never_decrease_views'] = !empty($input['never_decrease_views']);
         // تیره‌ها
         if (isset($input['ai_api_key'])) $out['ai_api_key'] = sanitize_text_field($input['ai_api_key']);
         return $out;
@@ -252,6 +253,7 @@ class Admin {
                 'max_default_percent'          => $_POST['max_default_percent'] ?? 15,
                 'enable_real_cron_hint'        => isset($_POST['enable_real_cron_hint']),
                 'remove_data_on_uninstall'     => isset($_POST['remove_data_on_uninstall']),
+                'never_decrease_views'         => isset($_POST['never_decrease_views']),
             ];
             update_option('apex_omega_settings', $this->sanitize_settings($input));
 
@@ -325,6 +327,7 @@ class Admin {
             'max_default_percent' => 15,
             'enable_real_cron_hint' => true,
             'remove_data_on_uninstall' => false,
+            'never_decrease_views' => true,
         ]);
         $ai_set = \ApexOmega\Core\AI_Helper::get_settings();
         include APEX_OMEGA_DIR . 'admin/views/settings.php';

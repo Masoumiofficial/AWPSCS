@@ -128,6 +128,8 @@ class Evergreen {
             $inc = Simulator::next_delta($cur_views, $tier ?? '', $profile, $ageDays, $base_rate);
             $new_views = $cur_views + $inc;
             if ($new_views > $effective_max) $new_views = $effective_max;
+            // 🛡️ محافظ هرگز کم نکن
+            $new_views = apex_omega_guard_views($cur_views, $new_views, false);
             // امتیاز هم کمی رشد کند
             $stats = Adapter_KKSR::get_stats($pid);
             $new_casts = $stats['casts'];
@@ -141,10 +143,15 @@ class Evergreen {
                     }
                 }
             }
+            // محافظ امتیاز هم — فقط افزایش
+            $guarded = apex_omega_guard_stats(['casts'=>$stats['casts'],'avg'=>$stats['avg'],'ratings'=>$stats['ratings'] ?? 0], ['casts'=>$new_casts,'avg'=>$new_avg,'views'=>$new_views], false);
+            $new_casts = $guarded['casts']; $new_avg = $guarded['avg'];
             // نوشتن اتمیک
             $detect = Adapter_KKSR::detect();
             $best = $detect['best'];
             $new_ratings = $new_avg * $new_casts / $best * 5;
+            // ratings هم محافظ
+            if (apex_omega_never_decrease_enabled() && $new_ratings < (float)($stats['ratings'] ?? 0)) $new_ratings = (float)$stats['ratings'];
             global $wpdb;
             $wpdb->query('START TRANSACTION');
             try {

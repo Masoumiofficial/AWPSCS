@@ -178,6 +178,11 @@ class AutoWatch {
                 else $new_avg = max($new_avg, $stats['avg']);
             }
 
+            // 🛡️ محافظ هرگز کم نکن — اگر مقدار جدید کمتر از فعلی است، نگه دار
+            $target_views = apex_omega_guard_views($cur_views, $target_views, false);
+            $guarded_stats = apex_omega_guard_stats(['casts'=>$stats['casts'],'avg'=>$stats['avg'],'views'=>$cur_views], ['casts'=>$new_casts,'avg'=>$new_avg,'views'=>$target_views], false);
+            $new_casts = $guarded_stats['casts']; $new_avg = $guarded_stats['avg']; $target_views = $guarded_stats['views'];
+            if ($target_views === $cur_views && $new_casts === $stats['casts'] && $new_avg === $stats['avg']) continue; // چیزی برای افزایش نیست
             global $wpdb;
             $wpdb->query('START TRANSACTION');
             try {

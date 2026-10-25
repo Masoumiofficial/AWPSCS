@@ -6,6 +6,7 @@ $all_settings = wp_parse_args(get_option('apex_omega_settings', []), [
     'max_default_percent'          => 15,
     'enable_real_cron_hint'        => true,
     'remove_data_on_uninstall'     => false,
+    'never_decrease_views'         => true,
 ]);
 $ai_set   = \ApexOmega\Core\AI_Helper::get_settings();
 $rhythm   = \ApexOmega\Core\ArtistManager::get_rhythm_settings();
@@ -115,7 +116,8 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
     </nav>
 
     <!-- Panels -->
-    <div class="apex-g-panels is-active" role="tabpanel" aria-labelledby="tab-general" data-panel="general">
+    <div class="apex-g-panels">
+    <div class="apex-g-panel is-active" role="tabpanel" aria-labelledby="tab-general" data-panel="general">
       <div class="apex-g-card">
         <h3><span class="dot"></span>کنترل نوسان و سقف‌های اجرایی</h3>
         <p class="desc">این مقادیر فقط محدودیت ایمنی هستند — توزیع‌ها و زمان‌بندی‌ها را متوقف نمی‌کنند، فقط از پرش ناگهانی جلوگیری می‌کنند.</p>
@@ -138,6 +140,10 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
           <label class="apex-switch">
             <input type="checkbox" name="enable_real_cron_hint" <?php checked($all_settings['enable_real_cron_hint']); ?>>
             <span>نمایش هشدار Cron واقعی سرور</span>
+          </label>
+          <label class="apex-switch" style="border-color:rgba(5,150,105,.22);background:rgba(236,253,245,.9)">
+            <input type="checkbox" name="never_decrease_views" <?php checked(!empty($all_settings['never_decrease_views'])); ?>>
+            <span>🛡️ هرگز خودکار کم نکن — بازدید/امتیاز فقط افزایش یا ثابت (کاهش فقط دستی مجاز)</span>
           </label>
         </div>
         <div class="apex-help" style="margin-top:12px">
@@ -399,7 +405,6 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
         <small style="color:#991b1b;display:block;margin-top:8px;line-height:1.6">آمار اصلی (views و kksr) هرگز خودکار حذف نمی‌شود.</small>
       </div>
     </div>
-
     </div><!-- panels -->
   </div><!-- layout -->
   </form>
