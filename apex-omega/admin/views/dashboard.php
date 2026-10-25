@@ -1,5 +1,5 @@
 <?php if (!defined('ABSPATH')) exit; ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <h1>APEX Ω — داشبورد مدیریت آمار</h1>
   <p>مدیریت دقیق، زمان‌بندی‌شده و امن بازدید و امتیاز — <strong>اتحاد وردپرس | EtehadWP</strong> — نسخه <?php echo esc_html(APEX_OMEGA_VERSION); ?></p>
 

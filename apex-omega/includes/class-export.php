@@ -87,7 +87,7 @@ class Exporter {
         foreach ($data as $t) {
             if (empty($t['id']) || !isset($t['views_min']) || !isset($t['views_max']) || !isset($t['casts_min']) || !isset($t['avg_min'])) return ['success'=>false,'message'=>'ساختار tier نامعتبر: '.wp_json_encode($t,JSON_UNESCAPED_UNICODE)];
             $vm = (int)$t['views_max'];
-            if ($vm > 2000000) return ['success'=>false,'message'=>'سقف هر دسته حداکثر 2M است (واقع‌گرایانه) — '.$t['id'].'='.$vm];
+            if ($vm > 15000000) return ['success'=>false,'message'=>'سقف هر دسته حداکثر 15M است — '.$t['id'].'='.$vm];
             if ((float)$t['avg_max'] > 5.0 || (float)$t['avg_min'] < 0) return ['success'=>false,'message'=>'میانگین نامعتبر: '.$t['id']];
         }
         TierManager::save_tiers($data);
