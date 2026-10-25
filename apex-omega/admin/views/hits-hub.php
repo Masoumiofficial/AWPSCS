@@ -39,6 +39,25 @@ $total_site = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE po
 $pct_manual = $total_site ? round($manual_count/$total_site*100,1):0;
 $pct_auto = $total_site ? round($auto_count/$total_site*100,1):0;
 $pct_found = $total_site ? round($total_found/max(1,$total_site)*100,1):0;
+// آمار کامنت برای منتخب — مثل بازدید درصددار (با درصد و باکت)
+$comment_map_selected = [];
+$comment_stats_selected = ['total_comments'=>0,'avg'=>0,'zero'=>0,'with'=>0,'buckets'=>['0'=>0,'1-5'=>0,'6-15'=>0,'16-30'=>0,'30+'=>0],'pct_zero'=>0,'pct_with'=>0];
+if (!empty($selected_ids)) {
+    $in_sel = implode(',', array_map('intval', $selected_ids));
+    $c_rows = $wpdb->get_results("SELECT comment_post_ID, COUNT(*) as c FROM {$wpdb->comments} WHERE comment_approved='1' AND comment_post_ID IN ($in_sel) GROUP BY comment_post_ID", ARRAY_A);
+    $comment_map_selected = []; foreach (($c_rows ?: []) as $cr) $comment_map_selected[(int)$cr['comment_post_ID']] = (int)$cr['c'];
+    $c_total = 0; $c_zero=0; $c_with=0; $c_buckets=['0'=>0,'1-5'=>0,'6-15'=>0,'16-30'=>0,'30+'=>0];
+    foreach ($selected_ids as $sid) {
+        $cc = $comment_map_selected[$sid] ?? 0;
+        $c_total += $cc;
+        if ($cc===0) { $c_buckets['0']++; $c_zero++; } elseif ($cc<=5) $c_buckets['1-5']++;
+        elseif ($cc<=15) $c_buckets['6-15']++; elseif ($cc<=30) $c_buckets['16-30']++; else $c_buckets['30+']++;
+        if ($cc>0) $c_with++;
+    }
+    $comment_stats_selected = ['total_comments'=>$c_total,'avg'=> $auto_count ? round($c_total/max(1,$auto_count),1):0,'zero'=>$c_zero,'with'=>$c_with,'buckets'=>$c_buckets,'pct_zero'=> $auto_count ? round($c_zero/max(1,$auto_count)*100,1):0,'pct_with'=> $auto_count ? round($c_with/max(1,$auto_count)*100,1):0];
+}
+$comment_total_site = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_approved='1'");
+
 ?>
 <div class="wrap apex-glass-wrap" dir="rtl">
   <div class="apex-glass-header">
@@ -85,6 +104,46 @@ $pct_found = $total_site ? round($total_found/max(1,$total_site)*100,1):0;
     <div class="apex-help" style="margin-top:8px">اگر آهنگی قبلا پرمیوم بود، رد می‌شود (محافظ کاهش جلوی پایین آمدن را می‌گیرد — فقط <?php echo esc_html($auto_count ? round($auto_count/$total_site*100,1):0); ?>٪ کل سایت). تاریخچه و Snapshot برای Undo ثبت می‌شود.</div>
   </div>
 
+  <div class="apex-glass-card" style="border-top:3px solid #06b6d4;background:linear-gradient(135deg,#f0fdfa 0%,#ecfdf5 100%)">
+    <h3><span class="dot" style="background:#06b6d4"></span>💬 مدیریت کامنت‌های آثار منتخب — مثل بازدید، برای کامنت</h3>
+    <p class="desc">به هر آهنگ دسته <code>selected-works</code> — <strong><?php echo esc_html(number_format_i18n($auto_count)); ?> مورد</strong> (<?php echo esc_html($pct_auto); ?>٪) — به اندازه دلخواه کامنت طبیعی اضافه کن. مثل بازه بازدید 8M-12M، اینجا بازه کامنت مثلاً 5 تا 12 تا برای هر آهنگ (تصادفی). محافظ سقف (<?php echo esc_html(get_option('apex_omega_commentor',[])['max_per_post'] ?? 60); ?>) جلوی اسپم را می‌گیرد.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:8px;background:#fff;border:1px solid #ccfbf1;border-radius:12px;padding:10px">
+      <div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#0e7490"><?php echo esc_html(number_format_i18n($comment_stats_selected['total_comments'])); ?></div><small style="color:#0e7490">کل کامنت منتخب (<?php echo esc_html(number_format_i18n($comment_total_site)); ?> کل سایت)</small></div>
+      <div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#065f46"><?php echo esc_html($comment_stats_selected['avg']); ?></div><small style="color:#065f46">میانگین هر آهنگ</small></div>
+      <div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#dc2626"><?php echo esc_html(number_format_i18n($comment_stats_selected['zero'])); ?> <span style="font-size:12px">(<?php echo esc_html($comment_stats_selected['pct_zero']); ?>٪)</span></div><small style="color:#dc2626">بدون کامنت (0)</small></div>
+      <div style="text-align:center"><div style="font-size:20px;font-weight:900;color:#059669"><?php echo esc_html(number_format_i18n($comment_stats_selected['with'])); ?> <span style="font-size:12px">(<?php echo esc_html($comment_stats_selected['pct_with']); ?>٪)</span></div><small style="color:#059669">با کامنت</small></div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:11px">
+      <?php foreach ($comment_stats_selected['buckets'] as $bk=>$cnt): $pct = $auto_count ? round($cnt/max(1,$auto_count)*100,1):0; ?>
+        <span class="apex-pill" style="background:<?php echo $bk==='0' ? '#fee2e2' : '#ecfdf5'; ?>;color:<?php echo $bk==='0' ? '#991b1b' : '#065f46'; ?>;border-color:<?php echo $bk==='0' ? '#fecaca' : '#a7f3d0'; ?>"><?php echo esc_html($bk); ?>: <?php echo esc_html(number_format_i18n($cnt)); ?> (<?php echo esc_html($pct); ?>٪)</span>
+      <?php endforeach; ?>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:12px;background:#fff;border:1px solid #e0f2fe;border-radius:12px;padding:12px">
+      <label class="apex-f" style="min-width:110px">حداقل هر پست
+        <input id="apex-cmt-min" type="number" min="1" max="100" value="5" style="padding:8px;border-radius:10px;border:1px solid #e5e7eb;width:100%">
+      </label>
+      <label class="apex-f" style="min-width:110px">حداکثر هر پست
+        <input id="apex-cmt-max" type="number" min="1" max="100" value="9" style="padding:8px;border-radius:10px;border:1px solid #e5e7eb;width:100%">
+      </label>
+      <label class="apex-f" style="min-width:140px">حالت
+        <select id="apex-cmt-mode" style="padding:8px;border-radius:10px;border:1px solid #e5e7eb;background:#fff;width:100%">
+          <option value="add">افزودن N جدید (مثل بازدید)</option>
+          <option value="set">رساندن به حداقل N</option>
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;background:#fefce8;border:1px solid #fde68a;border-radius:999px;padding:6px 10px"><input type="checkbox" id="apex-cmt-onlyzero"> فقط بدون‌کامنت‌ها (<?php echo esc_html(number_format_i18n($comment_stats_selected['zero'])); ?>)</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;background:#ede9fe;border:1px solid #ddd6fe;border-radius:999px;padding:6px 10px"><input type="checkbox" id="apex-cmt-premium" checked> کامنت پرمیوم (بدون انتقاد، ۳۵٪ بیشتر)</label>
+      <button type="button" class="apex-btn-primary" id="apex-comments-apply" style="background:#0891b2;border-color:#0891b2">💬 افزودن کامنت به <?php echo esc_html(number_format_i18n($auto_count)); ?> آهنگ (<?php echo esc_html($pct_auto); ?>٪)</button>
+      <span id="apex-comments-result" class="apex-pill" style="display:none"></span>
+    </div>
+    <div id="apex-comments-detail" style="margin-top:10px;display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px;font-size:13px"></div>
+    <div class="apex-help" style="margin-top:8px">مثل بازدید بازه‌ای: اگر حداقل 5 و حداکثر 9 بگذارید، هر آهنگ تصادفی 5 تا 9 کامنت می‌گیرد (نه همه یکسان). سقف هر پست <?php echo esc_html(get_option('apex_omega_commentor',[])['max_per_post'] ?? 60); ?> — تاریخچه ثبت می‌شود. برای آهنگ‌های 0 کامنت سریع پر می‌شود.</div>
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+      <button type="button" class="apex-btn-ghost" id="apex-comments-stats-refresh" style="font-size:12px">🔄 بروزرسانی آمار کامنت</button>
+      <span class="apex-help" style="flex:1">نکته: کامنت‌ها طبیعی مثل رزموزیک هستند — کوتاه، کشیده (عالییییی)، غلط ریز (اهنگ)، ایموجی ۲۲٪ — دیگر AI-like نیست.</span>
+    </div>
+  </div>
+
   <div class="apex-glass-card">
     <h3><span class="dot" style="background:#7c3aed"></span>فیلتر و جستجو — سبک</h3>
     <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
@@ -122,7 +181,7 @@ $pct_found = $total_site ? round($total_found/max(1,$total_site)*100,1):0;
     <form id="apex-hits-form">
     <div style="max-height:520px;overflow:auto">
       <table class="apex-table">
-        <thead><tr><th style="width:36px"><input type="checkbox" id="apex-check-all2" style="display:none"></th><th>عنوان</th><th>هنرمند</th><th>وزن</th><th>وضعیت</th><th>بازدید</th></tr></thead>
+        <thead><tr><th style="width:36px"><input type="checkbox" id="apex-check-all2" style="display:none"></th><th>عنوان</th><th>هنرمند</th><th>وزن</th><th>وضعیت</th><th>بازدید</th><th>کامنت 💬</th></tr></thead>
         <tbody>
           <?php if ($q->have_posts()): while($q->have_posts()): $q->the_post(); $pid=get_the_ID(); $title=get_the_title(); $artist_terms = $tax ? wp_get_post_terms($pid,$tax,['fields'=>'names']) : []; $artist_name = !empty($artist_terms) && !is_wp_error($artist_terms) ? $artist_terms[0] : '—'; $w=(int)\ApexOmega\Core\ArtistManager::get_weight_for_post($pid); $is_manual=isset($hit_map[$pid]); $is_auto=isset($selected_map[$pid]); $views=(int)get_post_meta($pid,'views',true);
             if ($is_manual && $is_auto) $badge='<span class="apex-badge" style="background:#ede9fe;color:#5b21b6;border-color:#c4b5fd">پرمیوم منتخب ✨ + دستی</span>';
@@ -137,9 +196,10 @@ $pct_found = $total_site ? round($total_found/max(1,$total_site)*100,1):0;
             <td><span class="apex-pill"><?php echo esc_html($w); ?></span></td>
             <td><?php echo $badge; ?></td>
             <td><?php echo $views ? esc_html(number_format_i18n($views)) : '—'; ?></td>
+            <td><?php $ccount = $comment_map_selected[$pid] ?? (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid)); if ($ccount===0) echo '<span style="color:#dc2626;font-weight:800;background:#fee2e2;border:1px solid #fecaca;border-radius:999px;padding:2px 8px">0</span>'; elseif ($ccount<=5) echo '<span style="background:#fef3c7;border:1px solid #fde68a;border-radius:999px;padding:2px 8px">'.esc_html(number_format_i18n($ccount)).'</span>'; else echo '<span style="background:#dcfce7;border:1px solid #86efac;border-radius:999px;padding:2px 8px;font-weight:700">'.esc_html(number_format_i18n($ccount)).'</span>'; ?></td>
           </tr>
           <?php endwhile; wp_reset_postdata(); else: ?>
-          <tr><td colspan="6" style="text-align:center;color:#64748b;padding:24px">موردی یافت نشد.</td></tr>
+          <tr><td colspan="7" style="text-align:center;color:#64748b;padding:24px">موردی یافت نشد.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>
@@ -226,6 +286,49 @@ $pct_found = $total_site ? round($total_found/max(1,$total_site)*100,1):0;
         if(resEl){ resEl.style.display='inline-flex'; resEl.textContent='پیشنهاد: '+(j.data.suggested||[]).join(', '); resEl.style.background='#ecfdf5'; }
         (j.data.suggested||[]).forEach(id=>{ const cb=document.querySelector('.apex-hit-check[value="'+id+'"]'); if(cb) cb.checked=true; }); upd();
       } else alert(j.data.message||'خطا');
+    }).finally(()=>{btn.disabled=false; btn.textContent=o;});
+  });
+  // 💬 کامنت‌ها — مثل بازدید
+  document.getElementById('apex-comments-apply')?.addEventListener('click',function(){
+    const btn=this; const minEl=document.getElementById('apex-cmt-min'); const maxEl=document.getElementById('apex-cmt-max');
+    const min=parseInt(minEl?.value||5); const max=parseInt(maxEl?.value||min);
+    if(min<1||min>500||max<1||max>500){ alert('بازه کامنت باید 1 تا 500 باشد'); return; }
+    if(!confirm('افزودن '+min+' تا '+max+' کامنت به هر آهنگ منتخب؟ ('+min+'-'+max+' تصادفی هر پست — مثل بازدید)')) return;
+    btn.disabled=true; const o=btn.textContent; btn.textContent='در حال افزودن کامنت...';
+    const mode=document.getElementById('apex-cmt-mode')?.value||'add';
+    const only_zero=document.getElementById('apex-cmt-onlyzero')?.checked?1:0;
+    const is_premium=document.getElementById('apex-cmt-premium')?.checked?1:0;
+    const fd=new FormData(); fd.append('action','apex_apply_comments_selected'); fd.append('_ajax_nonce',getNonce());
+    fd.append('count_min',min); fd.append('count_max',max); fd.append('mode',mode); fd.append('only_zero',only_zero); fd.append('is_premium',is_premium);
+    const resEl=document.getElementById('apex-comments-result'); const detailEl=document.getElementById('apex-comments-detail');
+    fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(j=>{
+      if(resEl){ resEl.style.display='inline-flex'; resEl.textContent=j.success ? (j.data.message||('✅ '+j.data.applied_comments+' کامنت به '+j.data.applied_posts+'/'+j.data.total+' ('+j.data.percent+'٪)')) : (j.data.message||'خطا'); resEl.style.background=j.success?'#dcfce7':'#fee2e2'; resEl.style.color=j.success?'#166534':'#991b1b'; }
+      if(j.success && detailEl){
+        detailEl.style.display='block';
+        let d=j.data; let html='<div style="font-weight:800;margin-bottom:6px">💬 نتیجه کامنت — '+d.applied_comments+' کامنت به '+d.applied_posts+' از '+d.total+' ('+d.percent+'٪) — میانگین '+d.avg_before+' → '+d.avg_after+' — کل '+d.before_total.toLocaleString('fa-IR')+' → '+d.after_total.toLocaleString('fa-IR')+'</div>';
+        if(d.buckets_before && d.buckets_after){
+          html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px">';
+          html+='<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:8px"><strong>قبل</strong><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">';
+          for(let k in d.buckets_before){ html+='<span class="apex-pill" style="background:#fef3c7">'+k+': '+d.buckets_before[k]+'</span>'; }
+          html+='</div></div>';
+          html+='<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:8px"><strong>بعد</strong><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">';
+          for(let k in d.buckets_after){ html+='<span class="apex-pill" style="background:#dcfce7">'+k+': '+d.buckets_after[k]+'</span>'; }
+          html+='</div></div>';
+          html+='</div>';
+        }
+        if(d.details && d.details.length){ html+='<div style="margin-top:6px;color:#64748b;font-size:11px">نمونه 5 اول: '+d.details.slice(0,5).map(x=> '#'+x.post_id+' '+x.before+'→'+x.after+' (+'+x.added+')').join(' | ')+'</div>'; }
+        html+='<div style="margin-top:8px;color:#065f46">✅ شناسه: '+(d.execution_id||'')+' — کامنت‌ها طبیعی (عالییییی، اهنگ، ❤️) و ضدتکرار</div>';
+        detailEl.innerHTML=html;
+      }
+      if(j.success) setTimeout(()=>location.reload(),2800);
+    }).catch(e=>{ if(resEl){ resEl.style.display='inline-flex'; resEl.textContent='خطا: '+e; resEl.style.background='#fee2e2'; }}).finally(()=>{btn.disabled=false; btn.textContent=o;});
+  });
+  document.getElementById('apex-comments-stats-refresh')?.addEventListener('click',function(){
+    const btn=this; btn.disabled=true; const o=btn.textContent; btn.textContent='...';
+    const fd=new FormData(); fd.append('action','apex_comment_stats_selected'); fd.append('_ajax_nonce',getNonce());
+    fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(j=>{
+      if(j.success){ alert('آمار بروز: '+j.data.comments_selected+' کامنت در '+j.data.auto_count+' آهنگ (میانگین '+j.data.avg+') — بدون‌کامنت: '+j.data.zero+' ('+j.data.pct_zero+'٪)'); location.reload(); }
+      else alert(j.data.message||'خطا');
     }).finally(()=>{btn.disabled=false; btn.textContent=o;});
   });
   upd();

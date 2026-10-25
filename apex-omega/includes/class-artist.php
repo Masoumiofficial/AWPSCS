@@ -1064,20 +1064,42 @@ class ArtistManager {
                 $applied++; $details[]=['post_id'=>$pid,'old_views'=>$old_views,'new_views'=>$vals['views'],'tier'=>$tier_id];
             } catch(\Throwable $e){ $wpdb->query('ROLLBACK'); $errors[]="پست $pid: ".$e->getMessage(); }
             \ApexOmega\Core\Database::release_lock($lock);
-            // کامنت پرمیوم (اختیاری)
-            if ($with_comments && $applied % 1 === 0) {
+            // کامنت پرمیوم (اختیاری) — FIX v2.2.12: از send_for_post استفاده کن (قبلا has_duplicate ناموجود بود)
+            if ($with_comments) {
                 try {
-                    // اگر نگهبان دیدگاه فعال باشد، یک دیدگاه پرمیوم اضافه کن
-                    if (\ApexOmega\Core\CommentGuardian::is_enabled()) {
-                        // یک دیدگاه مصنوعی سبک
-                        // استفاده از متد داخلی generate_text + wp_insert_comment
-                        $title = get_the_title($pid);
-                        $text = \ApexOmega\Core\CommentGuardian::generate_text($pid, '', $title, (int)$w, (int)$vals['views'], true);
-                        if ($text && !\ApexOmega\Core\CommentGuardian::has_duplicate($pid, $text)) {
-                            wp_insert_comment(['comment_post_ID'=>$pid,'comment_content'=>$text,'comment_approved'=>1,'comment_author'=>'کاربر تاییدشده','comment_author_email'=>'verified@ahangban.local','comment_author_IP'=>'127.0.0.1','comment_agent'=>'APEX-Selected-Premium']);
+                    $c_added = \ApexOmega\Core\CommentGuardian::send_for_post($pid, 1);
+                    if (empty($c_added['success']) || empty($c_added['inserted'])) {
+                        $who = \ApexOmega\Core\CommentGuardian::generate_name();
+                        $title_tmp = get_the_title($pid);
+                        $artist_tmp = '';
+                        $tax_tmp = \ApexOmega\Core\ArtistManager::detect_artist_taxonomy();
+                        if ($tax_tmp) {
+                            $terms_tmp = wp_get_post_terms($pid, $tax_tmp, ['fields'=>'names']);
+                            if (!empty($terms_tmp) && !is_wp_error($terms_tmp)) $artist_tmp = $terms_tmp[0];
+                        }
+                        $text_tmp = \ApexOmega\Core\CommentGuardian::generate_text($pid, $artist_tmp ?: 'هنرمند', $title_tmp, (int)$w, (int)$vals['views'], true);
+                        if ($text_tmp) {
+                            if (get_post_field('comment_status', $pid) !== 'open') wp_update_post(['ID'=>$pid,'comment_status'=>'open']);
+                            $comment_time_gmt_tmp = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 300));
+                            wp_insert_comment([
+                                'comment_post_ID'=>$pid,
+                                'comment_author'=>$who['author'],
+                                'comment_author_email'=>$who['email'],
+                                'comment_author_url'=>'',
+                                'comment_content'=>$text_tmp,
+                                'comment_type'=>'',
+                                'comment_parent'=>0,
+                                'user_id'=>0,
+                                'comment_author_IP'=> sprintf('%d.%d.%d.%d', mt_rand(1,223), mt_rand(0,255), mt_rand(0,255), mt_rand(1,254)),
+                                'comment_agent'=>'Mozilla/5.0 (APEX-Premium)',
+                                'comment_date'=>get_date_from_gmt($comment_time_gmt_tmp,'Y-m-d H:i:s'),
+                                'comment_date_gmt'=>$comment_time_gmt_tmp,
+                                'comment_approved'=>1,
+                            ]);
+                            wp_update_comment_count($pid);
                         }
                     }
-                } catch(\Throwable $e){}
+                } catch(\Throwable $e){ error_log('[APEX Ω] premium comment fail pid='.$pid.' '.$e->getMessage()); }
             }
         }
         // خلاصه درصدی برای نمایش — توزیع 8M-12M

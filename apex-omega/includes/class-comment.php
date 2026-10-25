@@ -881,6 +881,157 @@ private static function fallback_text(int $weight, int $views, string $title = '
         return ['success'=>true,'inserted'=>$inserted,'requested'=>$requested_count,'current'=>$current+$inserted,'max'=>$max_per_post];
     }
 
+    /**
+     * 💬 Bulk برای آثار منتخب — مثل بازدید، ولی برای کامنت
+     * $mode: 'add' = افزودن N جدید (پیش‌فرض، مثل بازدید بازه), 'set' = رساندن به حداقل N
+     * $count_min/$count_max: بازه تصادفی هر پست (اگر max=0 یا خالی → همان min)
+     */
+    public static function bulk_apply_to_ids(array $post_ids, int $count_min = 5, int $count_max = 0, array $options = []): array {
+        if (empty($post_ids)) return ['success'=>false,'message'=>'هیچ پستی انتخاب نشده'];
+        $count_min = max(1, min(500, $count_min));
+        if ($count_max) $count_max = max($count_min, min(500, $count_max));
+        else $count_max = $count_min;
+        $mode = $options['mode'] ?? 'add'; // add|set
+        $only_zero = !empty($options['only_zero']);
+        $is_premium_opt = $options['is_premium'] ?? null; // null=auto by is_premium_selected
+        $settings = self::get_settings();
+        $max_per_post = (int)$settings['max_per_post'];
+        global $wpdb;
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        $total = count($post_ids);
+        $applied_posts = 0;
+        $applied_comments = 0;
+        $skipped = 0;
+        $errors = [];
+        $details = [];
+        // برای توزیع آماری
+        $buckets = ['0'=>0,'1-5'=>0,'6-15'=>0,'16-30'=>0,'30+'=>0];
+        $before_total = 0;
+        // اول آمار قبل
+        foreach ($post_ids as $pid) {
+            if (!$pid || !get_post($pid)) { $skipped++; continue; }
+            $cur = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            $before_total += $cur;
+            // bucket before
+            if ($cur === 0) $buckets['0']++;
+            elseif ($cur <= 5) $buckets['1-5']++;
+            elseif ($cur <= 15) $buckets['6-15']++;
+            elseif ($cur <= 30) $buckets['16-30']++;
+            else $buckets['30+']++;
+        }
+        // پردازش هر پست
+        foreach ($post_ids as $pid) {
+            $pid = (int)$pid;
+            if (!$pid || !get_post($pid)) continue;
+            // فیلتر only_zero
+            $cur = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            if ($only_zero && $cur > 0) { $skipped++; continue; }
+            if ($cur >= $max_per_post) { $skipped++; continue; }
+            $remaining = $max_per_post - $cur;
+            // چند تا برای این پست؟
+            $need = mt_rand($count_min, $count_max);
+            if ($mode === 'set') {
+                // رساندن به حداقل N: اگر الان 3 تا دارد و N=10 می‌خواهد → 7 تا اضافه
+                if ($cur >= $need) { $skipped++; continue; }
+                $need = $need - $cur;
+            }
+            $need = min($need, $remaining, 500);
+            if ($need <= 0) { $skipped++; continue; }
+            $title = get_the_title($pid) ?: '';
+            $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
+            $cur_views = (int) get_post_meta($pid, 'views', true);
+            $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
+            $artist_name = self::get_primary_artist($pid);
+            if (!$artist_name) $artist_name = 'هنرمند ناشناس';
+            $is_premium = $is_premium_opt !== null ? (bool)$is_premium_opt : \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            // comment_status باز
+            if (get_post_field('comment_status', $pid) !== 'open') {
+                wp_update_post(['ID' => $pid, 'comment_status' => 'open']);
+            }
+            $inserted = 0;
+            for ($i=0; $i < $need; $i++) {
+                if ($cur + $inserted >= $max_per_post) break;
+                $who = self::generate_name();
+                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium);
+                $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 1800));
+                $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
+                // duplicate 24h چک
+                $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $pid, $text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
+                if ($dup) $text = self::fallback_text($weight, $cur_views, '', $is_premium) . ' ' . mt_rand(10,99);
+                $cid = wp_insert_comment([
+                    'comment_post_ID' => $pid,
+                    'comment_author' => $who['author'],
+                    'comment_author_email' => $who['email'],
+                    'comment_author_url' => '',
+                    'comment_content' => $text,
+                    'comment_type' => '',
+                    'comment_parent' => 0,
+                    'user_id' => 0,
+                    'comment_author_IP' => self::fake_ip(),
+                    'comment_agent' => 'Mozilla/5.0',
+                    'comment_date' => $comment_time,
+                    'comment_date_gmt' => $comment_time_gmt,
+                    'comment_approved' => 1,
+                ]);
+                if ($cid && !is_wp_error($cid)) {
+                    add_comment_meta($cid, '_apex_commentor', 1, true);
+                    add_comment_meta($cid, '_apex_weight', $weight, true);
+                    wp_update_comment_count($pid);
+                    $inserted++;
+                    \ApexOmega\Core\History::log($pid, 'comment', $cur, $cur + $inserted, 'bulk_comment_selected', $user_id, $exec, null, ['author'=>$who['author'],'weight'=>$weight,'requested'=>$need,'is_premium'=>$is_premium]);
+                }
+                usleep(20000);
+            }
+            if ($inserted > 0) {
+                update_post_meta($pid, self::META_LAST, current_time('mysql', true));
+                update_post_meta($pid, self::META_COUNT, (int)get_post_meta($pid, self::META_COUNT, true) + $inserted);
+                $applied_posts++;
+                $applied_comments += $inserted;
+                $details[] = ['post_id'=>$pid,'before'=>$cur,'added'=>$inserted,'after'=>$cur+$inserted];
+            } else {
+                $skipped++;
+            }
+        }
+        if ($applied_comments > 0) {
+            update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>$applied_posts,'comments'=>$applied_comments,'exec'=>$exec,'bulk_selected'=>true], false);
+        }
+        // آمار بعد
+        $after_total = 0;
+        $after_buckets = ['0'=>0,'1-5'=>0,'6-15'=>0,'16-30'=>0,'30+'=>0];
+        foreach ($post_ids as $pid) {
+            $cur = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            $after_total += $cur;
+            if ($cur === 0) $after_buckets['0']++;
+            elseif ($cur <= 5) $after_buckets['1-5']++;
+            elseif ($cur <= 15) $after_buckets['6-15']++;
+            elseif ($cur <= 30) $after_buckets['16-30']++;
+            else $after_buckets['30+']++;
+        }
+        $pct_posts = $total ? round($applied_posts / $total * 100, 1) : 0;
+        $avg_before = $total ? round($before_total / $total, 1) : 0;
+        $avg_after = $total ? round($after_total / $total, 1) : 0;
+        return [
+            'success'=>true,
+            'total'=>$total,
+            'applied_posts'=>$applied_posts,
+            'applied_comments'=>$applied_comments,
+            'skipped'=>$skipped,
+            'percent'=>$pct_posts,
+            'avg_before'=>$avg_before,
+            'avg_after'=>$avg_after,
+            'before_total'=>$before_total,
+            'after_total'=>$after_total,
+            'buckets_before'=>$buckets,
+            'buckets_after'=>$after_buckets,
+            'execution_id'=>$exec,
+            'errors'=>$errors,
+            'details'=>$details,
+            'message'=> $applied_comments ? "✅ {$applied_comments} کامنت به {$applied_posts} از {$total} آهنگ ({$pct_posts}٪) اضافه شد — میانگین {$avg_before} → {$avg_after}" : 'هیچ کامنتی اضافه نشد (همه به سقف رسیده یا فیلتر شدند)',
+        ];
+    }
+
     private static function get_primary_artist(int $post_id): string {
         $tax = ArtistManager::detect_artist_taxonomy();
         if ($tax) {

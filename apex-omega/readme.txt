@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.11
+Stable tag: 2.2.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,13 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.12 (2026-10-27) =
+* FIX کامنت پرمیوم کار نمی‌کرد: has_duplicate ناموجود باعث سکوت شده بود → حالا از send_for_post استاندارد + fallback دستی استفاده می‌شود (1 کامنت پرمیوم واقعی با author/ایمیل تصادفی)
+* FEATURE مدیریت کامنت مثل بازدید در آثار منتخب: کارت جدید 💬 با آمار کامل (کل کامنت منتخب/میانگین/بدون‌کامنت با درصد + باکت 0/1-5/6-15/16-30/30+ با درصد هر باکت) + بازه تصادفی هر پست (مثل 5-9 → هر آهنگ 5 تا 9 متفاوت، نه یکسان) + حالت افزودن/رساندن + فقط بدون‌کامنت + پرمیوم بدون انتقاد
+* FEATURE ستون کامنت در جدول آثار منتخب با badge رنگی (0 قرمز، 1-5 زرد، 6+ سبز) + استفاده از map کش برای جلوگیری از N+1 query
+* FEATURE AJAX جدید apex_apply_comments_selected و apex_comment_stats_selected با خلاصه درصدی قبل/بعد (میانگین، کل، باکت) + execution_id + تاریخچه
+* بهبود: bulk_apply_to_ids در CommentGuardian — بازه‌ای، ضدتکرار 24h، respectful max_per_post، گزینه is_premium
 
 = 2.2.11 (2026-10-27) =
 * افزوده: نمایش درصد و تعداد همه‌جا — کارت‌های دستی/خودکار/فیلتر اکنون عدد + درصد از کل سایت (number_format_i18n + ٪) نشان می‌دهند.

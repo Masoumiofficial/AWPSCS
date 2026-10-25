@@ -50,6 +50,8 @@ class Ajax {
             'apex_clear_hits',
             'apex_apply_premium_selected',
             'apex_reseed_artist',
+            'apex_apply_comments_selected',
+            'apex_comment_stats_selected',
         ];
         foreach ($actions as $a) {
             add_action('wp_ajax_' . $a, [__CLASS__, 'router']);
@@ -202,6 +204,12 @@ class Ajax {
                 break;
             case 'apex_reseed_artist':
                 self::reseed_artist();
+                break;
+            case 'apex_apply_comments_selected':
+                self::apply_comments_selected();
+                break;
+            case 'apex_comment_stats_selected':
+                self::comment_stats_selected();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -819,6 +827,84 @@ class Ajax {
         $res = \ApexOmega\Core\ArtistManager::apply_premium_to_selected_works(0, $with_comments);
         if (empty($res['success'])) wp_send_json_error($res, 400);
         wp_send_json_success($res);
+    }
+
+    private static function apply_comments_selected(): void {
+        // پارامترها: count_min, count_max (بازه مثل بازدید), mode=add|set, only_zero, is_premium
+        $min = isset($_POST['count_min']) ? max(1, (int)$_POST['count_min']) : 5;
+        $max = isset($_POST['count_max']) && $_POST['count_max'] !== '' ? max($min, (int)$_POST['count_max']) : $min;
+        // اگر کاربر یک عدد واحد فرستاده (count) — fallback
+        if (isset($_POST['count']) && $_POST['count'] !== '' && empty($_POST['count_min'])) {
+            $min = max(1, (int)$_POST['count']);
+            $max = $min;
+        }
+        $mode = isset($_POST['mode']) ? sanitize_text_field($_POST['mode']) : 'add'; // add = افزودن N جدید، set = رساندن به N
+        if (!in_array($mode, ['add','set'], true)) $mode = 'add';
+        $only_zero = !empty($_POST['only_zero']);
+        $is_premium = isset($_POST['is_premium']) ? (!empty($_POST['is_premium']) ? true : false) : null;
+        // فیلتر منبع: selected-works (پیش‌فرض) یا همه فیلتر فعلی؟
+        $source = isset($_POST['source_ids']) ? sanitize_text_field($_POST['source_ids']) : 'selected';
+        $ids = [];
+        if ($source === 'filtered' && !empty($_POST['filtered_ids'])) {
+            $raw = $_POST['filtered_ids'];
+            if (is_string($raw)) $raw = json_decode(stripslashes($raw), true) ?: explode(',', $raw);
+            $ids = array_map('intval', (array)$raw);
+            $ids = array_filter($ids);
+        } else {
+            $ids = \ApexOmega\Core\ArtistManager::get_selected_works_ids(5000);
+        }
+        if (empty($ids)) wp_send_json_error(['message'=>'هیچ پستی در دسته selected-works یافت نشد.'], 400);
+        $res = \ApexOmega\Core\CommentGuardian::bulk_apply_to_ids($ids, $min, $max, [
+            'mode' => $mode,
+            'only_zero' => $only_zero,
+            'is_premium' => $is_premium,
+        ]);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+
+    private static function comment_stats_selected(): void {
+        global $wpdb;
+        $ids = \ApexOmega\Core\ArtistManager::get_selected_works_ids(5000);
+        $total_site = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+        $auto_count = count($ids);
+        $total_comments_site = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_approved='1'");
+        $comments_selected = 0;
+        $zero = 0;
+        $buckets = ['0'=>0,'1-5'=>0,'6-15'=>0,'16-30'=>0,'30+'=>0];
+        $with_comments = 0;
+        if (!empty($ids)) {
+            $in = implode(',', array_map('intval', $ids));
+            $rows = $wpdb->get_results("SELECT comment_post_ID, COUNT(*) as c FROM {$wpdb->comments} WHERE comment_approved='1' AND comment_post_ID IN ($in) GROUP BY comment_post_ID", ARRAY_A);
+            $map = [];
+            foreach ($rows as $r) $map[(int)$r['comment_post_ID']] = (int)$r['c'];
+            foreach ($ids as $pid) {
+                $c = $map[$pid] ?? 0;
+                $comments_selected += $c;
+                if ($c === 0) { $buckets['0']++; $zero++; }
+                elseif ($c <= 5) $buckets['1-5']++;
+                elseif ($c <= 15) $buckets['6-15']++;
+                elseif ($c <= 30) $buckets['16-30']++;
+                else $buckets['30+']++;
+                if ($c > 0) $with_comments++;
+            }
+        }
+        $avg = $auto_count ? round($comments_selected / $auto_count, 1) : 0;
+        $pct_with = $auto_count ? round($with_comments / $auto_count * 100, 1) : 0;
+        $pct_selected_of_site = $total_site ? round($auto_count / $total_site * 100, 1) : 0;
+        wp_send_json_success([
+            'total_site'=>$total_site,
+            'auto_count'=>$auto_count,
+            'pct_selected'=>$pct_selected_of_site,
+            'total_comments_site'=>$total_comments_site,
+            'comments_selected'=>$comments_selected,
+            'avg'=>$avg,
+            'with_comments'=>$with_comments,
+            'zero'=>$zero,
+            'pct_with'=>$pct_with,
+            'pct_zero'=> $auto_count ? round($zero/$auto_count*100,1) : 0,
+            'buckets'=>$buckets,
+        ]);
     }
 
 }
