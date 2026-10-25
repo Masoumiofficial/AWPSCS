@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.1.4
+Stable tag: 2.1.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,10 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.1.5 (2026-10-25) =
+* HOTFIX: بازگردانی به هسته پایدار 2.1.2 (توزیع بازدید/امتیاز/کامنت کاملاً سالم) + فقط فیکس WSOD class-cli — چون 2.1.3/2.1.4 توزیع را از کار انداخته بود (گزارش شما: هیچ‌کدام نمی‌خوره)
+* NOTE: پراکندگی 940k و کامنت طبیعی در نسخه بعدی با تست کامل‌تر برمی‌گردد — فعلاً پایداری اولویت
 
 = 2.1.4 (2026-10-25) =
 * FIX: رفع Parse error Unmatched '}' در class-cli.php خط 148 که باعث WSOD می‌شد (هسته 06:29 هنوز نسخه قدیمی بود)

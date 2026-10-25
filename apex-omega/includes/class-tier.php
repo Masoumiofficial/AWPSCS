@@ -139,65 +139,27 @@ class TierManager {
     /**
      * تولید مقدار تصادفی منطقی برای یک دسته
      */
-    public static function generate_values(array $tier, int $best = 5, ?int $post_id = null): array {
-        $min = (int)$tier['views_min']; $max = (int)$tier['views_max']; $span = max(1, $max - $min);
-        // 2.1.3: فاصله پراکنده برای وزن 95 — دیگر 940k-950k تنگ نیست
-        // یکنواخت پایه + هش پست + جیتر بزرگ  ±18% + سن پست بونوس
-        $base_rand = mt_rand(0, 1000000) / 1000000; // 0..1 یکنواخت کامل — بیشترین پراکندگی
-        // برای الماس/پرطرفدار bias ملایم به بالا ولی با واریانس حفظ شده (نه تجمع وسط)
-        $bias = 0;
-        if (strpos($tier['id'], 'tier_1') !== false) $bias = 0.12;
-        elseif (strpos($tier['id'], 'tier_2') !== false) $bias = 0.08;
-        if ($bias) {
-            // فقط 40% مواقع bias اعمال شود تا همه وسط جمع نشوند
-            if (mt_rand(1,100) <= 40) $base_rand = min(1, $base_rand + $bias * (mt_rand(60,100)/100));
-        }
-        $views = (int) round($min + $span * $base_rand);
-        // هش پست: هر پست حتی با وزن یکسان فاصله متفاوت می‌گیرد (±18% span)
-        if ($post_id !== null && $post_id > 0) {
-            $hash = hexdec(substr(md5((string)$post_id . '|' . $tier['id'] . '|' . $min), 0, 7)) % 360 - 180; // -180..+179
-            $hash_jitter = (int) round($span * $hash / 1000); // ±18%
-            $views += $hash_jitter;
-            // جیتر تصادفی اضافی ±12%
-            $rand_jitter = (int) round($span * mt_rand(-120,120)/1000);
-            $views += $rand_jitter;
-            // بونوس سن: پست قدیمی‌تر کمی بالاتر (طبیعی) — 0..+10% span
-            $post_date = get_post_field('post_date_gmt', $post_id);
-            if ($post_date) {
-                $age = max(0, (time() - strtotime($post_date))/86400);
-                $age_bonus = min(0.10, $age/180 * 0.10) * $span; // 180 روز → 10%
-                $views += (int) round($age_bonus * mt_rand(70,130)/100);
-            }
-        } else {
-            // بدون post_id: جیتر خالص ±15%
-            $views += (int) round($span * mt_rand(-150,150)/1000);
-        }
-        $views = max($min, min($max, $views));
-        // گرد کردن طبیعی: 70% رند به دهگان، 30% دقیق نامرتب (مثل 948,231 واقعی‌تر از 940,000)
-        if (mt_rand(1,100) <= 70) $views = (int) (round($views / 10) * 10);
-        // کست‌ها: همبسته با بازدید داخل تیره + نویز ±15% (نه یکنواخت مستقل)
-        $ratio = max(0, min(1, ($views - $min) / max(1, $span)));
-        $casts_min = (int)$tier['casts_min']; $casts_max = (int)$tier['casts_max']; $casts_span = max(1, $casts_max - $casts_min);
-        $base_casts = $casts_min + $ratio * $casts_span;
-        $noise = mt_rand(-150,150)/1000 * $casts_span; // ±15%
-        $casts = (int) round($base_casts + $noise);
-        // هش پست برای کست هم
-        if ($post_id !== null) {
-            $h2 = hexdec(substr(md5((string)$post_id . 'casts'),0,5)) % 100 - 50; // -50..+49
-            $casts += (int) round($casts_span * $h2 / 800);
-        }
-        $casts = max($casts_min, min($casts_max, $casts));
-        $casts = max(1, $casts);
-        // میانگین: پایه تیره + نسبت بازدید + نویز ±0.18
+    public static function generate_values(array $tier, int $best = 5): array {
+        $views = mt_rand((int)$tier['views_min'], (int)$tier['views_max']);
+        $casts = mt_rand((int)$tier['casts_min'], (int)$tier['casts_max']);
+        // میانگین با وزن: اگر بازدید بالاتر، avg متمایل به max
         $range = (float)$tier['avg_max'] - (float)$tier['avg_min'];
-        $avg = (float)$tier['avg_min'] + $range * (0.25 + $ratio * 0.55 + mt_rand(-100,100)/1000 * 0.35);
-        // همبستگی بازدید: هرچقدر بازدید به سقف نزدیک‌تر، avg کمی بالاتر (نامحسوس 0..0.12)
-        $views_factor = min(0.12, max(0, ($views - 10000) / 1500000 * 0.12));
-        $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
-        $avg = round($avg, 1);
+        // jitter 30% bias to high for popular tiers
+        $bias = 0;
+        if (strpos($tier['id'], 'tier_1') !== false || strpos($tier['id'], 'tier_2') !== false) $bias = 0.25;
+        $rand = mt_rand(0, 1000) / 1000;
+        $rand = min(1, max(0, $rand + $bias * (mt_rand(0,100)/100)));
+        $avg = round((float)$tier['avg_min'] + $range * $rand, 1);
         $avg = min(max($avg, (float)$tier['avg_min']), (float)$tier['avg_max']);
         $avg = min($avg, $best);
+
+        // همبستگی بازدید↔امتیاز: هر 10K بازدید ≈ +0.02 میانگین نهفته (نامحسوس)
+        $views_factor = min(0.15, max(0, ($views - 10000) / 1500000 * 0.12)); // 0..0.12
+        $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
+        $avg = round($avg, 1);
+        // محاسبه ratings سازگار — فرمول استاندارد KKSR
         $ratings = $best > 0 ? round($avg * $casts / $best * 5, 2) : 0;
+
         return [
             'views' => $views,
             'casts' => $casts,
@@ -340,7 +302,7 @@ class TierManager {
             $sum_views = 0; $sum_casts = 0; $sum_avg = 0;
             foreach ($slice as $pid) {
                 $post = get_post($pid);
-                $vals = self::generate_values($tier, $best, (int)$pid);
+                $vals = self::generate_values($tier, $best);
                 $sum_views += $vals['views'];
                 $sum_casts += $vals['casts'];
                 $sum_avg += $vals['avg'];

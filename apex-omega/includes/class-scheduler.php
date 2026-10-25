@@ -681,15 +681,8 @@ class Scheduler {
         $remaining_steps = max(1, ceil($remaining_seconds / $interval));
 
         $delta = $tgt - $cur;
-        // 2.1.3: تقسیم خطی + پراکندگی ±12% تا همه پست‌های یک خواننده همزمان به یک عدد نرسند (940k تنگ حل شد)
+        // تقسیم خطی
         $step = $delta / $remaining_steps;
-        // جیتر per-post (بر اساس post_id hash اگر موجود باشد) + تصادفی
-        $jitter_factor = mt_rand(-120, 120) / 1000; // -12%..+12%
-        if (isset($schedule['post_id'])) {
-            $pid_hash = hexdec(substr(md5((string)$schedule['post_id'] . $schedule['field_type']),0,4)) % 200 - 100; // -100..99
-            $jitter_factor += $pid_hash / 1200; // ±8% اضافی deterministic
-        }
-        $step = $step * (1 + $jitter_factor);
 
         // حداقل گام برای جلوگیری از سکون
         if (in_array($schedule['field_type'], ['views','kksr_casts'], true)) {

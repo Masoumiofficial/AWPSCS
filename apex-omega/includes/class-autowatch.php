@@ -56,18 +56,11 @@ class AutoWatch {
     // تولید شارژ اولیه همبسته: بازدید↔رای↔میانگین — بر اساس وزن خواننده
     public static function generate_initial(int $weight, int $min_views, int $max_views): array {
         $weight = max(0, min(100, $weight));
-        // 2.1.3: فاصله بیشتر — جیتر ±28% span نه ±300 ثابت (برای وزن 95 دیگر همه 940k نیستند، پراکنده تا 25%)
+        // بازدید: خطی 500-10K با jitter
         $span = $max_views - $min_views;
         $base = $min_views + ($weight / 100) * $span;
-        // جیتر بزرگ وابسته به span: ±28% (±25% + نویز 3%)
-        $jitter_pct = mt_rand(-280, 280) / 1000; // -28%..+28%
-        $jitter = (int) round($span * $jitter_pct) + mt_rand(-200, 200);
+        $jitter = mt_rand(-300, 300);
         $views = (int) round($base + $jitter);
-        // برای تیره‌های بزرگ (span>50k) جیتر را بیشتر کن تا پراکندگی حس شود
-        if ($span > 50000) {
-            $extra = (int) round($span * mt_rand(-80, 80)/1000);
-            $views += $extra;
-        }
         $views = max($min_views, min($max_views, $views));
         // casts: حدود views/120 تا views/80 + وزن
         $casts_min = max(8, (int) round($views / 140));
