@@ -170,13 +170,19 @@ class TierManager {
             $pidHash = $post_id ? ((($post_id * 9301 + 49297) % 233280) / 233280) : (mt_rand(0,1000)/1000);
             $hashJitter = ($pidHash - 0.5) * 0.10; // ±5% بر اساس ID
             if ($is_premium) {
-                // منتخب ویژه selected-works — پرفکت، قابلیت 10M+ (تا ~12M)
-                $baseFactor = 0.92 + $norm * 0.14; // 92% تا 106%
-                $jitter = mt_rand(-200, 200) / 10000 + $hashJitter * 0.4; // ±2% + هش
-                $factor = max(0.90, min(1.18, $baseFactor + $jitter)); // تا 118% → 900K + 9.1M*1.18 = 11.6M
-                $views = (int) round($vmin + $range * $factor);
-                // برای منتخب حتی اگر رنج اجازه نده، حداقل 9.5M تضمین کن
-                if ($tier['id'] === 'tier_1' && $views < 9500000) $views = mt_rand(9500000, 11800000);
+                // منتخب ویژه selected-works — 8M تا 12M متنوع، رای متناسب — وزن و هش تاثیر
+                $premiumMin = 8000000;
+                $premiumMax = 12000000;
+                $premiumRange = $premiumMax - $premiumMin; // 4M
+                // وزن: norm 0=>0, 1=>+35% range (1.4M)
+                $basePos = 0.12 + $norm * 0.38; // 0.12 تا 0.50
+                $hashPos = $pidHash * 0.32; // 0 تا 0.32 هش ID
+                $randPos = mt_rand(0, 1000) / 1000 * 0.18; // 0 تا 0.18 رندم
+                $pos = $basePos + $hashPos + $randPos; // 0.12 تا 1.0
+                $pos = max(0, min(0.98, $pos));
+                $views = (int) round($premiumMin + $premiumRange * $pos);
+                // گارانتی 8M-12M دقیق
+                $views = max($premiumMin, min($premiumMax, $views + mt_rand(-120000, 120000)));
             } elseif ($is_hit) {
                 // هیت: 88-100% رنج + وزن تأثیر 12% + هش + جیتر
                 $baseFactor = 0.88 + $norm * 0.12;
@@ -203,10 +209,11 @@ class TierManager {
             // کلیمپ با محدوده تیره برای جلوگیری از پرت — منتخب اجازه سقف بالاتر
             $extraCap = $is_premium ? 15000 : 8000;
             $casts = max((int)$tier['casts_min'], min((int)$tier['casts_max'] + $extraCap, $casts));
-            // برای هیت‌های 9M دیگر 5600 کم است — الان 9M/500≈18000 می‌شود
-            if ($views >= 9000000 && $casts < 9000) $casts = $is_premium ? mt_rand(16000, 24000) : mt_rand(11000, 19000);
-            elseif ($views >= 8000000 && $casts < 9000) $casts = mt_rand(11000, 19000);
-            if ($views >= 5000000 && $views < 8000000 && $casts < 6000) $casts = mt_rand(6500, 11000);
+            // برای 8M-12M رای متناسب: 8M→~16K، 12M→~24K (1 per 500)
+            if ($views >= 8000000 && $casts < 13000) {
+                if ($is_premium) $casts = mt_rand(15800, 24500); // دقیقا متناسب 8M-12M
+                else $casts = mt_rand(11500, 19000);
+            } elseif ($views >= 5000000 && $views < 8000000 && $casts < 6500) $casts = mt_rand(6500, 11800);
         } else {
             $casts = mt_rand((int)$tier['casts_min'], (int)$tier['casts_max']);
         }

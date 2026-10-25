@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.9
+Stable tag: 2.2.10
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.10 (2026-10-27) =
+* FEATURE تنوع‌دهی منتخب 8M تا 12M: بازه پرمیوم از 9.5-11.8M به 8M-12M گسترش — وزن+هش+رندم متنوع (low 8.2M، high 11.7M)، رای متناسب 15.8K-24.5K (1 per 480-520) — درخواست کاربر
 
 = 2.2.9 (2026-10-27) =
 * FIX آثار منتخب 68 تایی خیلی کم تغییر کرد چون وزن پایین بود → منتخب همیشه tier_1 (الماس 900k-10M → 9.5-11.8M) مستقل از وزن — وزن فقط برای تنوع جزئی داخل الماس (0.92-1.06 factor) — همگام‌سازی/Job/Premium/Reseed همه جا tier_1 اجباری شد
