@@ -758,6 +758,7 @@ class ArtistManager {
         if (function_exists('set_time_limit')) @set_time_limit(60);
         $preview = self::preview_weight_sync($filters);
         if (empty($preview['success'])) return $preview;
+        $best = (int) get_option('kksr_stars', 5); if ($best < 1) $best = 5;
         $tiers2 = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id2=[]; foreach($tiers2 as $tt) $tiers_by_id2[$tt['id']]=$tt;
         $eligible_ids2 = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
         $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
