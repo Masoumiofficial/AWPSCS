@@ -1080,12 +1080,34 @@ class ArtistManager {
                 } catch(\Throwable $e){}
             }
         }
+        // خلاصه درصدی برای نمایش — توزیع 8M-12M
+        $summary = ['total'=>$total,'applied'=>$applied,'percent'=> $total? round($applied/$total*100,1):0];
         if ($snapshot_rows) {
+            $buckets = ['8-9M'=>0,'9-10M'=>0,'10-11M'=>0,'11-12M'=>0];
+            $sumViews=0; $sumCasts=0;
+            foreach ($snapshot_rows as $r) {
+                $v=(int)$r['new_views'];
+                if ($v < 9000000) $buckets['8-9M']++;
+                elseif ($v < 10000000) $buckets['9-10M']++;
+                elseif ($v < 11000000) $buckets['10-11M']++;
+                else $buckets['11-12M']++;
+                $sumViews += $v; $sumCasts += (int)$r['new_casts'];
+            }
+            $summary['buckets'] = [];
+            foreach ($buckets as $k=>$c) {
+                $summary['buckets'][$k] = ['count'=>$c,'percent'=> $applied? round($c/$applied*100,1):0];
+            }
+            $summary['avg_views'] = $applied? (int) round($sumViews/$applied):0;
+            $summary['avg_casts'] = $applied? (int) round($sumCasts/$applied):0;
+            $summary['min_views'] = $snapshot_rows ? min(array_column($snapshot_rows,'new_views')):0;
+            $summary['max_views'] = $snapshot_rows ? max(array_column($snapshot_rows,'new_views')):0;
             try { \ApexOmega\Core\Database::create_snapshot($exec,$user_id,[],['source'=>'selected_premium'],$total,$applied,$snapshot_rows); } catch(\Throwable $e){}
-            update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, ['counts'=>[],'filters'=>['source'=>'selected_premium'],'applied'=>$applied,'exec'=>$exec,'at'=>current_time('mysql',true),'errors'=>$errors,'weight_sync'=>false,'premium_selected'=>true], false);
+            update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, ['counts'=>[],'filters'=>['source'=>'selected_premium'],'applied'=>$applied,'exec'=>$exec,'at'=>current_time('mysql',true),'errors'=>$errors,'weight_sync'=>false,'premium_selected'=>true,'summary'=>$summary], false);
+        } else {
+            $summary['buckets'] = [];
         }
         \ApexOmega\Core\Database::release_lock('apex_selected_premium_master');
-        return ['success'=>true,'applied'=>$applied,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'message'=> $applied ? "✅ {$applied} از {$total} آهنگ دسته منتخب پرمیوم شد (9.5-11.8M، امتیاز 4.9-5.0)" : 'همه قبلا پرمیوم بودند یا محافظ جلوی کاهش را گرفت'];
+        return ['success'=>true,'applied'=>$applied,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'summary'=>$summary,'message'=> $applied ? "✅ {$applied} از {$total} آهنگ ({$summary['percent']}٪) پرمیوم شد — 8M-12M میانگین ". number_format_i18n($summary['avg_views']??0) ." بازدید" : 'همه قبلا پرمیوم بودند یا محافظ جلوی کاهش را گرفت'];
     }
 
     public static function allow_manual_decrease(int $post_id, callable $fn) {

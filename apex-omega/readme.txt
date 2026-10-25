@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.10
+Stable tag: 2.2.11
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,12 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.11 (2026-10-27) =
+* افزوده: نمایش درصد و تعداد همه‌جا — کارت‌های دستی/خودکار/فیلتر اکنون عدد + درصد از کل سایت (number_format_i18n + ٪) نشان می‌دهند.
+* افزوده: کارت پرمیوم selected-works حالا «X مورد (Y٪)» + میانگین بازدید قبل از کلیک — پس از اعمال: جدول 4 باکتی 8-9M/9-10M/10-11M/11-12M با تعداد+درصد هر بازه + min/max/avg_views/avg_casts + execution_id برای Undo.
+* بهبود: summary توزیع (total/applied/percent/buckets/avg/min/max) در DB ذخیره می‌شود — گزارش‌های بعدی آماده.
+* بهبود: پیام پرمیوم شامل درصد کل و میانگین بازدید — شفافیت کامل برای مدیر.
 
 = 2.2.10 (2026-10-27) =
 * FEATURE تنوع‌دهی منتخب 8M تا 12M: بازه پرمیوم از 9.5-11.8M به 8M-12M گسترش — وزن+هش+رندم متنوع (low 8.2M، high 11.7M)، رای متناسب 15.8K-24.5K (1 per 480-520) — درخواست کاربر

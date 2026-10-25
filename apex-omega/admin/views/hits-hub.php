@@ -35,6 +35,10 @@ $total_pages = (int)$q->max_num_pages;
 $manual_count = count($hit_ids);
 $auto_count = count($selected_ids);
 $both = count(array_intersect($hit_ids,$selected_ids));
+$total_site = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
+$pct_manual = $total_site ? round($manual_count/$total_site*100,1):0;
+$pct_auto = $total_site ? round($auto_count/$total_site*100,1):0;
+$pct_found = $total_site ? round($total_found/max(1,$total_site)*100,1):0;
 ?>
 <div class="wrap apex-glass-wrap" dir="rtl">
   <div class="apex-glass-header">
@@ -62,22 +66,23 @@ $both = count(array_intersect($hit_ids,$selected_ids));
   <div class="apex-glass-card">
     <h3><span class="dot"></span>خلاصه — چیا منتخب هستند؟</h3>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:8px">
-      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900"><?php echo esc_html($manual_count); ?></div><small style="color:#92400e">دستی (تیک هیت)</small></div>
-      <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:12px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900"><?php echo esc_html($auto_count); ?></div><small style="color:#5b21b6">خودکار دسته selected-works</small></div>
-      <div style="background:#ecfdf5;border:1px solid #86efac;border-radius:12px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900"><?php echo esc_html($total_found); ?></div><small style="color:#065f46">نتایج فعلی فیلتر</small></div>
+      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900"><?php echo esc_html(number_format_i18n($manual_count)); ?> <span style="font-size:13px;color:#92400e">(<?php echo esc_html($pct_manual); ?>٪)</span></div><small style="color:#92400e">دستی (تیک هیت) — <?php echo esc_html($pct_manual); ?>٪ کل سایت (<?php echo esc_html(number_format_i18n($total_site)); ?>)</small></div>
+      <div style="background:#ede9fe;border:1px solid #c4b5fd;border-radius:12px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900"><?php echo esc_html(number_format_i18n($auto_count)); ?> <span style="font-size:13px;color:#5b21b6">(<?php echo esc_html($pct_auto); ?>٪)</span></div><small style="color:#5b21b6">خودکار دسته selected-works — <?php echo esc_html($pct_auto); ?>٪ کل</small></div>
+      <div style="background:#ecfdf5;border:1px solid #86efac;border-radius:12px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900"><?php echo esc_html(number_format_i18n($total_found)); ?> <span style="font-size:13px;color:#065f46">(<?php echo esc_html($pct_found); ?>٪)</span></div><small style="color:#065f46">نتایج فعلی فیلتر — <?php echo esc_html($pct_found); ?>٪ کل</small></div>
     </div>
     <p class="desc" style="margin-top:10px">هر نوشته در دسته با نامک <code>selected-works</code> خودکار پرمیوم است — بدون تیک. اگر هر دو باشد، پرمیوم لحاظ می‌شود. اشتراک: <?php echo esc_html($both); ?> مورد.</p>
   </div>
 
   <div class="apex-glass-card" style="border-top:3px solid #7c3aed;background:linear-gradient(135deg,#ede9fe 0%,#ecfdf5 100%)">
     <h3><span class="dot" style="background:#7c3aed"></span>✨ پرمیوم‌سازی دسته آثار منتخب — یک‌کلیک</h3>
-    <p class="desc">تمام آهنگ‌های دسته <code>selected-works</code> (<?php echo esc_html($auto_count); ?> مورد) را همین الان به حالت پرمیومِ مدنظرت می‌برد: بازدید ۹٫۵–۱۱٫۸M، امتیاز ۱۶–۲۴K، میانگین ۴٫۹–۵٫۰، با محافظ عدم‌کاهش (۵M هرگز ۴M نمی‌شود). ویرایش دستی همچنان آزاد است.</p>
+    <p class="desc">تمام آهنگ‌های دسته <code>selected-works</code> — <strong><?php echo esc_html(number_format_i18n($auto_count)); ?> مورد</strong> (<?php echo esc_html($pct_auto); ?>٪ از <?php echo esc_html(number_format_i18n($total_site)); ?> کل) را همین الان به حالت پرمیومِ مدنظرت می‌برد: <strong>بازدید 8M–12M متنوع</strong>، امتیاز <strong>15.8K–24.5K متناسب</strong>، میانگین ۴٫۹–۵٫۰، با محافظ عدم‌کاهش. ویرایش دستی همچنان آزاد است.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button type="button" class="apex-btn-primary" id="apex-premium-apply" style="background:#7c3aed;border-color:#7c3aed">✨ اعمال پرمیوم به <?php echo esc_html($auto_count); ?> آهنگ دسته منتخب</button>
+      <button type="button" class="apex-btn-primary" id="apex-premium-apply" style="background:#7c3aed;border-color:#7c3aed">✨ اعمال پرمیوم به <?php echo esc_html(number_format_i18n($auto_count)); ?> آهنگ (<?php echo esc_html($pct_auto); ?>٪)</button>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="apex-premium-with-comments"> همراه با کامنت پرمیوم</label>
       <span id="apex-premium-result" class="apex-pill" style="display:none"></span>
     </div>
-    <div class="apex-help" style="margin-top:8px">اگر آهنگی قبلا پرمیوم بود، رد می‌شود (محافظ کاهش جلوی پایین آمدن را می‌گیرد). تاریخچه و Snapshot برای Undo ثبت می‌شود.</div>
+    <div id="apex-premium-detail" style="margin-top:10px;display:none;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px;font-size:13px"></div>
+    <div class="apex-help" style="margin-top:8px">اگر آهنگی قبلا پرمیوم بود، رد می‌شود (محافظ کاهش جلوی پایین آمدن را می‌گیرد — فقط <?php echo esc_html($auto_count ? round($auto_count/$total_site*100,1):0); ?>٪ کل سایت). تاریخچه و Snapshot برای Undo ثبت می‌شود.</div>
   </div>
 
   <div class="apex-glass-card">
@@ -199,9 +204,17 @@ $both = count(array_intersect($hit_ids,$selected_ids));
     const with_comments=document.getElementById('apex-premium-with-comments')?.checked?1:0;
     const fd=new FormData(); fd.append('action','apex_apply_premium_selected'); fd.append('_ajax_nonce',getNonce()); fd.append('with_comments',with_comments);
     const resEl=document.getElementById('apex-premium-result');
+    const detailEl=document.getElementById('apex-premium-detail');
     fetch(getAjax(),{method:'POST',body:fd,credentials:'same-origin'}).then(r=>r.json()).then(j=>{
-      if(resEl){ resEl.style.display='inline-flex'; resEl.textContent=j.success ? (j.data.message||'انجام شد: '+j.data.applied+' پرمیوم') : (j.data.message||'خطا'); resEl.style.background=j.success?'#dcfce7':'#fee2e2'; resEl.style.color=j.success?'#166534':'#991b1b'; }
-      if(j.success) setTimeout(()=>location.reload(),1200);
+      if(resEl){ resEl.style.display='inline-flex'; resEl.textContent=j.success ? (j.data.message||'انجام شد: '+j.data.applied+'/'+j.data.total+' ('+(j.data.summary?j.data.summary.percent:0)+'٪) پرمیوم') : (j.data.message||'خطا'); resEl.style.background=j.success?'#dcfce7':'#fee2e2'; resEl.style.color=j.success?'#166534':'#991b1b'; }
+      if(j.success && j.data.summary && detailEl){
+        detailEl.style.display='block';
+        let s=j.data.summary; let html='<div style="font-weight:800;margin-bottom:6px">📊 نتیجه — '+s.applied+' از '+s.total+' ('+s.percent+'٪) پرمیوم شد — میانگین '+Number(s.avg_views||0).toLocaleString('fa-IR')+' بازدید، '+Number(s.avg_casts||0).toLocaleString('fa-IR')+' رای</div>';
+        if(s.buckets){ html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-top:6px">'; for(let k in s.buckets){ let b=s.buckets[k]; html+='<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:8px;text-align:center"><div style="font-weight:900">'+b.count+' <small>('+b.percent+'٪)</small></div><small>'+k+' بازدید</small></div>'; } html+='</div>'; html+='<div style="margin-top:6px;color:#64748b;font-size:11px">توزیع 8M-12M: هر باکت درصد از '+s.applied+' آهنگ پرمیوم‌شده — مجموع 100٪ — حداقل '+Number(s.min_views||0).toLocaleString('fa-IR')+' تا حداکثر '+Number(s.max_views||0).toLocaleString('fa-IR')+'</div>'; }
+        html+='<div style="margin-top:8px;color:#065f46">✅ شناسه اجرا: '+(j.data.execution_id||'')+' — برای Undo به تاریخچه برو</div>';
+        detailEl.innerHTML=html;
+      }
+      if(j.success) setTimeout(()=>location.reload(),2500);
     }).catch(e=>{ if(resEl){ resEl.style.display='inline-flex'; resEl.textContent='خطا: '+e; resEl.style.background='#fee2e2';}}).finally(()=>{btn.disabled=false; btn.textContent=o;});
   });
   document.getElementById('apex-ai-suggest')?.addEventListener('click',function(){
