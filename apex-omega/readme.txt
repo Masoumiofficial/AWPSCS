@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.1.3
+Stable tag: 2.1.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,10 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.1.4 (2026-10-25) =
+* FIX: رفع Parse error Unmatched '}' در class-cli.php خط 148 که باعث WSOD می‌شد (هسته 06:29 هنوز نسخه قدیمی بود)
+* FIX: زیپ کامل بازبیلد و تست php-parser OK برای تمام فایل‌ها
 
 = 2.1.3 (2026-10-25) =
 * FIX: کامنت 100٪ طبیعی مثل رز موزیک/موزیکس‌فا — دیگر نگارشی/تکراری نیست (12 نمونه آنالیز شد): کوتاه 2-5 کلمه، کشیده عالییییی/خیلییی، غلط ریز اهنگ/ارمش، ایموجی 20👌، انتقاد ملایم و سوال 15% (دیگر همه مثبت نیست)
