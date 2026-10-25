@@ -71,7 +71,7 @@ class CommentGuardian {
     }
 
     // محاسبهٔ هدف کامنت — الگوی ریتم هرساعته (2026-10-21): بازدید + وزن + امتیاز همبسته، gradual increase never decrease
-    public static function calculate_target(int $views, int $weight, float $avg = 4.0): int {
+    public static function calculate_target(int $views, int $weight, float $avg = 4.0, bool $is_premium = false): int {
         $views = max(0, $views);
         $weight = max(0, min(100, $weight));
         // پایه بر اساس بازدید — fresh 500-10000 → 3-10 (spec), scalable for million (~50)
@@ -106,9 +106,19 @@ class CommentGuardian {
         }
         $target = (int) round( (($base_min + $base_max)/2) * $mult + mt_rand(-1,1) );
         $target = max($base_min, min($base_max, $target));
-        // سقف نوپا حتی اگر بازدید بالا برود ولی وزن پایین: max 6
-        if ($weight < 30 && $target > 6 && $views < 50000) {
+        // سقف نوپا حتی اگر بازدید بالا برود ولی وزن پایین: max 6 — منتخب معاف
+        if (!$is_premium && $weight < 30 && $target > 6 && $views < 50000) {
             $target = min($target, 6);
+        }
+        // منتخب ویژه selected-works — پرفکت، توجه ویژه: 35% بیشتر + حداقل 18 کامنت برای میلیونی
+        if ($is_premium) {
+            $target = (int) round($target * 1.35);
+            // کف پریمیوم برای آثار میلیونی/نزدیک میلیونی
+            if ($views >= 500000 && $target < 22) $target = mt_rand(22, 28);
+            elseif ($views >= 100000 && $target < 16) $target = mt_rand(16, 22);
+            elseif ($views >= 10000 && $target < 10) $target = mt_rand(10, 14);
+            $target = max($target, $base_min);
+            $target = min($target, $base_max + 25); // سقف بازتر برای منتخب
         }
         return $target;
     }
@@ -219,7 +229,9 @@ class CommentGuardian {
     }
 
     // تولید متن کامنت — طبیعی مثل رز موزیک / موزیکس-فا (تحلیل 12 نمونه واقعی) — کوتاه، کشیده، غلط ریز، بدون تکرار
-    public static function generate_text(int $post_id, string $artist, string $title, int $weight, int $views): string {
+    public static function generate_text(int $post_id, string $artist, string $title, int $weight, int $views, bool $is_premium = false): string {
+        // منتخب ویژه — وزن موثر 95 برای پرفکت بودن (حتی اگر خواننده نوپا باشد)
+        if ($is_premium) { $weight = max($weight, 95); $views = max($views, 800000); }
         $clean = self::clean_song_title($title, $artist);
         // 35% AI (با لحن جدید طبیعی) ، 65% fallback محلی غیرتکراری
         $use_ai = (mt_rand(1,100) <= 35);
@@ -437,22 +449,33 @@ private static function fallback_text(int $weight, int $views, string $title = '
         ];
 
         // وزن/بازدید → انتخاب وزن pool (نه همه مثبت! 15% انتقاد حتی برای پرطرفدار)
+        // منتخب ویژه: اگر وزن 95 مصنوعی از generate_text باشد، انتقاد تقریبا حذف — پرفکت
+        $is_premium_effective = ($weight >= 95 && $views >= 800000 && $weight === 95); // تقریبی: منتخب از generate_text
         $is_low = ($weight < 30 && $views < 15000);
         $is_high = ($weight >= 75 || $views >= 400000);
         $roll = mt_rand(1,100);
 
-        if ($roll <= 38) {
-            $pool = $ultra_short;
-        } elseif ($roll <= 62) {
-            $pool = $short_colloquial;
-        } elseif ($roll <= 77) {
-            $pool = $critical_question; // 15% انتقاد/سوال حتی برای هیت‌ها — طبیعی بودن
-        } elseif ($roll <= 87) {
-            $pool = $personal;
-        } elseif ($roll <= 93) {
-            $pool = $medium_natural;
+        if ($is_premium_effective) {
+            // پرفکت: 35% کوتاه، 40% محاوره، 15% شخصی، 10% متوسط — بدون انتقاد
+            if ($roll <= 35) $pool = $ultra_short;
+            elseif ($roll <= 65) $pool = $short_colloquial;
+            elseif ($roll <= 80) $pool = $personal;
+            elseif ($roll <= 92) $pool = $medium_natural;
+            else $pool = $long_emotional;
         } else {
-            $pool = $long_emotional;
+            if ($roll <= 38) {
+                $pool = $ultra_short;
+            } elseif ($roll <= 62) {
+                $pool = $short_colloquial;
+            } elseif ($roll <= 77) {
+                $pool = $critical_question; // 15% انتقاد/سوال حتی برای هیت‌ها — طبیعی بودن
+            } elseif ($roll <= 87) {
+                $pool = $personal;
+            } elseif ($roll <= 93) {
+                $pool = $medium_natural;
+            } else {
+                $pool = $long_emotional;
+            }
         }
         // برای تازه‌ها بیشتر کوتاه، برای پرطرفدار بیشتر متوسط/طولانی ولی هنوز تنوع انتقاد حفظ شود
         if ($is_low && $roll > 80) $pool = $ultra_short;
@@ -613,7 +636,8 @@ private static function fallback_text(int $weight, int $views, string $title = '
             // هدف کامنت بر اساس بازدید + وزن (همبسته)
             $stats = Adapter_KKSR::get_stats($pid);
             $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
-            $target = self::calculate_target($cur_views, $weight, $avg);
+            $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            $target = self::calculate_target($cur_views, $weight, $avg, $is_premium);
             // 2.1.0: برای پرطرفدار >100k خودکار بدون دخالت انسانی — هدف را 15% بیشتر کن
             if ($high_auto && $cur_views >= $high_thr) {
                 $target = min($max_per_post, $target + max(1, (int)ceil($target * 0.15)));
@@ -682,7 +706,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
                 if ($current + $inserted >= $target) break;
                 if ($current + $inserted >= $max_per_post) break;
                 $who = self::generate_name();
-                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views);
+                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium ?? false);
                 // کمی تنوع زمانی: هر کامنت 2-10 دقیقه فاصله (برای طبیعی بودن تاریخ)
                 $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 600));
                 $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
@@ -782,7 +806,8 @@ private static function fallback_text(int $weight, int $views, string $title = '
             $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
             $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
             $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
-            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg);
+            $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected((int)$r['ID']);
+            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg, $is_premium);
             $current = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
             $samples[] = ['ID'=>$pid,'title'=>mb_strimwidth($r['post_title']??'',0,40,'…'),'views'=>(int)$r['cur_views'],'weight'=>$weight,'avg'=>$avg,'target'=>$target,'current'=>$current];
         }
@@ -810,6 +835,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
         $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
         $artist_name = self::get_primary_artist($post_id);
         if (!$artist_name) $artist_name = 'هنرمند ناشناس';
+        $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected($post_id);
         // Open comment_status if closed
         if (get_post_field('comment_status', $post_id) !== 'open') {
             wp_update_post(['ID' => $post_id, 'comment_status' => 'open']);

@@ -104,6 +104,13 @@ class Evergreen {
                 foreach ($tiers as $tt) if ($tt['id'] === $tier) { $tier_cap = (int)$tt['views_max']; break; }
             }
             $effective_max = $tier_cap ? min($max, $tier_cap) : $max;
+            // منتخب ویژه: سقف 18٪ بالاتر (تا 11.8M) — پرفکت، توجه ویژه
+            $is_premium_eg = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            if ($is_premium_eg) {
+                $effective_max = (int) round($effective_max * 1.18);
+                $max = max($max, (int) round($max * 1.18));
+                if ($effective_max > $max) $effective_max = $max;
+            }
             if ($cur_views >= $effective_max) continue;
 
             // پروفایل آرتیست از جدول profiles (اگر نباشد fallback به growth پیش‌فرض)
@@ -120,6 +127,8 @@ class Evergreen {
                 $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
                 // وزن 50 => growth 0.035, وزن 90 => 0.05 (پویا)
                 $profile['growth'] = 0.02 + ($weight / 100) * 0.03;
+            // منتخب ویژه نرخ رشد 40٪ بیشتر
+            if (!empty($is_premium_eg)) $profile['growth'] *= 1.40;
             } catch (\Throwable $e) {}
 
             $inc = Simulator::next_delta($cur_views, $tier ?? '', $profile, $ageDays, $base_rate);

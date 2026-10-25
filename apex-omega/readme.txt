@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.4
+Stable tag: 2.2.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -57,10 +57,11 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 
 == Changelog ==
 
-= 2.2.4 (2026-10-27) =
+= 2.2.5 (2026-10-27) =
+* FEATURE: دسته آثار منتخب https://ahangban.ir/selected-works/ (slug: selected-works) — هر پست در این دسته خودکار هیت پرفکت محسوب می‌شود: بازدید 9.5-11.8M (تا 18٪ فراتر از سقف 10M)، رای 16-24K، میانگین 4.9-5.0، کامنت پرفکت 35٪ بیشتر (بدون انتقاد)، Evergreen/AutoWatch رشد 40٪ سریع‌تر + سقف 11.8M
 * FIX: گیرکردن 5M با تفاوت چند هزارتایی — دامنه معمولی عریض‌تر شد (0.10+norm*0.45 ±7% + هش ID ±5% = تا 12% پراکندگی) + هیت ±3% + هش — دیگه 5M ثابت نمی‌مونه، هر پست حتی با وزن یکسان 0.5-1M تفاوت دارد
 * FIX: وزن نوپا 50→20 — خواننده جدید/بی‌نام الان 20 می‌گیرد (tier_6: 10K-30K) نه 50 (tier_4: 80K-200K) — منطقی برای هیت جدید
-* CHG: generate_values($post_id) — هش دترمینیستیک بر اساس ID برای جلوگیری از کلاسترینگ mt_rand
+* CHG: generate_values($post_id, $is_premium) — هش دترمینیستیک بر اساس ID برای جلوگیری از کلاسترینگ mt_rand، پارامتر جدید is_premium برای منتخب
 
 = 2.2.0 (2026-10-27) =
 * FIX: همبستگی بازدید↔رای اصلاح شد — قبلاً 9M بازدید فقط 5600 رای می‌داد (نسبت 1600)، الان 9M → 11-19K رای (نسبت ~520 ±70 منطقی) — 2M → ~3600 رای

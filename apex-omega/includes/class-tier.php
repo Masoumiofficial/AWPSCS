@@ -154,8 +154,9 @@ class TierManager {
      * تولید مقدار تصادفی منطقی برای یک دسته — وزن‌محور + هیت + همبستگی واقعی
      * @param int|null $weight وزن هنرمند 0-100 — اگر null باشد رفتار قدیمی رندم حفظ می‌شود (سازگاری عقب‌رو)
      * @param bool $is_hit آیا اثر هیت/معروف است؟ اگر true بازدید به سقف تیره می‌رود (9-10M)
+     * @param bool $is_premium آیا در دسته منتخب selected-works است؟ اگر true قابلیت 10M+ (تا 12M) و امتیاز/کامنت پرفکت
      */
-    public static function generate_values(array $tier, int $best = 5, ?int $weight = null, bool $is_hit = false, ?int $post_id = null): array {
+    public static function generate_values(array $tier, int $best = 5, ?int $weight = null, bool $is_hit = false, ?int $post_id = null, bool $is_premium = false): array {
         $vmin = (int)$tier['views_min']; $vmax = (int)$tier['views_max'];
         $range = $vmax - $vmin;
 
@@ -168,7 +169,15 @@ class TierManager {
             // هش: هر پست حتی با وزن یکسان بازدید متفاوت بگیرد — ضد گیرکردن 5M
             $pidHash = $post_id ? ((($post_id * 9301 + 49297) % 233280) / 233280) : (mt_rand(0,1000)/1000);
             $hashJitter = ($pidHash - 0.5) * 0.10; // ±5% بر اساس ID
-            if ($is_hit) {
+            if ($is_premium) {
+                // منتخب ویژه selected-works — پرفکت، قابلیت 10M+ (تا ~12M)
+                $baseFactor = 0.92 + $norm * 0.14; // 92% تا 106%
+                $jitter = mt_rand(-200, 200) / 10000 + $hashJitter * 0.4; // ±2% + هش
+                $factor = max(0.90, min(1.18, $baseFactor + $jitter)); // تا 118% → 900K + 9.1M*1.18 = 11.6M
+                $views = (int) round($vmin + $range * $factor);
+                // برای منتخب حتی اگر رنج اجازه نده، حداقل 9.5M تضمین کن
+                if ($tier['id'] === 'tier_1' && $views < 9500000) $views = mt_rand(9500000, 11800000);
+            } elseif ($is_hit) {
                 // هیت: 88-100% رنج + وزن تأثیر 12% + هش + جیتر
                 $baseFactor = 0.88 + $norm * 0.12;
                 $jitter = mt_rand(-300, 300) / 10000 + $hashJitter * 0.5; // ±3% + هش
@@ -187,13 +196,16 @@ class TierManager {
 
         // رای‌ها همبسته با بازدید — واقعی: ~1 رای per 400-650 بازدید
         if ($weight !== null) {
-            $divisor = 520 + mt_rand(-70, 70) + ($is_hit ? -70 : 0) + ($weight >= 90 ? -30 : 0);
+            $isPremiumCast = $is_premium || $views >= 9500000;
+            $divisor = 520 + mt_rand(-70, 70) + ($is_hit ? -70 : 0) + ($isPremiumCast ? -25 : 0) + ($weight >= 90 ? -30 : 0);
             $divisor = max(320, min(850, $divisor));
             $casts = (int) round($views / $divisor);
-            // کلیمپ با محدوده تیره برای جلوگیری از پرت
-            $casts = max((int)$tier['casts_min'], min((int)$tier['casts_max'] + 8000, $casts));
+            // کلیمپ با محدوده تیره برای جلوگیری از پرت — منتخب اجازه سقف بالاتر
+            $extraCap = $is_premium ? 15000 : 8000;
+            $casts = max((int)$tier['casts_min'], min((int)$tier['casts_max'] + $extraCap, $casts));
             // برای هیت‌های 9M دیگر 5600 کم است — الان 9M/500≈18000 می‌شود
-            if ($views >= 8000000 && $casts < 9000) $casts = mt_rand(11000, 19000);
+            if ($views >= 9000000 && $casts < 9000) $casts = $is_premium ? mt_rand(16000, 24000) : mt_rand(11000, 19000);
+            elseif ($views >= 8000000 && $casts < 9000) $casts = mt_rand(11000, 19000);
             if ($views >= 5000000 && $views < 8000000 && $casts < 6000) $casts = mt_rand(6500, 11000);
         } else {
             $casts = mt_rand((int)$tier['casts_min'], (int)$tier['casts_max']);
@@ -206,7 +218,8 @@ class TierManager {
             $wSpan = max(1, $wr['max'] - $wr['min']);
             $norm = max(0, min(1, ($weight - $wr['min']) / $wSpan));
             $avg = (float)$tier['avg_min'] + $avgRange * (0.35 + $norm * 0.55);
-            if ($is_hit) $avg += 0.18;
+            if ($is_premium) $avg += 0.28;
+            elseif ($is_hit) $avg += 0.18;
             $avg += mt_rand(-8, 8) / 100; // ±0.08
         } else {
             $bias = 0;
@@ -217,7 +230,8 @@ class TierManager {
         }
         $avg = min(max($avg, (float)$tier['avg_min']), (float)$tier['avg_max']);
         $avg = min($avg, $best);
-        if ($is_hit) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.85);
+        if ($is_premium) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.92);
+        elseif ($is_hit) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.85);
         $avg = round($avg, 1);
 
         // همبستگی بازدید↔امتیاز (نامحسوس)

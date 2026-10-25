@@ -205,6 +205,11 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
           مثال: محسن یگانه (۹۶) + «بهت قول میدم» → <code>96×0.84 + 99×0.16 ≈ 96.5 → الماس</code> — نوپا (۱۸) + همین عنوان → <code>18×0.97 + 99×0.03 ≈ 20.4 → تازه (سقف ۴۲)</code>
         </div>
       </div>
+      <div class="apex-g-card" style="border-color:rgba(99,102,241,.18);background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(168,85,247,.06))">
+        <h3><span class="dot" style="background:#6366f1"></span>دسته آثار منتخب — پرفکت خودکار</h3>
+        <p class="desc">هر نوشته در دسته با نامک <code>selected-works</code> (<a href="https://ahangban.ir/selected-works/" target="_blank" rel="noopener">ahangban.ir/selected-works</a>) به‌صورت خودکار هیت پرفکت می‌شود — بدون نیاز به تیک دستی: بازدید تا ۱۱٫۸M، رای ۱۶-۲۴K، میانگین ۴٫۹-۵٫۰، دیدگاه ۳۵٪ بیشتر بدون انتقاد، رشد Evergreen/AutoWatch سریع‌تر. کافی‌ست نوشته را در آن دسته قرار دهید.</p>
+        <div class="apex-help">تشخیص از روی <code>category</code> و تمام تاکسونومی‌های عمومی با slug <code>selected-works</code> انجام می‌شود.</div>
+      </div>
       <div class="apex-g-card">
         <h3><span class="dot" style="background:#10b981"></span>مدیریت هنرمندان</h3>
         <p class="desc">وزن هر هنرمند (۰–۱۰۰) سرنوشت بازدید آثارش را تعیین می‌کند. جدول کامل و اسلایدرها در هاب اختصاصی قرار دارد.</p>

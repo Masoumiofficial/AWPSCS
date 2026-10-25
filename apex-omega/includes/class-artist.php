@@ -581,8 +581,32 @@ class ArtistManager {
         }
         return $map;
     }
-    public static function is_hit(int $post_id): bool { return (bool) get_post_meta($post_id, self::META_HIT, true); }
+    const SELECTED_WORKS_SLUG = 'selected-works';
+    const SELECTED_WORKS_TAXONOMIES = ['category','post_tag','selected-works']; // پشتیبانی دسته منتخب
+
+    public static function is_in_selected_works(int $post_id): bool {
+        if (!$post_id) return false;
+        // بررسی سریع: آیا پست در دسته selected-works است؟ (category یا هر taxonomy عمومی)
+        if (function_exists('has_category') && has_category(self::SELECTED_WORKS_SLUG, $post_id)) return true;
+        if (has_term(self::SELECTED_WORKS_SLUG, 'category', $post_id)) return true;
+        // بررسی همه تاکسونومی‌های عمومی برای اطمینان (مثلاً اگر دسته سفارشی باشد)
+        $taxes = get_taxonomies(['public'=>true], 'names');
+        foreach ($taxes as $tax) {
+            if (has_term(self::SELECTED_WORKS_SLUG, $tax, $post_id)) return true;
+        }
+        return false;
+    }
+
+    public static function is_hit(int $post_id): bool {
+        if (get_post_meta($post_id, self::META_HIT, true)) return true;
+        // هر اثر در دسته منتخب به‌صورت خودکار هیت محسوب می‌شود — توجه ویژه، پرفکت، ۱۰M+
+        if (self::is_in_selected_works($post_id)) return true;
+        return false;
+    }
     public static function set_hit(int $post_id, bool $hit): void { if ($hit) update_post_meta($post_id, self::META_HIT, 1); else delete_post_meta($post_id, self::META_HIT); }
+
+    // آیا پست پریمیوم منتخب است؟ (برای امتیاز/کامنت ویژه)
+    public static function is_premium_selected(int $post_id): bool { return self::is_in_selected_works($post_id); }
 
 
     /* ─── v2.1.8: همگام‌سازی یک‌کلیک وزن→بازه — هیچ آهنگ 95 وزنی 10k نمی‌ماند ─── */
@@ -621,8 +645,8 @@ class ArtistManager {
             $slice_preview = [];
             $sum_v = 0; $sum_c = 0; $sum_a = 0;
             foreach ($ids as $pid) {
-                $w = $weights_batch[$pid] ?? 20; $is_hit = self::is_hit((int)$pid);
-                $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$w, $is_hit, $pid);
+                $w = $weights_batch[$pid] ?? 20; $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
+                $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best, (int)$w, $is_hit, $pid, $is_premium);
                 $sum_v += $vals['views'];
                 $sum_c += $vals['casts'];
                 $sum_a += $vals['avg'];
@@ -683,9 +707,9 @@ class ArtistManager {
             $tier_id = self::weight_to_tier_hint((int)$w);
             if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
             $tier=$tiers_by_id2[$tier_id];
-            $is_hit = self::is_hit((int)$pid);
-            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid);
-            $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit];
+            $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid,$is_premium);
+            $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit,'is_premium'=>$is_premium];
         }
         $preview['preview'] = $full_preview;
         $ttl = apex_omega_lock_ttl($total, 30, 600, 2);
@@ -768,9 +792,9 @@ class ArtistManager {
             $tier_id = self::weight_to_tier_hint((int)$w);
             if (!isset($tiers_by_id2[$tier_id])) $tier_id='tier_7';
             $tier=$tiers_by_id2[$tier_id];
-            $is_hit = self::is_hit((int)$pid);
-            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid);
-            $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit];
+            $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best,(int)$w,$is_hit,$pid,$is_premium);
+            $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'weight'=>$w,'is_hit'=>$is_hit,'is_premium'=>$is_premium];
         }
         $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();

@@ -142,6 +142,25 @@ class AutoWatch {
                 $target_views = min((int)($max_views * 1.6), $target_views + mt_rand(2000,5000));
                 $target_views = max($target_views, $gen['views']);
             }
+            // دسته منتخب selected-works — پرفکت، همیشه 10M+ پتانسیل: حتی اگر تازه باشد، مستقیم به 8-12M جهش
+            $is_premium_aw = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            if ($is_premium_aw) {
+                // برای منتخب، اگر هنوز زیر 500K است، به Tier1 جهش بده (9.5-11.8M)
+                if ($cur_views < 500000) {
+                    $tier1 = null; foreach (\ApexOmega\Core\TierManager::get_tiers() as $tt) if ($tt['id']==='tier_1') { $tier1=$tt; break; }
+                    if ($tier1) {
+                        $w2 = max($weight, 92);
+                        $pv = \ApexOmega\Core\TierManager::generate_values($tier1, (int)get_option('kksr_stars',5)?:5, $w2, true, $pid, true);
+                        $target_views = $pv['views'];
+                        $gen['casts'] = $pv['casts'];
+                        $gen['avg'] = $pv['avg'];
+                        $gen['ratings'] = $pv['ratings'];
+                        $gen['best'] = $pv['best'];
+                    } else {
+                        $target_views = mt_rand(9500000, 11800000);
+                    }
+                }
+            }
 
             $stats = Adapter_KKSR::get_stats($pid);
             $detect = Adapter_KKSR::detect();
