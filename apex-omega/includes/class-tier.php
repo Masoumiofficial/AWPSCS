@@ -13,7 +13,7 @@ class TierManager {
     const META_TIER = '_apex_tier';
 
     /**
-     * دسته‌های پیش‌فرض — حرفه‌ای استاندارد 1.5M (هرم جهانی موسیقی)
+     * دسته‌های پیش‌فرض — حرفه‌ای استاندارد 10M (هرم جهانی موسیقی — قبلا 1.5M)
      * توزیع: 2٪ الماس، 4٪ پرطرفدار، 10٪ محبوب، 14٪ متوسط‌بالا، 20٪ متوسط، 25٪ درحال‌رشد، 25٪ تازه
      * همبستگی بازدید↔رای↔میانگین کاملاً رعایت شده (ISO-like)
      */
@@ -25,7 +25,7 @@ class TierManager {
                 'icon' => '💎',
                 'color' => '#7c3aed',
                 'views_min' => 900000,
-                'views_max' => 1500000,
+                'views_max' => 10000000,
                 'casts_min' => 2500,
                 'casts_max' => 6000,
                 'avg_min' => 4.7,
@@ -116,9 +116,9 @@ class TierManager {
     public static function get_tiers(): array {
         $saved = get_option(self::OPTION_TIERS, null);
         if (is_array($saved) && !empty($saved)) {
-            // مهاجرت خودکار: اگر سقف قدیمی 10M بود، به 1.5M جدید مهاجرت کن
+            // مهاجرت خودکار: اگر سقف قدیمی 1.5M بود، به 10M جدید مهاجرت کن (معکوس قبل)
             $max = 0; foreach ($saved as $t) $max = max($max, (int)($t['views_max'] ?? 0));
-            if ($max > 1500000) {
+            if ($max > 10000000) {
                 $def = self::default_tiers();
                 self::save_tiers($def);
                 return $def;
@@ -154,7 +154,7 @@ class TierManager {
         $avg = min($avg, $best);
 
         // همبستگی بازدید↔امتیاز: هر 10K بازدید ≈ +0.02 میانگین نهفته (نامحسوس)
-        $views_factor = min(0.15, max(0, ($views - 10000) / 1500000 * 0.12)); // 0..0.12
+        $views_factor = min(0.15, max(0, ($views - 10000) / 10000000 * 0.12)); // 0..0.12
         $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
         $avg = round($avg, 1);
         // محاسبه ratings سازگار — فرمول استاندارد KKSR

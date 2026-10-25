@@ -19,7 +19,7 @@ class Analytics {
         return $out;
     }
 
-    // هیستوگرام بازدید: 8 bucket — سقف جدید 1.5M واقع‌گرایانه
+    // هیستوگرام بازدید: 8 bucket — سقف جدید 10M واقع‌گرایانه
     public static function views_histogram(): array {
         global $wpdb;
         $buckets = [
@@ -29,8 +29,8 @@ class Analytics {
             '80K-200K'=> [80001,200000],
             '200K-500K'=>[200001,500000],
             '500K-900K'=> [500001,900000],
-            '900K-1.5M'=> [900001,1500000],
-            '1.5M+'  => [1500001, 1000000000],
+            '900K-10M'=> [900001,10000000],
+            '10M+'  => [10000001, 1000000000],
         ];
         // 1.9.3 PERF-02: یک کوئری به جای 8 — PHP bucketing
         $vals = $wpdb->get_col("SELECT CAST(meta_value AS UNSIGNED) FROM {$wpdb->postmeta} WHERE meta_key='views'");

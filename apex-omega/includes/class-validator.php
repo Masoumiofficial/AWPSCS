@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Validator {
-    const MAX_VIEWS = 1500000; // 1.5M — سقف واقع‌گرایانه درخواست کاربر
+    const MAX_VIEWS = 10000000; // 10M — سقف جدید به درخواست کاربر (قبلا 1.5M)
     const MAX_CASTS = 10000000;
     const MAX_RATINGS_PER_VOTE = 5; // داخلی kk بر مبنای 5
 

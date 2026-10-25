@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.1.6
+Stable tag: 2.1.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,10 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.1.7 (2026-10-26) =
+* FEATURE: سقف بازدید از 1.5M به 10M افزایش یافت (درخواست شما) — tier_1 الان 900K-10M، ولیدیتور، Evergreen و آنالیتیکس هم 10M شدند
+* NOTE: آرشیو alireza-ghorbani با وزن 95% که زیر 20000 مانده باگ نیست — AutoWatch تازه‌ها فقط 600-9000 می‌دهد و Evergreen روزی 5-8% رشد می‌کند؛ برای میلیونی فوری از ویرایش گروهی بازه 1.3M-10M یا توزیع هوشمند استفاده کنید
 
 = 2.1.6 (2026-10-25) =
 * FEATURE: قسمت ۲) مقدار جدید (اعمال گروهی یکسان) حالا بازه تصادفی دارد — می‌توانید مثلاً بازدید بین 1300000 تا 1900000 انتخاب کنید تا هر پست یک عدد رندم در بازه بگیرد (قبلاً همه یکسان می‌شد)

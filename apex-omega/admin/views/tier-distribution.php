@@ -199,7 +199,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>
           <h4 style="margin:0;color:#0f766e;">🌱 رشد مداوم Evergreen — هر ۵ دقیقه افزایش خودکار  ✅ جدید v1.4.0</h4>
-          <small style="color:#134e4a;">بعد از توزیع اولیه، بازدید/امتیاز همه آهنگ‌ها به‌صورت کاملاً طبیعی و تدریجی تا سقف 1.5M رشد می‌کند — بدون نیاز به دخالت دستی، دقیقاً مثل ترافیک واقعی روزمره.</small>
+          <small style="color:#134e4a;">بعد از توزیع اولیه، بازدید/امتیاز همه آهنگ‌ها به‌صورت کاملاً طبیعی و تدریجی تا سقف 10M رشد می‌کند — بدون نیاز به دخالت دستی، دقیقاً مثل ترافیک واقعی روزمره.</small>
         </div>
         <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #14b8a6;border-radius:999px;padding:6px 14px;font-weight:800;cursor:pointer;">
           <input type="checkbox" id="apex-evergreen-enabled" <?php checked($ever_enabled,true); ?>> فعال
@@ -207,10 +207,10 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:10px;">
         <label>نرخ رشد هر ۵ دقیقه (%):<br><input type="number" id="apex-evergreen-rate" step="0.01" min="0.005" max="0.5" value="<?php echo esc_attr($evergreen['rate_percent']); ?>" style="width:110px;"></label>
-        <label>سقف بازدید:<br><input type="number" id="apex-evergreen-max" min="50000" max="5000000" value="<?php echo esc_attr($evergreen['max_views']); ?>" style="width:140px;"></label>
+        <label>سقف بازدید:<br><input type="number" id="apex-evergreen-max" min="50000" max="10000000" value="<?php echo esc_attr($evergreen['max_views']); ?>" style="width:140px;"></label>
         <button id="apex-evergreen-save" type="button" class="button button-apex" style="background:#0f766e;border-color:#0f766e;">💾 ذخیره Evergreen</button>
         <span id="apex-evergreen-result" style="font-weight:700;"></span>
-        <small style="width:100%;color:#6b7280;">پیشنهاد: 0.03–0.05% = ≈ 5–8% رشد روزانه (واقع‌گرایانه). سقف 1.5M برای حفظ اعتبار — بالاتر نرو.</small>
+        <small style="width:100%;color:#6b7280;">پیشنهاد: 0.03–0.05% = ≈ 5–8% رشد روزانه (واقع‌گرایانه). سقف 10M — قبلا 1.5M بود.</small>
       </div>
       <small>⏰ اجرا در <code>apex_omega_tick</code> هر ۵ دقيقه (Real-Cron). نیاز به بازدید سایت ندارد اگر سرور کرون دارد (یا WP-Cron با ترافیک).</small>
     </div>
@@ -292,7 +292,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         // Evergreen
         bindOnce('apex-evergreen-save', function(btn){
           btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
-          var enabled=qs('apex-evergreen-enabled')?.checked?1:0, rate=parseFloat(qs('apex-evergreen-rate')?.value)||0.04, max=parseInt(qs('apex-evergreen-max')?.value)||1500000;
+          var enabled=qs('apex-evergreen-enabled')?.checked?1:0, rate=parseFloat(qs('apex-evergreen-rate')?.value)||0.04, max=parseInt(qs('apex-evergreen-max')?.value)||10000000;
           var resEl=qs('apex-evergreen-result'); if(resEl) resEl.textContent='در حال ذخیره…';
           apexPost('apex_save_evergreen',{enabled:enabled,rate_percent:rate,max_views:max}).then(function(j){
             if(j.success){ if(resEl){resEl.textContent='✅ ذخیره شد — '+(j.data.settings.enabled?'فعال':'غیرفعال')+' — نرخ '+j.data.settings.rate_percent+'%'; resEl.style.color='#065f46';}}
