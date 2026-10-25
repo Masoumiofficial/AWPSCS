@@ -145,4 +145,3 @@ class CLI {
         \WP_CLI::success("Done");
     }
 }
-}
