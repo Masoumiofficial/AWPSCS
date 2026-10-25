@@ -4,7 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Database {
-    const VERSION = '2.1.2'; // 2.1.2: fix comment distribution fair priority for novice پشمام + fast zero-fill + refined comments for >100k views without human intervention
+    const VERSION = '2.1.3'; // 2.1.3: کامنت 100% طبیعی رز موزیک + پراکندگی بازدید وزن 95
 
     public static function table_history(): string {
         global $wpdb;
