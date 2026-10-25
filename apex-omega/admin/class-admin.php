@@ -45,6 +45,30 @@ class Admin {
         );
         add_submenu_page(
             'apex-omega',
+            'هنرمندان — APEX Ω',
+            'هنرمندان 🎤',
+            'apex_manage_statistics',
+            'apex-omega-artists',
+            [$this, 'render_artists']
+        );
+        add_submenu_page(
+            'apex-omega',
+            'اتوماسیون — APEX Ω',
+            'اتوماسیون ⚙️',
+            'apex_manage_statistics',
+            'apex-omega-automation',
+            [$this, 'render_automation']
+        );
+        add_submenu_page(
+            'apex-omega',
+            'همگام‌سازی وزنی — APEX Ω',
+            'همگام‌سازی ⚡',
+            'apex_manage_statistics',
+            'apex-omega-weight-sync',
+            [$this, 'render_weight_sync']
+        );
+        add_submenu_page(
+            'apex-omega',
             'آنالیتیکس — APEX Ω',
             'آنالیتیکس 📊',
             'apex_manage_statistics',
@@ -245,6 +269,19 @@ class Admin {
     public function render_tier(): void {
         global $wpdb;
         include APEX_OMEGA_DIR . 'admin/views/tier-distribution.php';
+    }
+
+    public function render_artists(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/artists-hub.php';
+    }
+    public function render_automation(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/automation-hub.php';
+    }
+    public function render_weight_sync(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/weight-sync.php';
     }
     public function render_analytics(): void {
         global $wpdb;

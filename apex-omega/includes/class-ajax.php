@@ -40,6 +40,10 @@ class Ajax {
             'apex_start_tier_job',
             'apex_process_tier_chunk',
             'apex_tier_job_status',
+            'apex_preview_weight_sync',
+            'apex_apply_weight_sync',
+            'apex_start_weight_sync_job',
+            'apex_process_weight_chunk',
         ];
         foreach ($actions as $a) {
             add_action('wp_ajax_' . $a, [__CLASS__, 'router']);
@@ -162,6 +166,18 @@ class Ajax {
                 break;
             case 'apex_tier_job_status':
                 self::tier_job_status();
+                break;
+            case 'apex_preview_weight_sync':
+                self::preview_weight_sync();
+                break;
+            case 'apex_apply_weight_sync':
+                self::apply_weight_sync();
+                break;
+            case 'apex_start_weight_sync_job':
+                self::start_weight_sync_job();
+                break;
+            case 'apex_process_weight_chunk':
+                self::process_weight_chunk();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -359,18 +375,53 @@ class Ajax {
 
         $field = sanitize_text_field($_POST['field_type'] ?? '');
         $value = $_POST['value'] ?? null;
+        $range_min = $_POST['range_min'] ?? null;
+        $range_max = $_POST['range_max'] ?? null;
         $mode = sanitize_text_field($_POST['mode'] ?? 'manual');
 
+        $is_range = ($range_min !== null && $range_min !== '' && $range_max !== null && $range_max !== '');
         $exec = apex_omega_generate_uuid();
         $success_count = 0;
         $errors = [];
+
+        if ($is_range) {
+            // اعتبارسنجی بازه یک‌بار قبل از حلقه
+            if ($field === 'views') {
+                [$ok1, $errs1, $vmin] = Validator::validate_views($range_min);
+                [$ok2, $errs2, $vmax] = Validator::validate_views($range_max);
+                if (!$ok1) wp_send_json_error(['message'=>'حداقل بازدید نامعتبر: '.implode(' ', $errs1)],400);
+                if (!$ok2) wp_send_json_error(['message'=>'حداکثر بازدید نامعتبر: '.implode(' ', $errs2)],400);
+                if ($vmin > $vmax) wp_send_json_error(['message'=>'حداقل نمی‌تواند بیشتر از حداکثر باشد ('.number_format_i18n($vmin).' > '.number_format_i18n($vmax).')'],400);
+            } elseif ($field === 'kksr_casts') {
+                [$ok1, $errs1, $vmin] = Validator::validate_casts($range_min);
+                [$ok2, $errs2, $vmax] = Validator::validate_casts($range_max);
+                if (!$ok1) wp_send_json_error(['message'=>'حداقل رأی نامعتبر: '.implode(' ', $errs1)],400);
+                if (!$ok2) wp_send_json_error(['message'=>'حداکثر رأی نامعتبر: '.implode(' ', $errs2)],400);
+                if ($vmin > $vmax) wp_send_json_error(['message'=>'حداقل رأی بیشتر از حداکثر است'],400);
+            } elseif ($field === 'kksr_avg') {
+                $detect = Adapter_KKSR::detect(); $best = $detect['best'];
+                [$ok1, $errs1, $vmin] = Validator::validate_avg($range_min, $best);
+                [$ok2, $errs2, $vmax] = Validator::validate_avg($range_max, $best);
+                if (!$ok1) wp_send_json_error(['message'=>'حداقل میانگین نامعتبر: '.implode(' ', $errs1)],400);
+                if (!$ok2) wp_send_json_error(['message'=>'حداکثر میانگین نامعتبر: '.implode(' ', $errs2)],400);
+                if ($vmin > $vmax) wp_send_json_error(['message'=>'حداقل میانگین بیشتر از حداکثر است'],400);
+            } else {
+                wp_send_json_error(['message'=>"فیلد $field پشتیبانی نمی‌شود در حالت بازه"],400);
+            }
+        }
 
         foreach ($post_ids as $pid) {
             if (!get_post($pid)) { $errors[] = "نوشته $pid یافت نشد."; continue; }
             if (!current_user_can('edit_post', $pid) && !apex_omega_user_can_manage()) { $errors[] = "دسترسی ویرایش پست $pid ندارید."; continue; }
             if ($field === 'views') {
-                [$ok, $errs, $v] = Validator::validate_views($value);
-                if (!$ok) { $errors[] = "پست $pid: " . implode(' ', $errs); continue; }
+                if ($is_range) {
+                    [$ok1, $errs1, $vmin] = Validator::validate_views($range_min);
+                    [$ok2, $errs2, $vmax] = Validator::validate_views($range_max);
+                    $v = mt_rand((int)$vmin, (int)$vmax);
+                } else {
+                    [$ok, $errs, $v] = Validator::validate_views($value);
+                    if (!$ok) { $errors[] = "پست $pid: " . implode(' ', $errs); continue; }
+                }
                 $old = Adapter_Views::get_views($pid);
                 if (Adapter_Views::set_views($pid, $v, 'bulk_manual', $exec)) {
                     History::log($pid, 'views', $old, $v, 'bulk_manual', get_current_user_id(), $exec);
@@ -382,8 +433,14 @@ class Ajax {
                 $best = $detect['best'];
                 $stats = Adapter_KKSR::get_stats($pid);
                 if ($field === 'kksr_casts') {
-                    [$ok, $errs, $vc] = Validator::validate_casts($value);
-                    if (!$ok) { $errors[] = "پست $pid: " . implode(' ', $errs); continue; }
+                    if ($is_range) {
+                        [$ok1, $errs1, $vmin] = Validator::validate_casts($range_min);
+                        [$ok2, $errs2, $vmax] = Validator::validate_casts($range_max);
+                        $vc = mt_rand((int)$vmin, (int)$vmax);
+                    } else {
+                        [$ok, $errs, $vc] = Validator::validate_casts($value);
+                        if (!$ok) { $errors[] = "پست $pid: " . implode(' ', $errs); continue; }
+                    }
                     $old = $stats;
                     $new_ratings = $stats['avg'] * $vc / $best *5;
                     if (Adapter_KKSR::set_stats($pid, $vc, $new_ratings, $stats['avg'], 'bulk_manual', $exec)) {
@@ -391,8 +448,16 @@ class Ajax {
                         $success_count++;
                     }
                 } else {
-                    [$ok, $errs, $va] = Validator::validate_avg($value, $best);
-                    if (!$ok) { $errors[] = "پست $pid: " . implode(' ', $errs); continue; }
+                    if ($is_range) {
+                        [$ok1, $errs1, $vmin] = Validator::validate_avg($range_min, $best);
+                        [$ok2, $errs2, $vmax] = Validator::validate_avg($range_max, $best);
+                        // بازه تصادفی با دقت 0.1
+                        $vmin10 = (int) round($vmin*10); $vmax10 = (int) round($vmax*10);
+                        $va = mt_rand($vmin10, $vmax10)/10;
+                    } else {
+                        [$ok, $errs, $va] = Validator::validate_avg($value, $best);
+                        if (!$ok) { $errors[] = "پست $pid: " . implode(' ', $errs); continue; }
+                    }
                     $new_ratings = $va * $stats['casts'] / $best *5;
                     if (Adapter_KKSR::set_stats($pid, $stats['casts'], $new_ratings, $va, 'bulk_manual', $exec)) {
                         History::log($pid, 'kksr_avg', $stats['avg'], $va, 'bulk_manual', get_current_user_id(), $exec);
@@ -405,7 +470,9 @@ class Ajax {
             }
         }
 
-        wp_send_json_success(['success_count'=>$success_count, 'errors'=>$errors, 'execution_id'=>$exec]);
+        $res = ['success_count'=>$success_count, 'errors'=>$errors, 'execution_id'=>$exec];
+        if ($is_range) { $res['range_mode']=true; $res['range_min']=$range_min; $res['range_max']=$range_max; }
+        wp_send_json_success($res);
     }
 
     private static function preview_tier(): void {
@@ -655,4 +722,41 @@ class Ajax {
         if (!empty($res['success'])) wp_send_json_success($res);
         wp_send_json_error($res, 400);
     }
+
+    private static function preview_weight_sync(): void {
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'limit' => isset($_POST['limit']) ? (int)$_POST['limit'] : 10000,
+        ];
+        $res = \ApexOmega\Core\ArtistManager::preview_weight_sync($filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function apply_weight_sync(): void {
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'limit' => isset($_POST['limit']) ? (int)$_POST['limit'] : 10000,
+        ];
+        $res = \ApexOmega\Core\ArtistManager::apply_weight_sync($filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function start_weight_sync_job(): void {
+        $filters = ['category'=>sanitize_text_field($_POST['category']??'all'),'post_type'=>sanitize_text_field($_POST['post_type']??'any'),'limit'=>isset($_POST['limit'])?(int)$_POST['limit']:5000];
+        $chunk_size = isset($_POST['chunk_size']) ? max(10,min(200,(int)$_POST['chunk_size'])) : 100;
+        $res = \ApexOmega\Core\ArtistManager::start_weight_sync_job($filters, $chunk_size);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function process_weight_chunk(): void {
+        $exec = sanitize_text_field($_POST['execution_id'] ?? '');
+        if (!$exec) wp_send_json_error(['message'=>'execution_id الزامی است'],400);
+        $chunk_size = isset($_POST['chunk_size']) ? (int)$_POST['chunk_size'] : 0;
+        $res = \ApexOmega\Core\ArtistManager::process_weight_chunk($exec, $chunk_size);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+
 }

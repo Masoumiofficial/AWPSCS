@@ -558,4 +558,300 @@ class ArtistManager {
         ];
         return apply_filters('apex_omega_ir_providers', $providers);
     }
+
+    /* ─── v2.1.8: همگام‌سازی یک‌کلیک وزن→بازه — هیچ آهنگ 95 وزنی 10k نمی‌ماند ─── */
+    // v2.1.9 FAST: batch query برای پیش‌نمایش وزن — جلوگیری از 503
+    private static function get_weights_batch_fast(array $pids): array {
+        if (empty($pids)) return [];
+        $tax = self::detect_artist_taxonomy();
+        $weights_opt = get_option(self::OPTION_WEIGHTS, []);
+        $map = array_fill_keys($pids, 50); // پیش‌فرض 50
+        if (!$tax) return $map;
+        global $wpdb;
+        // chunk IN برای جلوگیری از packet overflow
+        $chunks = array_chunk($pids, 800);
+        $term_map = []; // object_id => [term_id,...]
+        foreach ($chunks as $chunk) {
+            $in = implode(',', array_map('intval', $chunk));
+            // مستقیم join برای سرعت
+            $rows = $wpdb->get_results("SELECT tr.object_id, tt.term_id FROM {$wpdb->term_relationships} tr INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tt.taxonomy = '" . esc_sql($tax) . "' AND tr.object_id IN ($in)", ARRAY_A);
+            if ($rows) foreach ($rows as $r) {
+                $oid = (int)$r['object_id'];
+                $tid = (int)$r['term_id'];
+                $term_map[$oid][] = $tid;
+            }
+        }
+        foreach ($map as $pid => $def) {
+            $tids = $term_map[$pid] ?? [];
+            $max = 0;
+            foreach ($tids as $tid) {
+                $w = $weights_opt[$tid] ?? 50;
+                if ($w > $max) $max = $w;
+            }
+            if ($max) $map[$pid] = $max;
+        }
+        return $map;
+    }
+
+    public static function preview_weight_sync(array $filters = []): array {
+        if (function_exists('set_time_limit')) @set_time_limit(90);
+        $tiers = \ApexOmega\Core\TierManager::get_tiers();
+        $tiers_by_id = [];
+        foreach ($tiers as $tt) $tiers_by_id[$tt['id']] = $tt;
+        $best = (int) get_option('kksr_stars', 5);
+        if ($best < 1) $best = 5;
+        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $total = count($eligible_ids);
+        if ($total === 0) {
+            return ['success'=>false,'message'=>'هیچ آهنگی با این فیلتر یافت نشد.','total'=>0];
+        }
+        // گروه‌بندی بر اساس وزن هر پست — FAST batch (بدون get_weight_for_post سنگین + بدون عنوان AI)
+        $grouped = [];
+        foreach (array_keys($tiers_by_id) as $tid) $grouped[$tid] = [];
+        $weights_batch = self::get_weights_batch_fast($eligible_ids);
+        foreach ($eligible_ids as $pid) {
+            $w = $weights_batch[$pid] ?? 50;
+            $tier_hint = self::weight_to_tier_hint((int)$w);
+            if (!isset($grouped[$tier_hint])) $tier_hint = 'tier_7';
+            $grouped[$tier_hint][] = (int)$pid;
+        }
+        // تولید preview + summary
+        $preview = [];
+        $summary = [];
+        $tier_counts = [];
+        $grand_views = 0;
+        foreach ($tiers_by_id as $tier_id => $tier) {
+            $ids = $grouped[$tier_id] ?? [];
+            $count = count($ids);
+            $tier_counts[$tier_id] = $count;
+            if ($count === 0) continue;
+            $slice_preview = [];
+            $sum_v = 0; $sum_c = 0; $sum_a = 0;
+            // برای پیش‌نمایش فقط نمونه 3 تا نگه می‌داریم تا JSON سبک بماند — summary دقیق است
+            $sample_limit = 3;
+            $sample_i = 0;
+            foreach ($ids as $pid) {
+                $vals = \ApexOmega\Core\TierManager::generate_values($tier, $best);
+                $sum_v += $vals['views'];
+                $sum_c += $vals['casts'];
+                $sum_a += $vals['avg'];
+                if ($sample_i < $sample_limit) {
+                    $slice_preview[] = [
+                        'post_id' => $pid,
+                        'views' => $vals['views'],
+                        'casts' => $vals['casts'],
+                        'avg' => $vals['avg'],
+                        'ratings' => $vals['ratings'],
+                    ];
+                    $sample_i++;
+                }
+            }
+            $grand_views += $sum_v;
+            $summary[$tier_id] = [
+                'label' => $tier['label'],
+                'icon' => $tier['icon'],
+                'color' => $tier['color'],
+                'count' => $count,
+                'avg_views' => $count ? (int) round($sum_v / $count) : 0,
+                'total_views' => $sum_v,
+                'avg_casts' => $count ? (int) round($sum_c / $count) : 0,
+                'avg_rating' => $count ? round($sum_a / $count, 2) : 0,
+                'views_min' => (int)$tier['views_min'],
+                'views_max' => (int)$tier['views_max'],
+            ];
+            $preview[$tier_id] = $slice_preview;
+        }
+        return [
+            'success' => true,
+            'total' => $total,
+            'tier_counts' => $tier_counts,
+            'preview' => $preview,
+            'summary' => $summary,
+            'tiers' => $tiers_by_id,
+            'message' => sprintf('همگام‌سازی وزن‌محور: %s آهنگ در %s دسته (هیچ 95 وزنی زیر %s نمی‌ماند)', number_format_i18n($total), count(array_filter($tier_counts)), number_format_i18n($tiers_by_id['tier_1']['views_min'] ?? 900000)),
+        ];
+    }
+
+    public static function apply_weight_sync(array $filters = [], int $chunk_size = 0): array {
+        if (function_exists('set_time_limit')) @set_time_limit(180);
+        @ini_set('max_execution_time','180');
+        @ini_set('memory_limit','256M');
+        $preview = self::preview_weight_sync($filters);
+        if (empty($preview['success'])) return $preview;
+        // برای apply تک‌درخواستی هم flat کامل بساز (preview فقط 3 نمونه دارد)
+        $tiers = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id=[]; foreach($tiers as $tt) $tiers_by_id[$tt['id']]=$tt;
+        $best = (int) get_option('kksr_stars', 5);
+        if ($best < 1) $best = 5;
+        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $weights_batch = self::get_weights_batch_fast($eligible_ids);
+        $flat_map = []; // tier_id => [items]
+        $tier_counts = $preview['tier_counts'] ?? [];
+        $total = (int)$preview['total'];
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        // ساخت preview کامل داخلی برای snapshot (نه preview سبک)
+        $full_preview = [];
+        foreach ($eligible_ids as $pid) {
+            $w = $weights_batch[$pid] ?? 50;
+            $tier_id = self::weight_to_tier_hint((int)$w);
+            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_7';
+            $tier=$tiers_by_id[$tier_id];
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best);
+                        $full_preview[$tier_id][] = ['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings']];
+        }
+        // برای snapshot از full_preview استفاده کن، نه preview سبک
+        $preview['preview'] = $full_preview;
+
+        $ttl = apex_omega_lock_ttl($total, 30, 600, 2);
+        $master_lock = 'apex_weight_sync_master';
+        if (!\ApexOmega\Core\Database::acquire_lock($master_lock, $ttl)) {
+            return ['success'=>false,'message'=>'همگام‌سازی دیگری در حال اجراست. لطفاً '.$ttl.' ثانیه صبر کنید.','ttl'=>$ttl];
+        }
+        // snapshot rows: جمع old→new
+        $snapshot_rows = [];
+        foreach ($preview['preview'] as $tier_id => $items) {
+            foreach ($items as $item) {
+                $pid = (int)$item['post_id'];
+                $old_views = \ApexOmega\Core\Adapter_Views::get_views($pid);
+                $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+                $snapshot_rows[] = [
+                    'post_id'=>$pid,'post_title'=>$item['post_title']??(string)$pid,'tier'=>$tier_id,
+                    'old_views'=>$old_views,'new_views'=>$item['views'],
+                    'old_casts'=>$old_kksr['casts'],'old_avg'=>$old_kksr['avg'],'old_ratings'=>$old_kksr['ratings'],'best'=>$best,
+                    'new_casts'=>$item['casts'],'new_avg'=>$item['avg'],'new_ratings'=>$item['ratings'],
+                ];
+            }
+        }
+        $applied=0; $errors=[]; $details=[]; $counter=0;
+        foreach ($preview['preview'] as $tier_id => $items) {
+            foreach ($items as $item) {
+                if ($counter>0 && $counter%100===0){ usleep(300000); if(function_exists('set_time_limit')) @set_time_limit(180); }
+                $counter++;
+                $pid=(int)$item['post_id'];
+                if(!get_post($pid)){ $errors[]="پست $pid یافت نشد"; continue; }
+                $lock="apex_tier_{$pid}";
+                if(!\ApexOmega\Core\Database::acquire_lock($lock, max(15,min(120,$ttl)))){ $errors[]="پست $pid قفل است"; continue; }
+                $old_views = \ApexOmega\Core\Adapter_Views::get_views($pid);
+                $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+                $detect = \ApexOmega\Core\Adapter_KKSR::detect();
+                global $wpdb;
+                $wpdb->query('START TRANSACTION');
+                try {
+                    update_post_meta($pid, \ApexOmega\Core\Adapter_Views::META_KEY, (int)$item['views']);
+                    $rv=get_post_meta($pid,'_apex_real_views',true);
+                    if($rv===''){ update_post_meta($pid,'_apex_real_views',$old_views); update_post_meta($pid,'_apex_real_views_captured_at', current_time('mysql',true)); }
+                    update_post_meta($pid,'_apex_managed_views',(int)$item['views']);
+                    update_post_meta($pid,'_apex_views_last_source','weight_sync');
+                    update_post_meta($pid,'_apex_views_last_exec',$exec);
+                    update_post_meta($pid,$detect['meta_casts'],(int)$item['casts']);
+                    update_post_meta($pid,$detect['meta_ratings'],(float)$item['ratings']);
+                    update_post_meta($pid,$detect['meta_avg'],(float)$item['avg']);
+                    wp_cache_delete($pid,'post_meta');
+                    update_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER, $tier_id);
+                    update_post_meta($pid,'_apex_tier_applied_at', current_time('mysql',true));
+                    $wpdb->query('COMMIT'); $ok=true;
+                } catch (\Throwable $e){ $wpdb->query('ROLLBACK'); error_log('[APEX Ω] weight_sync fail '.$e->getMessage()); $ok=false; }
+                if($ok){
+                    \ApexOmega\Core\History::log($pid,'views',$old_views,$item['views'],'weight_sync',$user_id,$exec,null,['tier'=>$tier_id,'weight_sync'=>true]);
+                    \ApexOmega\Core\History::log($pid,'kksr_combined',wp_json_encode(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings']],JSON_UNESCAPED_UNICODE),wp_json_encode(['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings']],JSON_UNESCAPED_UNICODE),'weight_sync',$user_id,$exec,null,['tier'=>$tier_id,'best'=>$best]);
+                    do_action('apex_omega_views_updated',$pid,$old_views,(int)$item['views'],'weight_sync',$exec);
+                    $applied++;
+                    $details[]=['post_id'=>$pid,'post_title'=>$item['post_title']??(string)$pid,'edit_url'=>get_edit_post_link($pid),'tier'=>$tier_id,'old_views'=>$old_views,'new_views'=>$item['views'],'old_casts'=>$old_kksr['casts'],'new_casts'=>$item['casts'],'old_avg'=>$old_kksr['avg'],'new_avg'=>$item['avg']];
+                } else { $errors[]="خطا در پست $pid"; }
+                \ApexOmega\Core\Database::release_lock($lock);
+            }
+        }
+        try { \ApexOmega\Core\Database::create_snapshot($exec,$user_id,$preview['tier_counts']??[],$filters,$total,$applied,$snapshot_rows); } catch(\Throwable $e){ error_log('[APEX Ω] weight snapshot fail '.$e->getMessage()); }
+        update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION,['counts'=>$preview['tier_counts']??[],'filters'=>$filters,'applied'=>$applied,'exec'=>$exec,'at'=>current_time('mysql',true),'errors'=>$errors,'weight_sync'=>true],false);
+        \ApexOmega\Core\Database::release_lock($master_lock);
+        return ['success'=>true,'applied'=>$applied,'errors'=>$errors,'execution_id'=>$exec,'summary'=>$preview['summary'],'details'=>$details,'snapshot_id'=>$exec,'ttl_used'=>$ttl,'total'=>$total,'tier_counts'=>$preview['tier_counts']??[]];
+    }
+
+    // ── Job chunked برای وزن (مثل tier job) ──
+    public static function start_weight_sync_job(array $filters = [], int $chunk_size = 100): array {
+        if (function_exists('set_time_limit')) @set_time_limit(60);
+        $preview = self::preview_weight_sync($filters);
+        if (empty($preview['success'])) return $preview;
+        // برای job باید همه پست‌ها را با مقدار رندم بسازی — نه فقط نمونه 3تایی preview
+        $tiers = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id=[]; foreach($tiers as $tt) $tiers_by_id[$tt['id']]=$tt;
+        $best=(int)get_option('kksr_stars',5); if($best<1) $best=5;
+        $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        $weights_batch = self::get_weights_batch_fast($eligible_ids);
+        $flat=[];
+        foreach ($eligible_ids as $pid) {
+            $w = $weights_batch[$pid] ?? 50;
+            $tier_id = self::weight_to_tier_hint((int)$w);
+            if (!isset($tiers_by_id[$tier_id])) $tier_id='tier_7';
+            $tier=$tiers_by_id[$tier_id];
+            $vals=\ApexOmega\Core\TierManager::generate_values($tier,$best);
+            $flat[]=['post_id'=>$pid,'post_title'=>'ID '.$pid,'tier_id'=>$tier_id,'views'=>$vals['views'],'casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings']];
+        }
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        $total = count($flat);
+        \ApexOmega\Core\Database::create_job($exec,$user_id,$preview['tier_counts']??[],$filters,$flat,$total,$chunk_size);
+        if (class_exists('\\ApexOmega\\Core\\QueueWorker')) { try { \ApexOmega\Core\QueueWorker::enqueue('weight_sync',['execution_id'=>$exec,'total'=>$total],10);} catch(\Throwable $e){} }
+        return ['success'=>true,'execution_id'=>$exec,'total'=>$total,'chunk_size'=>$chunk_size,'message'=>'کار وزن‌محور ایجاد شد — '.$total.' آهنگ در صف','preview_summary'=>$preview['summary'],'tier_counts'=>$preview['tier_counts']??[]];
+    }
+
+    public static function process_weight_chunk(string $execution_id, int $chunk_size = 0): array {
+        $job = \ApexOmega\Core\Database::get_job($execution_id);
+        if (!$job) return ['success'=>false,'message'=>'کار یافت نشد'];
+        if (in_array($job['status'],['done','failed'],true) && (int)$job['processed'] >= (int)$job['total']) return ['success'=>true,'status'=>'done','processed'=>(int)$job['processed'],'total'=>(int)$job['total'],'message'=>'کار قبلا کامل شده'];
+        $chunk_size = $chunk_size>0 ? $chunk_size : (int)$job['chunk_size'];
+        $chunk_size = max(10,min(200,$chunk_size));
+        $payload = json_decode($job['payload_json'], true);
+        if (!is_array($payload)) return ['success'=>false,'message'=>'payload نامعتبر'];
+        $total=(int)$job['total']; $processed=(int)$job['processed'];
+        if ($processed >= $total){ \ApexOmega\Core\Database::update_job_progress($execution_id,$total,'done'); return ['success'=>true,'status'=>'done','processed'=>$total,'total'=>$total]; }
+        $lock_key='apex_job_'.$execution_id;
+        if (!\ApexOmega\Core\Database::acquire_lock($lock_key,120)) return ['success'=>false,'message'=>'کار دیگری در حال پردازش است','retry_after'=>5];
+        $job=\ApexOmega\Core\Database::get_job($execution_id); $processed=(int)$job['processed'];
+        $slice=array_slice($payload,$processed,$chunk_size);
+        if(empty($slice)){ \ApexOmega\Core\Database::release_lock($lock_key); \ApexOmega\Core\Database::update_job_progress($execution_id,$total,'done'); return ['success'=>true,'status'=>'done','processed'=>$total,'total'=>$total]; }
+        $best=(int)get_option('kksr_stars',5); if($best<1) $best=5;
+        $applied=0; $errors=[]; $snapshot_rows=[];
+        global $wpdb;
+        foreach($slice as $item){
+            $pid=(int)$item['post_id']; $tier_id=$item['tier_id'];
+            if(!get_post($pid)){ $errors[]="پست $pid یافت نشد"; continue; }
+            $plock="apex_tier_{$pid}";
+            if(!\ApexOmega\Core\Database::acquire_lock($plock,20)){ $errors[]="پست $pid قفل است"; continue; }
+            $old_views=\ApexOmega\Core\Adapter_Views::get_views($pid);
+            $old_kksr=\ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            $detect=\ApexOmega\Core\Adapter_KKSR::detect();
+            $wpdb->query('START TRANSACTION');
+            try {
+                update_post_meta($pid,\ApexOmega\Core\Adapter_Views::META_KEY,(int)$item['views']);
+                $rv=get_post_meta($pid,'_apex_real_views',true); if($rv===''){ update_post_meta($pid,'_apex_real_views',$old_views); update_post_meta($pid,'_apex_real_views_captured_at',current_time('mysql',true));}
+                update_post_meta($pid,'_apex_managed_views',(int)$item['views']);
+                update_post_meta($pid,'_apex_views_last_source','weight_sync_chunked');
+                update_post_meta($pid,'_apex_views_last_exec',$execution_id);
+                update_post_meta($pid,$detect['meta_casts'],(int)$item['casts']);
+                update_post_meta($pid,$detect['meta_ratings'],(float)$item['ratings']);
+                update_post_meta($pid,$detect['meta_avg'],(float)$item['avg']);
+                wp_cache_delete($pid,'post_meta');
+                update_post_meta($pid,\ApexOmega\Core\TierManager::META_TIER,$tier_id);
+                update_post_meta($pid,'_apex_tier_applied_at',current_time('mysql',true));
+                $wpdb->query('COMMIT');
+                \ApexOmega\Core\History::log($pid,'views',$old_views,$item['views'],'weight_sync',$user_id??get_current_user_id(),$execution_id,null,['tier'=>$tier_id,'chunked'=>true]);
+                \ApexOmega\Core\History::log($pid,'kksr_combined',wp_json_encode(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings']],JSON_UNESCAPED_UNICODE),wp_json_encode(['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings']],JSON_UNESCAPED_UNICODE),'weight_sync',get_current_user_id(),$execution_id,null,['tier'=>$tier_id,'best'=>$best,'chunked'=>true]);
+                do_action('apex_omega_views_updated',$pid,$old_views,(int)$item['views'],'weight_sync_chunked',$execution_id);
+                $snapshot_rows[]=['post_id'=>$pid,'post_title'=>$item['post_title']??(string)$pid,'tier'=>$tier_id,'old_views'=>$old_views,'new_views'=>$item['views'],'old_casts'=>$old_kksr['casts'],'old_avg'=>$old_kksr['avg'],'old_ratings'=>$old_kksr['ratings'],'best'=>$best,'new_casts'=>$item['casts'],'new_avg'=>$item['avg'],'new_ratings'=>$item['ratings']];
+                $applied++;
+            } catch(\Throwable $e){ $wpdb->query('ROLLBACK'); $errors[]="پست $pid: ".$e->getMessage(); }
+            \ApexOmega\Core\Database::release_lock($plock);
+        }
+        $new_processed=$processed+$applied;
+        $opt_key='apex_job_snapshot_'.$execution_id;
+        $acc=get_option($opt_key,[]); if(!is_array($acc)) $acc=[]; $acc=array_merge($acc,$snapshot_rows); update_option($opt_key,$acc,false);
+        if($applied===0 && !empty($errors) && count($slice)===count($errors)){ \ApexOmega\Core\Database::increment_job_retry($execution_id); \ApexOmega\Core\Database::release_lock($lock_key); return ['success'=>false,'message'=>'خطا chunk: '.implode(' | ',array_slice($errors,0,3)),'errors'=>$errors,'processed'=>$processed,'total'=>$total,'retry'=>true]; }
+        $is_done=($new_processed >= $total);
+        \ApexOmega\Core\Database::update_job_progress($execution_id,$new_processed,$is_done?'done':'running');
+        \ApexOmega\Core\Database::release_lock($lock_key);
+        if($is_done){
+            try { $counts=json_decode($job['counts_json'],true)?:[]; $filters=json_decode($job['filters_json'],true)?:[]; \ApexOmega\Core\Database::create_snapshot($execution_id,(int)$job['user_id'],$counts,$filters,$total,$new_processed,$acc); delete_option($opt_key); update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION,['counts'=>$counts,'filters'=>$filters,'applied'=>$new_processed,'exec'=>$execution_id,'at'=>current_time('mysql',true),'errors'=>$errors,'chunked'=>true,'weight_sync'=>true],false); } catch(\Throwable $e){ error_log('[APEX Ω] weight chunk snapshot fail '.$e->getMessage()); }
+        }
+        return ['success'=>true,'status'=>$is_done?'done':'running','processed'=>$new_processed,'total'=>$total,'applied_in_chunk'=>$applied,'errors'=>$errors,'remaining'=>$total-$new_processed,'percent'=>$total?round($new_processed/$total*100,1):0];
+    }
 }
