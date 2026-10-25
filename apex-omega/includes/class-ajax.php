@@ -40,6 +40,10 @@ class Ajax {
             'apex_start_tier_job',
             'apex_process_tier_chunk',
             'apex_tier_job_status',
+            'apex_preview_weight_sync',
+            'apex_apply_weight_sync',
+            'apex_start_weight_sync_job',
+            'apex_process_weight_chunk',
         ];
         foreach ($actions as $a) {
             add_action('wp_ajax_' . $a, [__CLASS__, 'router']);
@@ -162,6 +166,18 @@ class Ajax {
                 break;
             case 'apex_tier_job_status':
                 self::tier_job_status();
+                break;
+            case 'apex_preview_weight_sync':
+                self::preview_weight_sync();
+                break;
+            case 'apex_apply_weight_sync':
+                self::apply_weight_sync();
+                break;
+            case 'apex_start_weight_sync_job':
+                self::start_weight_sync_job();
+                break;
+            case 'apex_process_weight_chunk':
+                self::process_weight_chunk();
                 break;
             default:
                 wp_send_json_error(['message' => 'اکشن نامعتبر'], 400);
@@ -706,4 +722,41 @@ class Ajax {
         if (!empty($res['success'])) wp_send_json_success($res);
         wp_send_json_error($res, 400);
     }
+
+    private static function preview_weight_sync(): void {
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'limit' => isset($_POST['limit']) ? (int)$_POST['limit'] : 10000,
+        ];
+        $res = \ApexOmega\Core\ArtistManager::preview_weight_sync($filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function apply_weight_sync(): void {
+        $filters = [
+            'category' => sanitize_text_field($_POST['category'] ?? 'all'),
+            'post_type' => sanitize_text_field($_POST['post_type'] ?? 'any'),
+            'limit' => isset($_POST['limit']) ? (int)$_POST['limit'] : 10000,
+        ];
+        $res = \ApexOmega\Core\ArtistManager::apply_weight_sync($filters);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function start_weight_sync_job(): void {
+        $filters = ['category'=>sanitize_text_field($_POST['category']??'all'),'post_type'=>sanitize_text_field($_POST['post_type']??'any'),'limit'=>isset($_POST['limit'])?(int)$_POST['limit']:5000];
+        $chunk_size = isset($_POST['chunk_size']) ? max(10,min(200,(int)$_POST['chunk_size'])) : 100;
+        $res = \ApexOmega\Core\ArtistManager::start_weight_sync_job($filters, $chunk_size);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function process_weight_chunk(): void {
+        $exec = sanitize_text_field($_POST['execution_id'] ?? '');
+        if (!$exec) wp_send_json_error(['message'=>'execution_id الزامی است'],400);
+        $chunk_size = isset($_POST['chunk_size']) ? (int)$_POST['chunk_size'] : 0;
+        $res = \ApexOmega\Core\ArtistManager::process_weight_chunk($exec, $chunk_size);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+
 }

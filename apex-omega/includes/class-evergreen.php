@@ -96,7 +96,8 @@ class Evergreen {
             $cur_views = Adapter_Views::get_views($pid);
             if ($cur_views >= $max) continue;
             if ($cur_views < 100) $cur_views = 100; // حداقل
-                // 2.0-alpha: Simulator S-curve (جایگزین فرمول خطی قدیمی)
+            $tier = get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER, true);
+            // 2.0-alpha: Simulator S-curve (جایگزین فرمول خطی قدیمی)
             $tier_cap = null;
             if ($tier) {
                 $tiers = TierManager::get_tiers();
@@ -159,7 +160,7 @@ class Evergreen {
             // لاگ سبک (هر 12 تیک ≈ هر ساعت)
             $tick_count = (int) get_option('apex_evergreen_tick_count_' . get_current_blog_id(), 0);
             if ($tick_count % 12 === 0) {
-                History::log($pid, 'views', $cur_views, $new_views, 'evergreen', $user_id, $exec, null, ['rate'=>$rate,'inc'=>$inc,'tier'=>$tier,'mult'=>$mult]);
+                History::log($pid, 'views', $cur_views, $new_views, 'evergreen', $user_id, $exec, null, ['rate'=>$base_rate,'inc'=>$inc,'tier'=>$tier]);
             }
         }
         $tc = (int) get_option('apex_evergreen_tick_count_' . get_current_blog_id(), 0);

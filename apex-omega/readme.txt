@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.1.7
+Stable tag: 2.1.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,11 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.1.8 (2026-10-27) =
+* FEATURE: همگام‌سازی یک‌کلیک وزن→بازه — تمام آهنگ‌های هر هنرمند بر اساس وزنش داخل بازه تیره‌اش می‌رود (مثلاً 95 → 900K-10M) — هیچ آهنگ 95ای 10k نمی‌ماند، هر پست رندم جدا داخل بازه (حل درخواست alireza-ghorbani)
+* FEATURE: راهنمای اصولی ۳لایه (توزیع اولیه + Evergreen + نگهبان تازه‌ها) اضافه شد — بعد همگام‌سازی Evergreen تا سقف تیره (الماس 10M، تازه 10K) نگه می‌دارد، رشد طبیعی S-curve
+* FIX: Evergreen tier خوانده نمی‌شد — $tier از post_meta خوانده می‌شود + فیکس لاگ
 
 = 2.1.7 (2026-10-26) =
 * FEATURE: سقف بازدید از 1.5M به 10M افزایش یافت (درخواست شما) — tier_1 الان 900K-10M، ولیدیتور، Evergreen و آنالیتیکس هم 10M شدند
