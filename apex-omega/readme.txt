@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.5
+Stable tag: 2.2.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,13 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.6 (2026-10-27) =
+* FIX تنظیمات: layout شکسته به flex+noscript fallback اصلاح، تب ششم همگام‌سازی (mode/cooldown/batch/exclude_recent/protect_selected/protect_manual) با ذخیره apex_omega_weight_sync
+* FIX همگام‌سازی: دیگر همه پست‌ها بازنویسی نمی‌شود — mode=cooldown/unsynced/lower_only + محافظ منتخب/دستی؛ preview و apply/start_job همسان فیلتر
+* آثار منتخب سبک: خلاصه دستی/خودکار، فیلتر صفحه‌ای 60، badge پرمیوم 11.8M، کش selected_ids transient 5min + static cache is_in_selected_works (بدون N×tax)
+* BUG مهاجرت معکوس (max>10M) به max<9000000&&<=1500000 اصلاح در tier+apex-omega؛ Evergreen $max داخل حلقه ثابت (premium_max)؛ CommentGuardian is_premium صریح
+* UI: apex-glass.css (blur 16px saturate 180% rgba .72) به تمام پنل‌های ادمین (dashboard/tier/artists/automation/weight/hits/analytics/bulk/history/help) + ریسپانسیو
 
 = 2.2.5 (2026-10-27) =
 * FEATURE: دسته آثار منتخب https://ahangban.ir/selected-works/ (slug: selected-works) — هر پست در این دسته خودکار هیت پرفکت محسوب می‌شود: بازدید 9.5-11.8M (تا 18٪ فراتر از سقف 10M)، رای 16-24K، میانگین 4.9-5.0، کامنت پرفکت 35٪ بیشتر (بدون انتقاد)، Evergreen/AutoWatch رشد 40٪ سریع‌تر + سقف 11.8M

@@ -230,6 +230,7 @@ class CommentGuardian {
 
     // تولید متن کامنت — طبیعی مثل رز موزیک / موزیکس-فا (تحلیل 12 نمونه واقعی) — کوتاه، کشیده، غلط ریز، بدون تکرار
     public static function generate_text(int $post_id, string $artist, string $title, int $weight, int $views, bool $is_premium = false): string {
+        $orig_weight = $weight; $orig_views = $views;
         // منتخب ویژه — وزن موثر 95 برای پرفکت بودن (حتی اگر خواننده نوپا باشد)
         if ($is_premium) { $weight = max($weight, 95); $views = max($views, 800000); }
         $clean = self::clean_song_title($title, $artist);
@@ -237,11 +238,11 @@ class CommentGuardian {
         $use_ai = (mt_rand(1,100) <= 35);
         $txt = null;
         if ($use_ai) $txt = self::generate_via_ai($artist, $clean, $weight, $views);
-        if (!$txt) $txt = self::fallback_text($weight, $views, $clean);
+        if (!$txt) $txt = self::fallback_text($weight, $views, $clean, $is_premium);
         // ضد تکرار سراسری: اگر این متن اخیراً استفاده شده، دوباره بساز
         $tries = 0;
         while (self::is_recent_duplicate($txt, $post_id) && $tries < 4) {
-            $txt = self::fallback_text($weight, $views, $clean);
+            $txt = self::fallback_text($weight, $views, $clean, $is_premium);
             $tries++;
         }
         self::remember_text($txt);
@@ -398,7 +399,7 @@ class CommentGuardian {
     }
 
 
-private static function fallback_text(int $weight, int $views, string $title = ''): string {
+private static function fallback_text(int $weight, int $views, string $title = '', bool $is_premium = false): string {
         // الهام از رز موزیک (12 نمونه) و موزیکس-فا — نه کپی، بلکه آنالیز طول/لحن/غلط
         // الگوها: 2-5 کلمه کوتاه 40%، محاوره کوتاه 25%، انتقادی/سوالی 15%، شخصی-خاطره‌ای 10%، طولانی‌ احساسی 10%
         // غلط‌ها: اهنگ بجای آهنگ (شایع)، کشیده عالییی/خیلییی، نقطه … ؟؟، نیم‌فاصله حذف
@@ -449,8 +450,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
         ];
 
         // وزن/بازدید → انتخاب وزن pool (نه همه مثبت! 15% انتقاد حتی برای پرطرفدار)
-        // منتخب ویژه: اگر وزن 95 مصنوعی از generate_text باشد، انتقاد تقریبا حذف — پرفکت
-        $is_premium_effective = ($weight >= 95 && $views >= 800000 && $weight === 95); // تقریبی: منتخب از generate_text
+        $is_premium_effective = $is_premium;
         $is_low = ($weight < 30 && $views < 15000);
         $is_high = ($weight >= 75 || $views >= 400000);
         $roll = mt_rand(1,100);
@@ -717,7 +717,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
                 ));
                 if ($dup) {
                     // متن تکراری — fallback دیگر بگیر
-                    $text = self::fallback_text($weight, $cur_views) . ' ' . mt_rand(10,99);
+                    $text = self::fallback_text($weight, $cur_views, '', $is_premium ?? false) . ' ' . mt_rand(10,99);
                 }
                 $cid = wp_insert_comment([
                     'comment_post_ID' => $pid,

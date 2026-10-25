@@ -93,24 +93,18 @@ class Evergreen {
         $user_id = 0; // سیستم
         foreach ($ids as $pid) {
             $pid = (int)$pid;
+            $is_premium_eg = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            $premium_max = $is_premium_eg ? (int) round($max * 1.18) : $max;
             $cur_views = Adapter_Views::get_views($pid);
-            if ($cur_views >= $max) continue;
+            if ($cur_views >= $premium_max) continue;
             if ($cur_views < 100) $cur_views = 100; // حداقل
             $tier = get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER, true);
-            // 2.0-alpha: Simulator S-curve (جایگزین فرمول خطی قدیمی)
             $tier_cap = null;
             if ($tier) {
                 $tiers = TierManager::get_tiers();
                 foreach ($tiers as $tt) if ($tt['id'] === $tier) { $tier_cap = (int)$tt['views_max']; break; }
             }
-            $effective_max = $tier_cap ? min($max, $tier_cap) : $max;
-            // منتخب ویژه: سقف 18٪ بالاتر (تا 11.8M) — پرفکت، توجه ویژه
-            $is_premium_eg = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
-            if ($is_premium_eg) {
-                $effective_max = (int) round($effective_max * 1.18);
-                $max = max($max, (int) round($max * 1.18));
-                if ($effective_max > $max) $effective_max = $max;
-            }
+            $effective_max = $tier_cap ? min($premium_max, $tier_cap * ($is_premium_eg ? 1.18 : 1)) : $premium_max;
             if ($cur_views >= $effective_max) continue;
 
             // پروفایل آرتیست از جدول profiles (اگر نباشد fallback به growth پیش‌فرض)

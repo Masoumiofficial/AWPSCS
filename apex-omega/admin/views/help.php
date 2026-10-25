@@ -1,5 +1,5 @@
 <?php if (!defined('ABSPATH')) exit; ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <h1>راهنمای APEX Ω</h1>
 
   <div class="apex-card">

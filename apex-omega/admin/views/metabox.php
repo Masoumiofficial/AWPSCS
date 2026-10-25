@@ -1,5 +1,5 @@
 <?php if (!defined('ABSPATH')) exit; ?>
-<div id="apex-omega-metabox-wrap" class="apex-wrap" style="margin:0;">
+<div id="apex-omega-metabox-wrap" class="apex-glass-wrap" style="margin:0;">
   <div class="apex-metabox-grid">
     <div>
       <h4>مقادیر فعلی (خوانده‌شده از دیتابیس)</h4>

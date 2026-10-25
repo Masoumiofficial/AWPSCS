@@ -121,6 +121,7 @@ class Admin {
         if (strpos($hook, 'apex-omega') === false && $hook !== 'post.php' && $hook !== 'post-new.php') return;
 
         wp_enqueue_style('apex-omega-admin', APEX_OMEGA_URL . 'admin/css/admin-rtl.css', [], APEX_OMEGA_VERSION);
+        wp_enqueue_style('apex-omega-glass', APEX_OMEGA_URL . 'admin/css/apex-glass.css', ['apex-omega-admin'], APEX_OMEGA_VERSION);
         wp_enqueue_script('apex-omega-admin', APEX_OMEGA_URL . 'admin/js/admin.js', ['jquery'], APEX_OMEGA_VERSION, true);
         global $wpdb;
         $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
@@ -301,6 +302,18 @@ class Admin {
                     'daily_growth'     => $_POST['commentor_daily_growth'] ?? null,
                     'batch'            => $_POST['commentor_batch'] ?? null,
                     'only_recent_days' => $_POST['commentor_only_recent_days'] ?? null,
+                ]);
+            }
+
+            // 5) همگام‌سازی وزن‌محور — کنترل کامل (جدید 2.2.6)
+            if (isset($_POST['weight_sync_mode']) || isset($_POST['weight_sync_cooldown_hours'])) {
+                \ApexOmega\Core\ArtistManager::save_weight_sync_settings([
+                    'mode'               => $_POST['weight_sync_mode'] ?? null,
+                    'cooldown_hours'     => $_POST['weight_sync_cooldown_hours'] ?? null,
+                    'batch'              => $_POST['weight_sync_batch'] ?? null,
+                    'exclude_recent_days'=> $_POST['weight_sync_exclude_recent_days'] ?? null,
+                    'protect_selected'   => isset($_POST['weight_sync_protect_selected']),
+                    'protect_manual'     => isset($_POST['weight_sync_protect_manual']),
                 ]);
             }
 

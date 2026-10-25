@@ -1,5 +1,5 @@
 <?php if (!defined('ABSPATH')) exit; ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <h1>ویرایش گروهی — APEX Ω</h1>
   <?php
     $ids_raw = $_GET['apex_bulk_ids'] ?? '';

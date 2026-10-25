@@ -11,7 +11,7 @@ $autowatch_last = get_option('apex_omega_autowatch_last_run', []);
 $commentor_last = get_option('apex_omega_commentor_last_run', []);
 $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings();
 ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <div class="apex-hero" style="background: linear-gradient(135deg,#0e7490 0%,#059669 50%,#9333ea 100%); color:#fff; border:none;">
     <div>
       <h1 style="margin:0;font-size:26px;color:#fff;">⚙️ اتوماسیون حرفه‌ای — رشد خودکار و اصولی</h1>

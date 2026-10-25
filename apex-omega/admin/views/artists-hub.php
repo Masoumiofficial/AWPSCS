@@ -11,7 +11,7 @@ $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings();
 $tiers = \ApexOmega\Core\TierManager::get_tiers();
 $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
 ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <div class="apex-hero" style="background: linear-gradient(135deg,#7c3aed 0%,#f59e0b 100%); color:#fff; border:none;">
     <div>
       <h1 style="margin:0;font-size:26px;color:#fff;">🎤 هنرمندان و الگوی ریتم — پنل حرفه‌ای</h1>

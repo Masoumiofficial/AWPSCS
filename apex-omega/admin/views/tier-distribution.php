@@ -11,7 +11,7 @@ $available_taxes = \ApexOmega\Core\ArtistManager::get_available_taxonomies();
 $saved_tax = get_option(\ApexOmega\Core\ArtistManager::OPTION_TAXONOMY, '');
 $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
 ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;">
   <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-artists')); ?>" class="button" style="background:#f59e0b;color:#fff;border-color:#f59e0b;">🎤 پنل هنرمندان</a>
   <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-automation')); ?>" class="button" style="background:#0e7490;color:#fff;border-color:#0e7490;">⚙️ اتوماسیون</a>

@@ -586,13 +586,19 @@ class ArtistManager {
 
     public static function is_in_selected_works(int $post_id): bool {
         if (!$post_id) return false;
-        // بررسی سریع: آیا پست در دسته selected-works است؟ (category یا هر taxonomy عمومی)
-        if (function_exists('has_category') && has_category(self::SELECTED_WORKS_SLUG, $post_id)) return true;
-        if (has_term(self::SELECTED_WORKS_SLUG, 'category', $post_id)) return true;
-        // بررسی همه تاکسونومی‌های عمومی برای اطمینان (مثلاً اگر دسته سفارشی باشد)
+        static $cache = null;
+        if ($cache === null) {
+            // کش 800ms برای هر درخواست — جلوگیری از N×tax query
+            $ids = self::get_selected_works_ids(5000);
+            $cache = array_fill_keys($ids, true);
+        }
+        if (isset($cache[$post_id])) return true;
+        // fallback برای دسته‌های غیر category که در transient نبوده (نادر)
+        if (function_exists('has_category') && has_category(self::SELECTED_WORKS_SLUG, $post_id)) { $cache[$post_id]=true; return true; }
+        if (has_term(self::SELECTED_WORKS_SLUG, 'category', $post_id)) { $cache[$post_id]=true; return true; }
         $taxes = get_taxonomies(['public'=>true], 'names');
         foreach ($taxes as $tax) {
-            if (has_term(self::SELECTED_WORKS_SLUG, $tax, $post_id)) return true;
+            if (has_term(self::SELECTED_WORKS_SLUG, $tax, $post_id)) { $cache[$post_id]=true; return true; }
         }
         return false;
     }
@@ -608,6 +614,62 @@ class ArtistManager {
     // آیا پست پریمیوم منتخب است؟ (برای امتیاز/کامنت ویژه)
     public static function is_premium_selected(int $post_id): bool { return self::is_in_selected_works($post_id); }
 
+    const OPTION_WEIGHT_SYNC = 'apex_omega_weight_sync';
+    public static function get_weight_sync_settings(): array {
+        $defs = [
+            'mode' => 'all', // all|cooldown|unsynced|lower_only
+            'cooldown_hours' => 72, // 3 روز — اگر قبلا همگام شده، دوباره نزن مگر گذشته
+            'batch' => 100,
+            'exclude_recent_days' => 0, // 0=all — فیلتر اضافی دسته
+            'protect_selected' => true, // دسته منتخب همیشه پرمیوم بماند، بازنویسی با منطق پرمیوم
+            'protect_manual' => false, // اگر دستی کسی عدد زده، محافظت؟
+        ];
+        $saved = get_option(self::OPTION_WEIGHT_SYNC, []);
+        if (!is_array($saved)) $saved=[];
+        $out = wp_parse_args($saved, $defs);
+        $out['mode'] = in_array($out['mode'], ['all','cooldown','unsynced','lower_only'], true) ? $out['mode'] : 'all';
+        $out['cooldown_hours'] = max(1, min(720, (int)$out['cooldown_hours']));
+        $out['batch'] = max(10, min(500, (int)$out['batch']));
+        $out['exclude_recent_days'] = max(0, min(365, (int)$out['exclude_recent_days']));
+        $out['protect_selected'] = !empty($out['protect_selected']);
+        $out['protect_manual'] = !empty($out['protect_manual']);
+        return $out;
+    }
+    public static function save_weight_sync_settings(array $data): void {
+        $cur = self::get_weight_sync_settings();
+        $new = [
+            'mode' => isset($data['mode']) ? sanitize_text_field($data['mode']) : $cur['mode'],
+            'cooldown_hours' => isset($data['cooldown_hours']) ? (int)$data['cooldown_hours'] : $cur['cooldown_hours'],
+            'batch' => isset($data['batch']) ? (int)$data['batch'] : $cur['batch'],
+            'exclude_recent_days' => isset($data['exclude_recent_days']) ? (int)$data['exclude_recent_days'] : $cur['exclude_recent_days'],
+            'protect_selected' => isset($data['protect_selected']) ? !empty($data['protect_selected']) : $cur['protect_selected'],
+            'protect_manual' => isset($data['protect_manual']) ? !empty($data['protect_manual']) : $cur['protect_manual'],
+        ];
+        update_option(self::OPTION_WEIGHT_SYNC, $new, false);
+    }
+
+    // لیست آی‌دی‌های دسته منتخب به صورت batch (کش 5 دقیقه) — سبک
+    public static function get_selected_works_ids(int $limit = 2000): array {
+        $key = 'apex_selected_ids_cache';
+        $cached = get_transient($key);
+        if (is_array($cached)) return $cached;
+        $ids = get_posts([
+            'post_type'=>'post','post_status'=>'publish','posts_per_page'=>$limit,'fields'=>'ids','no_found_rows'=>true,
+            'tax_query'=>[['taxonomy'=>'category','field'=>'slug','terms'=>self::SELECTED_WORKS_SLUG]],
+            'orderby'=>'date','order'=>'DESC',
+        ]);
+        // همچنین taxonomy های عمومی دیگر با همین slug
+        try {
+            $taxes = get_taxonomies(['public'=>true],'names');
+            foreach ($taxes as $tax) {
+                if ($tax==='category') continue;
+                $more = get_posts(['post_type'=>'post','post_status'=>'publish','posts_per_page'=>$limit,'fields'=>'ids','no_found_rows'=>true,'tax_query'=>[['taxonomy'=>$tax,'field'=>'slug','terms'=>self::SELECTED_WORKS_SLUG]]]);
+                if ($more) $ids = array_unique(array_merge($ids,$more));
+            }
+        } catch(\Throwable $e){}
+        set_transient($key, $ids, 5*MINUTE_IN_SECONDS);
+        return $ids;
+    }
 
     /* ─── v2.1.8: همگام‌سازی یک‌کلیک وزن→بازه — هیچ آهنگ 95 وزنی 10k نمی‌ماند ─── */
     public static function preview_weight_sync(array $filters = []): array {
@@ -617,10 +679,43 @@ class ArtistManager {
         foreach ($tiers as $tt) $tiers_by_id[$tt['id']] = $tt;
         $best = (int) get_option('kksr_stars', 5);
         if ($best < 1) $best = 5;
+        // اعمال تنظیمات همگام‌سازی از settings — اگر فیلتر خالی بود، از تنظیمات سراسری بخوان
+        $ws = self::get_weight_sync_settings();
+        if (empty($filters['exclude_recent_days']) && $ws['exclude_recent_days'] > 0) $filters['exclude_recent_days'] = $ws['exclude_recent_days'];
         $eligible_ids = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        // حالت‌های محافظ — فیلتر پس از get_eligible (سبک، بدون کوئری سنگین اضافی)
+        if ($ws['mode'] !== 'all' && !empty($eligible_ids)) {
+            $filtered = [];
+            foreach ($eligible_ids as $pid) {
+                if ($ws['mode'] === 'unsynced') {
+                    $has_tier = get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER, true);
+                    if ($has_tier !== '' && $has_tier !== false) continue;
+                } elseif ($ws['mode'] === 'cooldown') {
+                    $last = get_post_meta($pid, '_apex_tier_applied_at', true);
+                    if ($last) {
+                        $ts = strtotime($last);
+                        if ($ts && (time() - $ts) < $ws['cooldown_hours']*3600) continue;
+                    }
+                } elseif ($ws['mode'] === 'lower_only') {
+                    $cur = (int)get_post_meta($pid,'views',true);
+                    $w = self::get_weight_for_post($pid);
+                    $hint = self::weight_to_tier_hint((int)$w);
+                    $tiers_tmp = \ApexOmega\Core\TierManager::get_tiers();
+                    $tmap=[]; foreach($tiers_tmp as $tt) $tmap[$tt['id']]=$tt;
+                    $vmin = $tmap[$hint]['views_min'] ?? 0;
+                    if ($cur >= $vmin) continue;
+                }
+                if ($ws['protect_manual']) {
+                    $src = get_post_meta($pid,'_apex_views_last_source',true);
+                    if ($src==='manual' || $src==='bulk_manual') continue;
+                }
+                $filtered[] = $pid;
+            }
+            $eligible_ids = $filtered;
+        }
         $total = count($eligible_ids);
         if ($total === 0) {
-            return ['success'=>false,'message'=>'هیچ آهنگی با این فیلتر یافت نشد.','total'=>0];
+            return ['success'=>false,'message'=>'هیچ آهنگی با این فیلتر یافت نشد (حالت همگام‌سازی: '.$ws['mode'].').','total'=>0];
         }
         // گروه‌بندی بر اساس وزن هر پست — FAST batch + وزن‌محور
         $grouped = [];
@@ -699,7 +794,13 @@ class ArtistManager {
         $total = (int)$preview['total'];
         // v2.2.0: بازسازی کامل وزن‌محور + هیت برای اعمال (preview سبک فقط 3 نمونه دارد)
         $tiers2 = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id2=[]; foreach($tiers2 as $tt) $tiers_by_id2[$tt['id']]=$tt;
+        $ws2 = self::get_weight_sync_settings();
+        if (empty($filters['exclude_recent_days']) && $ws2['exclude_recent_days'] > 0) $filters['exclude_recent_days'] = $ws2['exclude_recent_days'];
         $eligible_ids2 = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        // اعمال حالت محافظ — همسان با preview
+        if ($ws2['mode'] !== 'all' && !empty($eligible_ids2)) {
+            $flt=[]; foreach($eligible_ids2 as $pid){ if($ws2['mode']==='unsynced'){ $h=get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER,true); if($h!=='' && $h!==false) continue; } elseif($ws2['mode']==='cooldown'){ $last=get_post_meta($pid,'_apex_tier_applied_at',true); if($last){ $ts=strtotime($last); if($ts && (time()-$ts) < $ws2['cooldown_hours']*3600) continue; } } elseif($ws2['mode']==='lower_only'){ $cur=(int)get_post_meta($pid,'views',true); $w=self::get_weight_for_post($pid); $hint=self::weight_to_tier_hint((int)$w); $tmap=[]; foreach($tiers2 as $tt) $tmap[$tt['id']]=$tt; $vmin=$tmap[$hint]['views_min']??0; if($cur >= $vmin) continue; } if($ws2['protect_manual']){ $src=get_post_meta($pid,'_apex_views_last_source',true); if($src==='manual'||$src==='bulk_manual') continue; } $flt[]=$pid; } $eligible_ids2=$flt;
+        }
         $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
         $full_preview = [];
         foreach ($eligible_ids2 as $pid) {
@@ -784,7 +885,13 @@ class ArtistManager {
         if (empty($preview['success'])) return $preview;
         $best = (int) get_option('kksr_stars', 5); if ($best < 1) $best = 5;
         $tiers2 = \ApexOmega\Core\TierManager::get_tiers(); $tiers_by_id2=[]; foreach($tiers2 as $tt) $tiers_by_id2[$tt['id']]=$tt;
+        $ws2 = self::get_weight_sync_settings();
+        if (empty($filters['exclude_recent_days']) && $ws2['exclude_recent_days'] > 0) $filters['exclude_recent_days'] = $ws2['exclude_recent_days'];
         $eligible_ids2 = \ApexOmega\Core\TierManager::get_eligible_post_ids($filters);
+        // اعمال حالت محافظ — همسان با preview
+        if ($ws2['mode'] !== 'all' && !empty($eligible_ids2)) {
+            $flt=[]; foreach($eligible_ids2 as $pid){ if($ws2['mode']==='unsynced'){ $h=get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER,true); if($h!=='' && $h!==false) continue; } elseif($ws2['mode']==='cooldown'){ $last=get_post_meta($pid,'_apex_tier_applied_at',true); if($last){ $ts=strtotime($last); if($ts && (time()-$ts) < $ws2['cooldown_hours']*3600) continue; } } elseif($ws2['mode']==='lower_only'){ $cur=(int)get_post_meta($pid,'views',true); $w=self::get_weight_for_post($pid); $hint=self::weight_to_tier_hint((int)$w); $tmap=[]; foreach($tiers2 as $tt) $tmap[$tt['id']]=$tt; $vmin=$tmap[$hint]['views_min']??0; if($cur >= $vmin) continue; } if($ws2['protect_manual']){ $src=get_post_meta($pid,'_apex_views_last_source',true); if($src==='manual'||$src==='bulk_manual') continue; } $flt[]=$pid; } $eligible_ids2=$flt;
+        }
         $weights_batch2 = self::get_weights_batch_fast($eligible_ids2);
         $flat=[];
         foreach ($eligible_ids2 as $pid) {

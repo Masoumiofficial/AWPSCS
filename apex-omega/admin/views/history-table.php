@@ -3,7 +3,7 @@
 $filter_source = sanitize_text_field($_GET['filter_source'] ?? '');
 $filter_post = isset($_GET['filter_post']) ? (int)$_GET['filter_post'] : 0;
 ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <h1>تاریخچه تغییرات — APEX Ω 1.3.0</h1>
   <p>تمام تغییرات دستی، زمان‌بندی‌شده، توزیع تیره و بازگردانی‌ها با شناسه یکتا و منبع ثبت می‌شوند.</p>
   <div class="apex-card" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:12px 0;">

@@ -116,9 +116,9 @@ class TierManager {
     public static function get_tiers(): array {
         $saved = get_option(self::OPTION_TIERS, null);
         if (is_array($saved) && !empty($saved)) {
-            // مهاجرت خودکار: اگر سقف قدیمی 1.5M بود، به 10M جدید مهاجرت کن (معکوس قبل)
+            // FIX 2.2.6: اگر سقف قدیمی 1.5M بود به 10M مهاجرت (قبلا برعکس بود)
             $max = 0; foreach ($saved as $t) $max = max($max, (int)($t['views_max'] ?? 0));
-            if ($max > 10000000) {
+            if ($max > 0 && $max < 9000000 && $max <= 1500000) {
                 $def = self::default_tiers();
                 self::save_tiers($def);
                 return $def;

@@ -38,6 +38,10 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
 .apex-g-panels{min-width:0}
 .apex-g-panel{display:none}
 .apex-g-panel.is-active{display:block;animation:apexFade .18s ease}
+/* fix: if JS disabled, show first panel */
+.apex-g-panel:first-of-type{display:block}
+.js-enabled .apex-g-panel{display:none}
+.js-enabled .apex-g-panel.is-active{display:block}
 @keyframes apexFade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .apex-g-card{background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(180%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);border:1px solid var(--glass-brd);border-radius:var(--radius);box-shadow:0 8px 32px rgba(31,38,135,.06);padding:16px 16px 14px;margin-bottom:12px}
 .apex-g-card h3{margin:0 0 6px;font-size:13px;font-weight:800;color:var(--ink);letter-spacing:-.015em;display:flex;gap:8px;align-items:center}
@@ -99,6 +103,10 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
       <button type="button" role="tab" class="apex-g-tab" aria-selected="false" data-tab="growth" id="tab-growth">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17 9 11l4 4 6-8"/><path d="M14 7h6v6"/></svg>
         اتوماسیون رشد
+      </button>
+      <button type="button" role="tab" class="apex-g-tab" aria-selected="false" data-tab="weightsync" id="tab-weightsync">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 3h4v4"/><path d="M4 20l7-7"/><path d="M20 4L9 15"/><path d="M8 20H4v-4"/></svg>
+        همگام‌سازی
       </button>
       <button type="button" role="tab" class="apex-g-tab" aria-selected="false" data-tab="data" id="tab-data">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="5.8" rx="7" ry="3"/><path d="M5 5.8v6.5c0 1.7 3.1 3 7 3s7-1.3 7-3V5.8"/><path d="M5 12.3v4.9c0 1.7 3.1 3 7 3s7-1.3 7-3v-4.9"/></svg>
@@ -313,6 +321,51 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
       </div>
     </div>
 
+    <div class="apex-g-panel" role="tabpanel" aria-labelledby="tab-weightsync" data-panel="weightsync">
+      <?php $ws = \ApexOmega\Core\ArtistManager::get_weight_sync_settings(); ?>
+      <div class="apex-g-card">
+        <h3><span class="dot" style="background:#059669"></span>همگام‌سازی وزن‌محور — کنترل بازنویسی</h3>
+        <p class="desc">اینجا تعیین می‌کنید دکمه «همگام‌سازی همه» چه کند — دیگر کل پست‌ها بی‌دلیل بازنویسی نمی‌شوند. حالت پیش‌فرض: فقط اگر از آخرین همگام‌سازی ۷۲ ساعت گذشته باشد.</p>
+        <div class="apex-f">
+          <label for="f-ws-mode">حالت همگام‌سازی</label>
+          <select id="f-ws-mode" name="weight_sync_mode">
+            <option value="all" <?php selected($ws['mode'],'all'); ?>>همه را بازنویسی کن (رفتار قدیمی)</option>
+            <option value="cooldown" <?php selected($ws['mode'],'cooldown'); ?>>فقط اگر cooldown گذشته (پیشنهادی)</option>
+            <option value="unsynced" <?php selected($ws['mode'],'unsynced'); ?>>فقط هنوز همگام‌نشده‌ها</option>
+            <option value="lower_only" <?php selected($ws['mode'],'lower_only'); ?>>فقط اگر بازدید فعلی کمتر از کف تیره است (رشد، نه کاهش)</option>
+          </select>
+          <small>cooldown یعنی اگر پستی ۳ روز پیش همگام شده، دوباره نزن — از نوسان بی‌دلیل جلوگیری می‌کند.</small>
+        </div>
+        <div class="apex-g-grid">
+          <div class="apex-f">
+            <label for="f-ws-cooldown">Cooldown (ساعت)</label>
+            <input id="f-ws-cooldown" type="number" name="weight_sync_cooldown_hours" min="1" max="720" value="<?php echo esc_attr($ws['cooldown_hours']); ?>">
+            <small>پیش‌فرض ۷۲ساعت (۳روز). برای محافظت ۱۶۸ساعت (۷روز) بگذار.</small>
+          </div>
+          <div class="apex-f">
+            <label for="f-ws-batch">Batch هر درخواست</label>
+            <input id="f-ws-batch" type="number" name="weight_sync_batch" min="10" max="500" step="10" value="<?php echo esc_attr($ws['batch']); ?>">
+            <small>پیش‌فرض ۱۰۰ — برای هاست ضعیف ۵۰.</small>
+          </div>
+          <div class="apex-f">
+            <label for="f-ws-exclude">فقط N روز اخیر (۰=همه)</label>
+            <input id="f-ws-exclude" type="number" name="weight_sync_exclude_recent_days" min="0" max="365" value="<?php echo esc_attr($ws['exclude_recent_days']); ?>">
+            <small>اگر فقط آثار تازه را می‌خواهی همگام کنی، ۳۰ بگذار.</small>
+          </div>
+          <label class="apex-switch"><input type="checkbox" name="weight_sync_protect_selected" value="1" <?php checked($ws['protect_selected']); ?>><span>محافظت دسته منتخب (selected-works) — همیشه پرمیوم بماند</span></label>
+          <label class="apex-switch"><input type="checkbox" name="weight_sync_protect_manual" value="1" <?php checked($ws['protect_manual']); ?>><span>محافظت ویرایش دستی — اگر کسی دستی عدد زده، بازنویسی نکن</span></label>
+        </div>
+        <div class="apex-help" style="margin-top:12px">پس از ذخیره، پیش‌نمایش همگام‌سازی تعداد واقعیِ قابل اجرا را نشان می‌دهد — اگر ۰ بود یعنی همه در cooldown هستند.</div>
+      </div>
+      <div class="apex-g-card">
+        <h3><span class="dot" style="background:#7c3aed"></span>وضعیت آخرین همگام‌سازی</h3>
+        <?php $last_ws = get_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, []); if (!empty($last_ws)): ?>
+          <p class="desc">آخرین اجرا: <?php echo esc_html($last_ws['at'] ?? '—'); ?> — <?php echo esc_html($last_ws['applied'] ?? 0); ?> آهنگ — <code><?php echo esc_html(substr($last_ws['exec'] ?? '',0,8)); ?></code> <?php if(!empty($last_ws['weight_sync'])) echo '<span class="apex-pill" style="background:#ecfdf5;color:#065f46">وزن‌محور</span>'; ?></p>
+          <div class="apex-inline"><a class="apex-btn-ghost" href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-weight-sync')); ?>">رفتن به همگام‌سازی</a><span class="apex-pill">Cooldown فعلی: <?php echo esc_html($ws['cooldown_hours']); ?>ساعت — حالت: <?php echo esc_html($ws['mode']); ?></span></div>
+        <?php else: ?><p class="desc">هنوز همگام‌سازی انجام نشده.</p><?php endif; ?>
+      </div>
+    </div>
+
     <div class="apex-g-panel" role="tabpanel" aria-labelledby="tab-data" data-panel="data">
       <div class="apex-g-card">
         <h3><span class="dot" style="background:#06b6d4"></span>برون‌بری و درون‌ریزی</h3>
@@ -354,6 +407,8 @@ $next_cron = $cron_ok ? get_date_from_gmt(gmdate('Y-m-d H:i:s', wp_next_schedule
 
 <script>
 (function(){
+  document.documentElement.classList.add('js-enabled');
+  document.documentElement.classList.remove('no-js');
   const root = document.querySelector('.apex-settings-root');
   if(!root) return;
   const tabs = root.querySelectorAll('.apex-g-tab');
