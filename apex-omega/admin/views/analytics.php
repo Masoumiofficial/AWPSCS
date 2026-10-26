@@ -6,7 +6,7 @@ $timeline = \ApexOmega\Core\Analytics::history_timeline(14);
 $tops = \ApexOmega\Core\Analytics::top_posts(10);
 $tiers = \ApexOmega\Core\TierManager::get_tiers();
 ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <div class="apex-hero">
     <div>
       <h1 style="margin:0;font-size:24px;">📊 آنالیتیکس حرفه‌ای — APEX Ω 1.3.0</h1>

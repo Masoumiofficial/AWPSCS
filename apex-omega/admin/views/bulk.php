@@ -1,5 +1,5 @@
 <?php if (!defined('ABSPATH')) exit; ?>
-<div class="wrap apex-wrap">
+<div class="wrap apex-glass-wrap">
   <h1>ویرایش گروهی — APEX Ω</h1>
   <?php
     $ids_raw = $_GET['apex_bulk_ids'] ?? '';
@@ -69,6 +69,22 @@
       <label for="apex_bulk_value">مقدار جدید</label>
       <input type="number" id="apex_bulk_value" step="0.1" placeholder="مثلاً 50000 یا 4.8">
       <small>برای بازدید/رأی عدد صحیح، برای میانگین تا یک رقم اعشار.</small>
+    </div>
+    <div class="apex-field">
+      <label><input type="checkbox" id="apex_bulk_range_toggle"> بازه تصادفی (هر پست مقدار جداگانه در بازه)</label>
+    </div>
+    <div id="apex-bulk-range-fields" style="display:none; background:#f9fafb; border:1px dashed #d1d5db; border-radius:8px; padding:12px; margin-top:4px;">
+      <div style="display:flex; gap:12px;">
+        <div class="apex-field" style="flex:1; margin:0;">
+          <label for="apex_bulk_min">از (حداقل)</label>
+          <input type="number" id="apex_bulk_min" step="0.1" placeholder="مثلاً 1300000">
+        </div>
+        <div class="apex-field" style="flex:1; margin:0;">
+          <label for="apex_bulk_max">تا (حداکثر)</label>
+          <input type="number" id="apex_bulk_max" step="0.1" placeholder="مثلاً 1900000">
+        </div>
+      </div>
+      <small style="display:block; margin-top:6px; color:#6b7280;">مثلاً بازدید بین <b>1300000</b> تا <b>1900000</b> → هر پست یک عدد تصادفی در این بازه می‌گیرد. برای امتیاز مثلاً 4.2 تا 4.9 ، و تعداد رأی 800 تا 1500.</small>
     </div>
     <div class="apex-field">
       <label for="apex_bulk_mode">حالت</label>

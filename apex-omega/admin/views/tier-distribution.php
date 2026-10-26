@@ -11,8 +11,15 @@ $available_taxes = \ApexOmega\Core\ArtistManager::get_available_taxonomies();
 $saved_tax = get_option(\ApexOmega\Core\ArtistManager::OPTION_TAXONOMY, '');
 $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
 ?>
-<div class="wrap apex-wrap">
-  <div class="apex-hero">
+<div class="wrap apex-glass-wrap">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;">
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-artists')); ?>" class="button" style="background:#f59e0b;color:#fff;border-color:#f59e0b;">🎤 پنل هنرمندان</a>
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-automation')); ?>" class="button" style="background:#0e7490;color:#fff;border-color:#0e7490;">⚙️ اتوماسیون</a>
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-weight-sync')); ?>" class="button" style="background:#059669;color:#fff;border-color:#059669;">⚡ همگام‌سازی یک‌کلیک</a>
+  <a href="<?php echo esc_url(admin_url('admin.php?page=apex-omega-analytics')); ?>" class="button button-secondary">📊 آنالیتیکس</a>
+  <span style="margin-right:auto;color:#6b7280;font-size:12px;">پنل جدید v2.1.9 — هر بخش تفکیک‌شده + درصد پیشرفت</span>
+</div>
+<div class="apex-hero">
     <div>
       <h1 style="margin:0;font-size:26px;">🚀 توزیع هوشمند دسته‌ای</h1>
       <p style="margin:6px 0 0;color:#50575e;">بدون انتخاب تکی — فقط بگو هر دسته چند آهنگ داشته باشد، بقیه خودکار و منطقی تنظیم می‌شود. <strong>کاملاً خودکار + آرتیست‌محور + Evergreen — v1.5.0 (بدون حالت ساده/حرفه‌ای — الگوی ریتم + Evergreen تیره‌محور)</strong></p>
@@ -99,75 +106,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
 
 
   <!-- الگوی ریتم حرفه‌ای — اولویت خواننده (درخواست شما) -->
-  <?php $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings(); ?>
-  <div class="apex-card" style="margin-top:14px; border-top:4px solid #7c3aed; background:#f5f3ff;">
-    <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:10px;">
-      <div>
-        <h3 style="margin:0;">🎛️ الگوی ریتم حرفه‌ای — اولویت  با  اسم خواننده</h3>
-        <small style="color:#6b7280;">خواننده نوپا حتی با عنوان &quot;بهت قول میدم&quot; هرگز یک‌شبه ملیونی نمی‌شود — مو لای درزش نمی‌رود. عنوان فقط وقتی اعتبار دارد که جفت خواننده+عنوان تایید شود.</small>
-      </div>
-      <span class="apex-badge" style="background:#7c3aed;color:#fff;">قابل کنترل کامل</span>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px;">
-      <label>نسبت وزن خواننده (%):<br><input type="range" id="apex-rhythm-artist-ratio" min="50" max="95" step="5" value="<?php echo esc_attr((int)($rhythm['artist_ratio']*100)); ?>" style="width:100%;"> <strong id="apex-rhythm-artist-val"><?php echo (int)($rhythm['artist_ratio']*100); ?>%</strong> <small style="color:#6b7280;">عنوان: <span id="apex-rhythm-title-val"><?php echo (int)($rhythm['title_ratio']*100); ?>%</span></small></label>
-      <label>آستانه نوپا:<br><input type="number" id="apex-rhythm-threshold" min="15" max="50" value="<?php echo esc_attr($rhythm['unknown_threshold']); ?>" style="width:100%;"> <small style="color:#6b7280;">خواننده با وزن کمتر از این = نوپا (عنوان تقریبا نادیده)</small></label>
-      <label>سقف نوپا (حتی با هیت):<br><input type="number" id="apex-rhythm-cap" min="30" max="65" value="<?php echo esc_attr($rhythm['unknown_cap']); ?>" style="width:100%;"> <small style="color:#6b7280;">وزن نهایی نوپا از این بیشتر نمی‌شود — مثلا 45 ≈ دسته 4</small></label>
-      <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #ddd;border-radius:10px;padding:10px;align-self:end;">
-        <input type="checkbox" id="apex-rhythm-pair" <?php checked($rhythm['require_pair'], true); ?>> <span><strong>جفت خواننده+عنوان الزامی</strong><br><small>اگر تیک باشد، عنوان تکراریِ نوپا اعتبار ندارد</small></span>
-      </label>
-    </div>
-    <div style="margin-top:10px; background:#fff; border:1px dashed #7c3aed; border-radius:10px; padding:10px; font-size:13px; color:#4c1d95;">
-      <strong>مثال کنترل‌شده:</strong> محسن یگانه (وزن 96) + &quot;بهت قول میدم&quot; = <code>96×0.85 + 99×0.15 = 96.5 → الماس</code> | خواننده نوپا (وزن 18) + همین عنوان = <code>18×0.97 + 99×0.03 = 20.4 → تازه (سقف 45)</code> — هرگز جهش نمی‌کند.
-    </div>
-    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-      <button type="button" id="apex-rhythm-save" class="button button-apex" style="background:#7c3aed;border-color:#7c3aed;">💾 ذخیره الگوی ریتم</button>
-      <span id="apex-rhythm-result" style="font-weight:700;"></span>
-    </div>
-    <small>💡 این الگو در پیش‌نمایش و اعمال و همچنین در AI/سایت ایرانی لحاظ می‌شود. با فیلتر <code>apex_omega_hit_pairs</code> جفت‌های هیت واقعی خودت را اضافه کن.</small>
-  </div>
-
-  <!-- نوار ابزار سریع -->
-  <div class="apex-card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0;">
-    <strong>ابزار سریع:</strong>
-    <button type="button" id="apex-preset-pyramid" class="button">🔺 هرم استاندارد</button>
-    <button type="button" id="apex-preset-equal" class="button">⚖️ مساوی</button>
-    <button type="button" id="apex-preset-clear" class="button">🧹 صفر</button>
-    <span style="margin-right:auto;"></span>
-    <label>فیلتر دسته:
-      <select id="apex-filter-cat" style="min-width:160px;">
-        <option value="all">همه دسته‌ها</option>
-        <?php $cats=get_categories(['hide_empty'=>false]); foreach($cats as $c): ?>
-          <option value="<?php echo esc_attr($c->slug); ?>"><?php echo esc_html($c->name); ?> (<?php echo $c->count; ?>)</option>
-        <?php endforeach; ?>
-      </select>
-    </label>
-    <label>نوع:
-      <select id="apex-filter-pt">
-        <?php $pts=get_post_types(['public'=>true],'objects'); foreach($pts as $pt): if($pt->name==='attachment') continue; ?>
-          <option value="<?php echo esc_attr($pt->name); ?>" <?php selected($pt->name,'post'); ?>><?php echo esc_html($pt->label); ?></option>
-        <?php endforeach; ?>
-        <option value="any">همه</option>
-      </select>
-    </label>
-  </div>
-
-  <!-- گرید دسته‌ها -->
-  <div class="apex-tier-grid">
-    <?php foreach ($tiers as $t): ?>
-      <div class="apex-tier-card" data-tier="<?php echo esc_attr($t['id']); ?>" style="--tier-color: <?php echo esc_attr($t['color']); ?>">
-        <div class="apex-tier-head">
-          <span class="apex-tier-icon"><?php echo esc_html($t['icon']); ?></span>
-          <div>
-            <h3><?php echo esc_html($t['label']); ?></h3>
-            <small><?php echo esc_html($t['desc']); ?></small>
-          </div>
-          <span class="apex-tier-badge"><?php echo esc_html(number_format_i18n($t['views_min'])); ?>–<?php echo esc_html(number_format_i18n($t['views_max'])); ?></span>
-        </div>
-        <div class="apex-tier-ranges">
-          <div>👁️ <strong><?php echo number_format_i18n($t['views_min']); ?></strong> تا <strong><?php echo number_format_i18n($t['views_max']); ?></strong></div>
-          <div>🗳️ <strong><?php echo number_format_i18n($t['casts_min']); ?></strong>–<strong><?php echo number_format_i18n($t['casts_max']); ?></strong> &nbsp;|&nbsp; ⭐ <strong><?php echo $t['avg_min']; ?></strong>–<strong><?php echo $t['avg_max']; ?></strong></div>
-        </div>
-        <div class="apex-tier-control">
+<div class="apex-tier-control">
           <label>تعداد در این دسته</label>
           <div class="apex-stepper">
             <button type="button" class="apex-minus" data-tier="<?php echo esc_attr($t['id']); ?>">−</button>
@@ -199,7 +138,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>
           <h4 style="margin:0;color:#0f766e;">🌱 رشد مداوم Evergreen — هر ۵ دقیقه افزایش خودکار  ✅ جدید v1.4.0</h4>
-          <small style="color:#134e4a;">بعد از توزیع اولیه، بازدید/امتیاز همه آهنگ‌ها به‌صورت کاملاً طبیعی و تدریجی تا سقف 1.5M رشد می‌کند — بدون نیاز به دخالت دستی، دقیقاً مثل ترافیک واقعی روزمره.</small>
+          <small style="color:#134e4a;">بعد از توزیع اولیه، بازدید/امتیاز همه آهنگ‌ها به‌صورت کاملاً طبیعی و تدریجی تا سقف 10M رشد می‌کند — بدون نیاز به دخالت دستی، دقیقاً مثل ترافیک واقعی روزمره.</small>
         </div>
         <label style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #14b8a6;border-radius:999px;padding:6px 14px;font-weight:800;cursor:pointer;">
           <input type="checkbox" id="apex-evergreen-enabled" <?php checked($ever_enabled,true); ?>> فعال
@@ -207,10 +146,10 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:10px;">
         <label>نرخ رشد هر ۵ دقیقه (%):<br><input type="number" id="apex-evergreen-rate" step="0.01" min="0.005" max="0.5" value="<?php echo esc_attr($evergreen['rate_percent']); ?>" style="width:110px;"></label>
-        <label>سقف بازدید:<br><input type="number" id="apex-evergreen-max" min="50000" max="5000000" value="<?php echo esc_attr($evergreen['max_views']); ?>" style="width:140px;"></label>
+        <label>سقف بازدید:<br><input type="number" id="apex-evergreen-max" min="50000" max="10000000" value="<?php echo esc_attr($evergreen['max_views']); ?>" style="width:140px;"></label>
         <button id="apex-evergreen-save" type="button" class="button button-apex" style="background:#0f766e;border-color:#0f766e;">💾 ذخیره Evergreen</button>
         <span id="apex-evergreen-result" style="font-weight:700;"></span>
-        <small style="width:100%;color:#6b7280;">پیشنهاد: 0.03–0.05% = ≈ 5–8% رشد روزانه (واقع‌گرایانه). سقف 1.5M برای حفظ اعتبار — بالاتر نرو.</small>
+        <small style="width:100%;color:#6b7280;">پیشنهاد: 0.03–0.05% = ≈ 5–8% رشد روزانه (واقع‌گرایانه). سقف 10M — قبلا 1.5M بود.</small>
       </div>
       <small>⏰ اجرا در <code>apex_omega_tick</code> هر ۵ دقيقه (Real-Cron). نیاز به بازدید سایت ندارد اگر سرور کرون دارد (یا WP-Cron با ترافیک).</small>
     </div>
@@ -292,7 +231,7 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         // Evergreen
         bindOnce('apex-evergreen-save', function(btn){
           btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
-          var enabled=qs('apex-evergreen-enabled')?.checked?1:0, rate=parseFloat(qs('apex-evergreen-rate')?.value)||0.04, max=parseInt(qs('apex-evergreen-max')?.value)||1500000;
+          var enabled=qs('apex-evergreen-enabled')?.checked?1:0, rate=parseFloat(qs('apex-evergreen-rate')?.value)||0.04, max=parseInt(qs('apex-evergreen-max')?.value)||10000000;
           var resEl=qs('apex-evergreen-result'); if(resEl) resEl.textContent='در حال ذخیره…';
           apexPost('apex_save_evergreen',{enabled:enabled,rate_percent:rate,max_views:max}).then(function(j){
             if(j.success){ if(resEl){resEl.textContent='✅ ذخیره شد — '+(j.data.settings.enabled?'فعال':'غیرفعال')+' — نرخ '+j.data.settings.rate_percent+'%'; resEl.style.color='#065f46';}}
@@ -418,6 +357,64 @@ $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
         bindOnce('apex-preset-clear', function(){
           document.querySelectorAll('.apex-tier-count,.apex-tier-slider').forEach(function(el){ el.value=0;}); if(window.jQuery) jQuery('.apex-tier-count').first().trigger('input'); var b=qs('apex-tier-preview-box'); if(b) b.textContent='صفر شد.'; var d=qs('apex-tier-details-box'); if(d) d.style.display='none';
         });
+        // v2.1.8: Weight sync — پیش‌نمایش و یک‌کلیک همگام‌سازی
+        bindOnce('apex-weight-preview', function(btn){
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال پیش‌نمایش…';
+          var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any';
+          var box=qs('apex-weight-preview-box'), resBox=qs('apex-weight-result');
+          if(box) box.innerHTML='⏳ در حال محاسبه وزن هر پست…';
+          apexPost('apex_preview_weight_sync',{category:cat,post_type:pt,limit:10000}).then(function(res){
+            if(res.success){
+              var html='<div class="apex-alert success">وزن‌محور: '+res.data.total+' آهنگ — هر هنرمند داخل بازه وزنش</div>';
+              html+='<table class="apex-table"><tr><th>دسته (بازه وزن)</th><th>تعداد آهنگ</th><th>میانگین بازدید</th><th>میانگین رأی</th><th>بازه</th></tr>';
+              for(var kk in res.data.summary){ var s=res.data.summary[kk]; html+='<tr><td><span style="display:inline-block;width:10px;height:10px;background:'+s.color+';border-radius:999px;margin-left:6px;vertical-align:middle;"></span>'+s.icon+' '+s.label+'</td><td><strong>'+s.count+'</strong></td><td>'+s.avg_views.toLocaleString()+ '</td><td>'+s.avg_rating+'</td><td>'+s.views_min.toLocaleString()+'–'+s.views_max.toLocaleString()+'</td></tr>'; }
+              html+='</table><small style="color:#6b7280;">تیک بزن «همگام‌سازی همه» تا همه پست‌ها داخل همین بازه‌ها بروند — هیچ ۹۵ای ۱۰k نمی‌ماند.</small>';
+              if(box) box.innerHTML=html;
+              if(resBox) resBox.innerHTML='';
+            } else if(box) box.innerHTML='<div class="apex-alert error">'+(res.data.message||'خطا')+'</div>';
+          }).catch(function(err){ if(box) box.innerHTML='<div class="apex-alert error">❌ '+err.message+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o;});
+        });
+        bindOnce('apex-weight-apply', function(btn){
+          if(!confirm('همگام‌سازی وزن‌محور: همه آهنگ‌ها بر اساس وزن هنرمند بازنویسی می‌شوند (رندم داخل بازه هر تیره). اسنپ‌شات گرفته می‌شود و قابل Undo است. ادامه؟')) return;
+          btn.disabled=true; var o=btn.textContent; btn.textContent='در حال همگام‌سازی…';
+          var cat=qs('apex-filter-cat')?.value||'all', pt=qs('apex-filter-pt')?.value||'any';
+          var resBox=qs('apex-weight-result'); var box=qs('apex-weight-preview-box');
+          // اول preview سریع برای فهم total → بعد job chunked
+          apexPost('apex_preview_weight_sync',{category:cat,post_type:pt,limit:10000}).then(function(prev){
+            if(!prev.success) throw new Error(prev.data.message||'خطا در پیش‌نمایش');
+            var total=prev.data.total||0;
+            if(total===0) throw new Error('هیچ پستی یافت نشد');
+            var useChunked = total > 80;
+            if(!useChunked){
+              // single request
+              if(resBox) resBox.innerHTML='<div class="apex-alert warning">⏳ '+total+' آهنگ — مستقیم اعمال می‌شود…</div>';
+              return apexPost('apex_apply_weight_sync',{category:cat,post_type:pt,limit:10000}).then(function(res){
+                if(res.success){
+                  if(resBox) resBox.innerHTML='<div class="apex-alert success">✅ '+res.data.applied+' آهنگ همگام شد — هر ۹۵ داخل 900K–10M — شناسه: '+res.data.execution_id+'</div>';
+                  setTimeout(()=>location.reload(),2000);
+                } else throw new Error(res.data.message||'خطا');
+              });
+            } else {
+              // chunked job
+              if(resBox) resBox.innerHTML='<div class="apex-alert success">🧩 کار وزن‌محور آغاز شد — <strong>'+total+'</strong> آهنگ — هر درخواست 100 تا<br><div style="background:#e5e7eb;border-radius:999px;height:16px;margin-top:8px;overflow:hidden;"><div id="apex-weight-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#059669,#06b6d4);transition:width 0.4s;"></div></div><div id="apex-weight-txt" style="margin-top:6px;font-size:13px;">0 / '+total+' (0%) — آماده‌سازی...</div></div>';
+              return apexPost('apex_start_weight_sync_job',{category:cat,post_type:pt,chunk_size:100}).then(function(res){
+                if(!res.success) throw new Error(res.data.message||'خطا در ایجاد کار');
+                var exec=res.data.execution_id;
+                function processChunk(){
+                  return apexPost('apex_process_weight_chunk',{execution_id:exec,chunk_size:100}).then(function(r2){
+                    if(!r2.success){ var isLock=(r2.data&&r2.data.message||'').indexOf('قفل')!==-1; if(isLock){ var txt=qs('apex-weight-txt'); if(txt) txt.textContent='⏳ قفل — 3ثانیه…'; return new Promise(res=>setTimeout(res,3000)).then(processChunk); } throw new Error(r2.data.message||'خطا chunk'); }
+                    var pct=r2.data.percent||0, proc=r2.data.processed||0;
+                    var bar=qs('apex-weight-bar'), txt=qs('apex-weight-txt'); if(bar) bar.style.width=pct+'%'; if(txt) txt.textContent=proc+' / '+total+' ('+pct+'%) — '+(r2.data.status==='done'?'تمام!':'در حال پردازش...');
+                    if(r2.data.status==='done'){ if(resBox) resBox.innerHTML+='<div class="apex-alert success" style="margin-top:8px;">✅ همگام‌سازی کامل — '+proc+' آهنگ — شناسه: '+exec+'</div>'; setTimeout(()=>location.reload(),1800); return; }
+                    return new Promise(function(res){ setTimeout(res,700); }).then(processChunk);
+                  });
+                }
+                return processChunk();
+              });
+            }
+          }).catch(function(err){ if(resBox) resBox.innerHTML='<div class="apex-alert error">❌ '+(err.message||err)+'</div>';}).finally(function(){ btn.disabled=false; btn.textContent=o; });
+        });
+
         // Preview / Apply
         bindOnce('apex-preview-tier', function(btn){
           btn.disabled=true; var o=btn.textContent; btn.textContent='در حال پیش‌نمایش…';

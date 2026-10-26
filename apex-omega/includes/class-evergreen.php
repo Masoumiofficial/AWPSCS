@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) exit;
 
 /**
  * رشد مداوم و طبیعی — هر 5 دقیقه کمی بازدید/امتیاز اضافه می‌کند
- * تا سقف 1.5M واقعی بماند، بصورت اصولی و روزانه برای تمام پست‌ها
+ * تا سقف 10M واقعی بماند، بصورت اصولی و روزانه برای تمام پست‌ها
  */
 class Evergreen {
     const OPTION = 'apex_omega_evergreen';
@@ -14,7 +14,7 @@ class Evergreen {
         $defaults = [
             'enabled' => false, // حرفه‌ای: پیش‌فرض خاموش (کاربر فعال کند) — ولی rate استاندارد 0.035٪
             'rate_percent' => 0.035, // حرفه‌ای: 0.035٪ هر 5دقیقه → ~8.5٪ روزانه (طبیعی جهانی)
-            'max_views' => 1500000, // سقف اعتبار 1.5M — استاندارد
+            'max_views' => 10000000, // سقف اعتبار 10M — استاندارد (قبلا 1.5M)
             'interval' => 300,
         ];
         $saved = get_option(self::OPTION, []);
@@ -27,7 +27,7 @@ class Evergreen {
         $new = [
             'enabled' => !empty($data['enabled']),
             'rate_percent' => isset($data['rate_percent']) ? max(0.01, min(0.3, (float)$data['rate_percent'])) : $cur['rate_percent'],
-            'max_views' => isset($data['max_views']) ? max(100000, min(2000000, (int)$data['max_views'])) : $cur['max_views'],
+            'max_views' => isset($data['max_views']) ? max(100000, min(15000000, (int)$data['max_views'])) : $cur['max_views'],
             'interval' => 300,
         ];
         update_option(self::OPTION, $new, false);
@@ -93,16 +93,18 @@ class Evergreen {
         $user_id = 0; // سیستم
         foreach ($ids as $pid) {
             $pid = (int)$pid;
+            $is_premium_eg = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            $premium_max = $is_premium_eg ? (int) round($max * 1.18) : $max;
             $cur_views = Adapter_Views::get_views($pid);
-            if ($cur_views >= $max) continue;
+            if ($cur_views >= $premium_max) continue;
             if ($cur_views < 100) $cur_views = 100; // حداقل
-                // 2.0-alpha: Simulator S-curve (جایگزین فرمول خطی قدیمی)
+            $tier = get_post_meta($pid, \ApexOmega\Core\TierManager::META_TIER, true);
             $tier_cap = null;
             if ($tier) {
                 $tiers = TierManager::get_tiers();
                 foreach ($tiers as $tt) if ($tt['id'] === $tier) { $tier_cap = (int)$tt['views_max']; break; }
             }
-            $effective_max = $tier_cap ? min($max, $tier_cap) : $max;
+            $effective_max = $tier_cap ? min($premium_max, $tier_cap * ($is_premium_eg ? 1.18 : 1)) : $premium_max;
             if ($cur_views >= $effective_max) continue;
 
             // پروفایل آرتیست از جدول profiles (اگر نباشد fallback به growth پیش‌فرض)
@@ -119,11 +121,15 @@ class Evergreen {
                 $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
                 // وزن 50 => growth 0.035, وزن 90 => 0.05 (پویا)
                 $profile['growth'] = 0.02 + ($weight / 100) * 0.03;
+            // منتخب ویژه نرخ رشد 40٪ بیشتر
+            if (!empty($is_premium_eg)) $profile['growth'] *= 1.40;
             } catch (\Throwable $e) {}
 
             $inc = Simulator::next_delta($cur_views, $tier ?? '', $profile, $ageDays, $base_rate);
             $new_views = $cur_views + $inc;
             if ($new_views > $effective_max) $new_views = $effective_max;
+            // 🛡️ محافظ هرگز کم نکن
+            $new_views = apex_omega_guard_views($cur_views, $new_views, false, $pid);
             // امتیاز هم کمی رشد کند
             $stats = Adapter_KKSR::get_stats($pid);
             $new_casts = $stats['casts'];
@@ -137,10 +143,15 @@ class Evergreen {
                     }
                 }
             }
+            // محافظ امتیاز هم — فقط افزایش
+            $guarded = apex_omega_guard_stats(['casts'=>$stats['casts'],'avg'=>$stats['avg'],'ratings'=>$stats['ratings'] ?? 0], ['casts'=>$new_casts,'avg'=>$new_avg,'views'=>$new_views], false, $pid);
+            $new_casts = $guarded['casts']; $new_avg = $guarded['avg'];
             // نوشتن اتمیک
             $detect = Adapter_KKSR::detect();
             $best = $detect['best'];
             $new_ratings = $new_avg * $new_casts / $best * 5;
+            // ratings هم محافظ
+            if (apex_omega_never_decrease_enabled() && $new_ratings < (float)($stats['ratings'] ?? 0)) $new_ratings = (float)$stats['ratings'];
             global $wpdb;
             $wpdb->query('START TRANSACTION');
             try {
@@ -159,7 +170,7 @@ class Evergreen {
             // لاگ سبک (هر 12 تیک ≈ هر ساعت)
             $tick_count = (int) get_option('apex_evergreen_tick_count_' . get_current_blog_id(), 0);
             if ($tick_count % 12 === 0) {
-                History::log($pid, 'views', $cur_views, $new_views, 'evergreen', $user_id, $exec, null, ['rate'=>$rate,'inc'=>$inc,'tier'=>$tier,'mult'=>$mult]);
+                History::log($pid, 'views', $cur_views, $new_views, 'evergreen', $user_id, $exec, null, ['rate'=>$base_rate,'inc'=>$inc,'tier'=>$tier]);
             }
         }
         $tc = (int) get_option('apex_evergreen_tick_count_' . get_current_blog_id(), 0);

@@ -13,7 +13,7 @@ class TierManager {
     const META_TIER = '_apex_tier';
 
     /**
-     * دسته‌های پیش‌فرض — حرفه‌ای استاندارد 1.5M (هرم جهانی موسیقی)
+     * دسته‌های پیش‌فرض — حرفه‌ای استاندارد 10M (هرم جهانی موسیقی — قبلا 1.5M)
      * توزیع: 2٪ الماس، 4٪ پرطرفدار، 10٪ محبوب، 14٪ متوسط‌بالا، 20٪ متوسط، 25٪ درحال‌رشد، 25٪ تازه
      * همبستگی بازدید↔رای↔میانگین کاملاً رعایت شده (ISO-like)
      */
@@ -25,9 +25,9 @@ class TierManager {
                 'icon' => '💎',
                 'color' => '#7c3aed',
                 'views_min' => 900000,
-                'views_max' => 1500000,
-                'casts_min' => 2500,
-                'casts_max' => 6000,
+                'views_max' => 10000000,
+                'casts_min' => 3500,
+                'casts_max' => 22000,
                 'avg_min' => 4.7,
                 'avg_max' => 5.0,
                 'desc' => 'ابرآهنگ‌ها — بهت قول میدم / پرطرفدارترین‌ها',
@@ -39,8 +39,8 @@ class TierManager {
                 'color' => '#ef4444',
                 'views_min' => 500000,
                 'views_max' => 900000,
-                'casts_min' => 1200,
-                'casts_max' => 3500,
+                'casts_min' => 1500,
+                'casts_max' => 8500,
                 'avg_min' => 4.5,
                 'avg_max' => 4.8,
                 'desc' => 'ترند هفته',
@@ -52,8 +52,8 @@ class TierManager {
                 'color' => '#f59e0b',
                 'views_min' => 200000,
                 'views_max' => 500000,
-                'casts_min' => 600,
-                'casts_max' => 1800,
+                'casts_min' => 700,
+                'casts_max' => 4200,
                 'avg_min' => 4.3,
                 'avg_max' => 4.6,
                 'desc' => 'پلی‌لیست پیشنهادی',
@@ -65,8 +65,8 @@ class TierManager {
                 'color' => '#10b981',
                 'views_min' => 80000,
                 'views_max' => 200000,
-                'casts_min' => 300,
-                'casts_max' => 900,
+                'casts_min' => 350,
+                'casts_max' => 2200,
                 'avg_min' => 4.1,
                 'avg_max' => 4.4,
                 'desc' => 'شنیده‌شده',
@@ -78,8 +78,8 @@ class TierManager {
                 'color' => '#06b6d4',
                 'views_min' => 30000,
                 'views_max' => 80000,
-                'casts_min' => 120,
-                'casts_max' => 450,
+                'casts_min' => 150,
+                'casts_max' => 900,
                 'avg_min' => 3.9,
                 'avg_max' => 4.2,
                 'desc' => 'در حال رشد',
@@ -116,9 +116,9 @@ class TierManager {
     public static function get_tiers(): array {
         $saved = get_option(self::OPTION_TIERS, null);
         if (is_array($saved) && !empty($saved)) {
-            // مهاجرت خودکار: اگر سقف قدیمی 10M بود، به 1.5M جدید مهاجرت کن
+            // FIX 2.2.6: اگر سقف قدیمی 1.5M بود به 10M مهاجرت (قبلا برعکس بود)
             $max = 0; foreach ($saved as $t) $max = max($max, (int)($t['views_max'] ?? 0));
-            if ($max > 1500000) {
+            if ($max > 0 && $max < 9000000 && $max <= 1500000) {
                 $def = self::default_tiers();
                 self::save_tiers($def);
                 return $def;
@@ -136,28 +136,117 @@ class TierManager {
         delete_option(self::OPTION_TIERS);
     }
 
+    public static function get_tier_weight_range(string $tier_id): array {
+        // نگاشت وزن 0-100 به تیره — باید با ArtistManager::weight_to_tier_hint هم‌خوان باشد
+        $map = [
+            'tier_1' => ['min'=>90,'max'=>100],
+            'tier_2' => ['min'=>75,'max'=>89],
+            'tier_3' => ['min'=>60,'max'=>74],
+            'tier_4' => ['min'=>45,'max'=>59],
+            'tier_5' => ['min'=>30,'max'=>44],
+            'tier_6' => ['min'=>15,'max'=>29],
+            'tier_7' => ['min'=>0, 'max'=>14],
+        ];
+        return $map[$tier_id] ?? ['min'=>0,'max'=>100];
+    }
+
     /**
-     * تولید مقدار تصادفی منطقی برای یک دسته
+     * تولید مقدار تصادفی منطقی برای یک دسته — وزن‌محور + هیت + همبستگی واقعی
+     * @param int|null $weight وزن هنرمند 0-100 — اگر null باشد رفتار قدیمی رندم حفظ می‌شود (سازگاری عقب‌رو)
+     * @param bool $is_hit آیا اثر هیت/معروف است؟ اگر true بازدید به سقف تیره می‌رود (9-10M)
+     * @param bool $is_premium آیا در دسته منتخب selected-works است؟ اگر true قابلیت 10M+ (تا 12M) و امتیاز/کامنت پرفکت
      */
-    public static function generate_values(array $tier, int $best = 5): array {
-        $views = mt_rand((int)$tier['views_min'], (int)$tier['views_max']);
-        $casts = mt_rand((int)$tier['casts_min'], (int)$tier['casts_max']);
-        // میانگین با وزن: اگر بازدید بالاتر، avg متمایل به max
-        $range = (float)$tier['avg_max'] - (float)$tier['avg_min'];
-        // jitter 30% bias to high for popular tiers
-        $bias = 0;
-        if (strpos($tier['id'], 'tier_1') !== false || strpos($tier['id'], 'tier_2') !== false) $bias = 0.25;
-        $rand = mt_rand(0, 1000) / 1000;
-        $rand = min(1, max(0, $rand + $bias * (mt_rand(0,100)/100)));
-        $avg = round((float)$tier['avg_min'] + $range * $rand, 1);
+    public static function generate_values(array $tier, int $best = 5, ?int $weight = null, bool $is_hit = false, ?int $post_id = null, bool $is_premium = false): array {
+        $vmin = (int)$tier['views_min']; $vmax = (int)$tier['views_max'];
+        $range = $vmax - $vmin;
+
+        // وزن‌محور: 85 با 86 فرق داشته باشد — در همان تیره جایگاه متفاوت
+        if ($weight !== null) {
+            $wr = self::get_tier_weight_range($tier['id'] ?? '');
+            $wSpan = max(1, $wr['max'] - $wr['min']);
+            $norm = max(0, min(1, ($weight - $wr['min']) / $wSpan)); // 0-1 داخل تیره
+            // هیت: سقف تیره (برای tier1 => 9-10M)، معمولی: کف تا میانه (2-4M برای tier1)
+            // هش: هر پست حتی با وزن یکسان بازدید متفاوت بگیرد — ضد گیرکردن 5M
+            $pidHash = $post_id ? ((($post_id * 9301 + 49297) % 233280) / 233280) : (mt_rand(0,1000)/1000);
+            $hashJitter = ($pidHash - 0.5) * 0.10; // ±5% بر اساس ID
+            if ($is_premium) {
+                // منتخب ویژه selected-works — 8M تا 12M متنوع، رای متناسب — وزن و هش تاثیر
+                $premiumMin = 8000000;
+                $premiumMax = 12000000;
+                $premiumRange = $premiumMax - $premiumMin; // 4M
+                // وزن: norm 0=>0, 1=>+35% range (1.4M)
+                $basePos = 0.12 + $norm * 0.38; // 0.12 تا 0.50
+                $hashPos = $pidHash * 0.32; // 0 تا 0.32 هش ID
+                $randPos = mt_rand(0, 1000) / 1000 * 0.18; // 0 تا 0.18 رندم
+                $pos = $basePos + $hashPos + $randPos; // 0.12 تا 1.0
+                $pos = max(0, min(0.98, $pos));
+                $views = (int) round($premiumMin + $premiumRange * $pos);
+                // گارانتی 8M-12M دقیق
+                $views = max($premiumMin, min($premiumMax, $views + mt_rand(-120000, 120000)));
+            } elseif ($is_hit) {
+                // هیت: 88-100% رنج + وزن تأثیر 12% + هش + جیتر
+                $baseFactor = 0.88 + $norm * 0.12;
+                $jitter = mt_rand(-300, 300) / 10000 + $hashJitter * 0.5; // ±3% + هش
+                $factor = max(0.85, min(1, $baseFactor + $jitter));
+                $views = (int) round($vmin + $range * $factor);
+            } else {
+                // معمولی: 12% + norm*52% => بازه وسیع‌تر 1.9M-6.9M برای tier1 — ضد گیر 5M و شکستن 600k یکسان
+                $baseFactor = 0.12 + $norm * 0.52;
+                $jitter = mt_rand(-800, 800) / 10000 + $hashJitter * 1.15; // ±8% + هش ±5.7% = تا ±14% پراکندگی
+                $factor = max(0.06, min(0.88, $baseFactor + $jitter));
+                $views = (int) round($vmin + $range * $factor);
+            }
+        } else {
+            $views = mt_rand($vmin, $vmax);
+        }
+
+        // رای‌ها همبسته با بازدید — واقعی: ~1 رای per 400-650 بازدید
+        if ($weight !== null) {
+            $isPremiumCast = $is_premium || $views >= 9500000;
+            $divisor = 520 + mt_rand(-70, 70) + ($is_hit ? -70 : 0) + ($isPremiumCast ? -25 : 0) + ($weight >= 90 ? -30 : 0);
+            $divisor = max(320, min(850, $divisor));
+            $casts = (int) round($views / $divisor);
+            // کلیمپ با محدوده تیره برای جلوگیری از پرت — منتخب اجازه سقف بالاتر
+            $extraCap = $is_premium ? 15000 : 8000;
+            $casts = max((int)$tier['casts_min'], min((int)$tier['casts_max'] + $extraCap, $casts));
+            // برای 8M-12M رای متناسب: 8M→~16K، 12M→~24K (1 per 500)
+            if ($views >= 8000000 && $casts < 13000) {
+                if ($is_premium) $casts = mt_rand(15800, 24500); // دقیقا متناسب 8M-12M
+                else $casts = mt_rand(11500, 19000);
+            } elseif ($views >= 5000000 && $views < 8000000 && $casts < 6500) $casts = mt_rand(6500, 11800);
+        } else {
+            $casts = mt_rand((int)$tier['casts_min'], (int)$tier['casts_max']);
+        }
+
+        // میانگین وزن‌محور + هیت
+        $avgRange = (float)$tier['avg_max'] - (float)$tier['avg_min'];
+        if ($weight !== null) {
+            $wr = self::get_tier_weight_range($tier['id'] ?? '');
+            $wSpan = max(1, $wr['max'] - $wr['min']);
+            $norm = max(0, min(1, ($weight - $wr['min']) / $wSpan));
+            $avg = (float)$tier['avg_min'] + $avgRange * (0.35 + $norm * 0.55);
+            if ($is_premium) $avg += 0.28;
+            elseif ($is_hit) $avg += 0.18;
+            $avg += mt_rand(-8, 8) / 100; // ±0.08
+        } else {
+            $bias = 0;
+            if (strpos($tier['id'], 'tier_1') !== false || strpos($tier['id'], 'tier_2') !== false) $bias = 0.25;
+            $rand = mt_rand(0, 1000) / 1000;
+            $rand = min(1, max(0, $rand + $bias * (mt_rand(0,100)/100)));
+            $avg = round((float)$tier['avg_min'] + $avgRange * $rand, 1);
+        }
         $avg = min(max($avg, (float)$tier['avg_min']), (float)$tier['avg_max']);
         $avg = min($avg, $best);
-
-        // همبستگی بازدید↔امتیاز: هر 10K بازدید ≈ +0.02 میانگین نهفته (نامحسوس)
-        $views_factor = min(0.15, max(0, ($views - 10000) / 1500000 * 0.12)); // 0..0.12
-        $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
+        if ($is_premium) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.92);
+        elseif ($is_hit) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.85);
         $avg = round($avg, 1);
-        // محاسبه ratings سازگار — فرمول استاندارد KKSR
+
+        // همبستگی بازدید↔امتیاز (نامحسوس)
+        if ($weight === null) {
+            $views_factor = min(0.15, max(0, ($views - 10000) / 10000000 * 0.12));
+            $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
+            $avg = round($avg, 1);
+        }
         $ratings = $best > 0 ? round($avg * $casts / $best * 5, 2) : 0;
 
         return [
@@ -205,6 +294,23 @@ class TierManager {
                     'terms' => sanitize_text_field($category),
                 ]];
                 unset($base_args['cat']);
+            }
+        }
+        // فیلتر هنرمند خاص — برای تنوع‌دهی مجدد علیرضا قربانی و امثالهم
+        if (!empty($filters['artist_term']) && !empty($filters['artist_taxonomy'])) {
+            $tax_q = ['taxonomy'=>sanitize_text_field($filters['artist_taxonomy']),'field'=>'term_id','terms'=>(int)$filters['artist_term']];
+            if (empty($base_args['tax_query'])) $base_args['tax_query'] = [$tax_q];
+            else {
+                $base_args['tax_query'][] = $tax_q;
+                if (count($base_args['tax_query']) > 1) $base_args['tax_query']['relation'] = 'AND';
+            }
+        } elseif (!empty($filters['artist_term'])) {
+            // fallback auto detect
+            $auto_tax = \ApexOmega\Core\ArtistManager::detect_artist_taxonomy();
+            if ($auto_tax) {
+                $tax_q = ['taxonomy'=>$auto_tax,'field'=>'term_id','terms'=>(int)$filters['artist_term']];
+                if (empty($base_args['tax_query'])) $base_args['tax_query'] = [$tax_q];
+                else { $base_args['tax_query'][] = $tax_q; $base_args['tax_query']['relation']='AND'; }
             }
         }
         // فیلتر 7 روزه: فقط پست‌هایی که _apex_tier_applied_at قدیمی‌تر از N روز است یا خالی است
@@ -411,6 +517,11 @@ class TierManager {
 
                 $old_views = Adapter_Views::get_views($pid);
                 $old_kksr = Adapter_KKSR::get_stats($pid);
+                // 🛡️ محافظ هرگز کم نکن — اگر توزیع مقدار کمتری پیشنهاد داد، نادیده بگیر (فقط دستی می‌تواند کم کند)
+                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$item['casts'],'avg'=>$item['avg'],'ratings'=>$item['ratings'],'views'=>$item['views']], false, $pid);
+                $item['casts'] = $guarded['casts']; $item['avg'] = $guarded['avg']; $item['ratings'] = $guarded['ratings']; $item['views'] = $guarded['views'];
+                if ($item['views'] === $old_views && $item['casts'] === $old_kksr['casts'] && $item['avg'] === $old_kksr['avg']) { Database::release_lock($lock); continue; }
+                // مقدار قدیمی ممکن است با guard تغییر کرده باشد، snapshot را هم به‌روزرسانی کن بعداً؟
                 $detect = Adapter_KKSR::detect();
 
                 // Single transaction per post: views + kksr + tier meta atomically

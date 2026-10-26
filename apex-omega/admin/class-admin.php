@@ -38,15 +38,47 @@ class Admin {
         add_submenu_page(
             'apex-omega',
             'توزیع هوشمند — APEX Ω',
-            'توزیع هوشمند ✨',
+            'توزیع هوشمند',
             'apex_manage_statistics',
             'apex-omega-tier',
             [$this, 'render_tier']
         );
         add_submenu_page(
             'apex-omega',
+            'هنرمندان — APEX Ω',
+            'هنرمندان',
+            'apex_manage_statistics',
+            'apex-omega-artists',
+            [$this, 'render_artists']
+        );
+        add_submenu_page(
+            'apex-omega',
+            'اتوماسیون — APEX Ω',
+            'اتوماسیون',
+            'apex_manage_statistics',
+            'apex-omega-automation',
+            [$this, 'render_automation']
+        );
+        add_submenu_page(
+            'apex-omega',
+            'همگام‌سازی وزنی — APEX Ω',
+            'همگام‌سازی',
+            'apex_manage_statistics',
+            'apex-omega-weight-sync',
+            [$this, 'render_weight_sync']
+        );
+        add_submenu_page(
+            'apex-omega',
+            'آثار منتخب — APEX Ω',
+            'آثار منتخب',
+            'apex_manage_statistics',
+            'apex-omega-hits',
+            [$this, 'render_hits']
+        );
+        add_submenu_page(
+            'apex-omega',
             'آنالیتیکس — APEX Ω',
-            'آنالیتیکس 📊',
+            'آنالیتیکس',
             'apex_manage_statistics',
             'apex-omega-analytics',
             [$this, 'render_analytics']
@@ -89,6 +121,7 @@ class Admin {
         if (strpos($hook, 'apex-omega') === false && $hook !== 'post.php' && $hook !== 'post-new.php') return;
 
         wp_enqueue_style('apex-omega-admin', APEX_OMEGA_URL . 'admin/css/admin-rtl.css', [], APEX_OMEGA_VERSION);
+        wp_enqueue_style('apex-omega-glass', APEX_OMEGA_URL . 'admin/css/apex-glass.css', ['apex-omega-admin'], APEX_OMEGA_VERSION);
         wp_enqueue_script('apex-omega-admin', APEX_OMEGA_URL . 'admin/js/admin.js', ['jquery'], APEX_OMEGA_VERSION, true);
         global $wpdb;
         $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='post' AND post_status='publish'");
@@ -123,6 +156,7 @@ class Admin {
         if (isset($input['max_default_percent'])) $out['max_default_percent'] = max(1, min(100, (float)$input['max_default_percent']));
         if (isset($input['enable_real_cron_hint'])) $out['enable_real_cron_hint'] = !empty($input['enable_real_cron_hint']);
         if (isset($input['remove_data_on_uninstall'])) $out['remove_data_on_uninstall'] = !empty($input['remove_data_on_uninstall']);
+        if (isset($input['never_decrease_views'])) $out['never_decrease_views'] = !empty($input['never_decrease_views']);
         // تیره‌ها
         if (isset($input['ai_api_key'])) $out['ai_api_key'] = sanitize_text_field($input['ai_api_key']);
         return $out;
@@ -212,24 +246,80 @@ class Admin {
     public function render_settings(): void {
         if (isset($_POST['apex_save_settings']) && check_admin_referer('apex_save_settings', '_wpnonce_settings')) {
             if (!current_user_can('manage_options')) wp_die('دسترسی غیرمجاز');
+            // 1) عمومی
             $input = [
                 'large_drop_threshold_percent' => $_POST['large_drop_threshold_percent'] ?? 20,
-                'max_default_step_views' => $_POST['max_default_step_views'] ?? 500,
-                'max_default_percent' => $_POST['max_default_percent'] ?? 15,
-                'enable_real_cron_hint' => isset($_POST['enable_real_cron_hint']),
-                'remove_data_on_uninstall' => isset($_POST['remove_data_on_uninstall']),
+                'max_default_step_views'       => $_POST['max_default_step_views'] ?? 500,
+                'max_default_percent'          => $_POST['max_default_percent'] ?? 15,
+                'enable_real_cron_hint'        => isset($_POST['enable_real_cron_hint']),
+                'remove_data_on_uninstall'     => isset($_POST['remove_data_on_uninstall']),
+                'never_decrease_views'         => isset($_POST['never_decrease_views']),
             ];
             update_option('apex_omega_settings', $this->sanitize_settings($input));
-            // AI جداگانه
-            if (isset($_POST['apex_ai_api_key'])) {
+
+            // 2) هوش مصنوعی
+            if (isset($_POST['apex_ai_api_key']) || isset($_POST['apex_ai_model'])) {
                 \ApexOmega\Core\AI_Helper::save_settings([
-                    'api_key' => $_POST['apex_ai_api_key'],
-                    'model' => $_POST['apex_ai_model'] ?? 'gpt-4o-mini',
+                    'api_key'  => $_POST['apex_ai_api_key'] ?? '',
+                    'model'    => $_POST['apex_ai_model'] ?? 'gpt-4o-mini',
                     'endpoint' => $_POST['apex_ai_endpoint'] ?? 'https://api.gapgpt.app/v1/chat/completions',
                 ]);
-                echo '<div class="notice notice-success"><p>تنظیمات AI ذخیره شد.</p></div>';
             }
-            echo '<div class="notice notice-success"><p>تنظیمات ذخیره شد.</p></div>';
+
+            // 3) هنرمندان و الگوی ریتم — بیس بدون تغییر
+            if (isset($_POST['rhythm_artist_ratio']) || isset($_POST['rhythm_unknown_threshold'])) {
+                \ApexOmega\Core\ArtistManager::save_rhythm_settings([
+                    'artist_ratio'      => isset($_POST['rhythm_artist_ratio']) ? (float)$_POST['rhythm_artist_ratio']/100 : null,
+                    'unknown_threshold' => $_POST['rhythm_unknown_threshold'] ?? null,
+                    'unknown_cap'       => $_POST['rhythm_unknown_cap'] ?? null,
+                    'require_pair'      => isset($_POST['rhythm_require_pair']),
+                ]);
+            }
+
+            // 4) اتوماسیون رشد — متمرکز، بدون تکرار با هاب‌ها
+            if (isset($_POST['evergreen_enabled']) || isset($_POST['evergreen_rate_percent'])) {
+                \ApexOmega\Core\Evergreen::save_settings([
+                    'enabled'      => isset($_POST['evergreen_enabled']),
+                    'rate_percent' => $_POST['evergreen_rate_percent'] ?? null,
+                    'max_views'    => $_POST['evergreen_max_views'] ?? null,
+                ]);
+            }
+            if (isset($_POST['autowatch_enabled']) || isset($_POST['autowatch_threshold'])) {
+                \ApexOmega\Core\AutoWatch::save_settings([
+                    'enabled'          => isset($_POST['autowatch_enabled']),
+                    'threshold'          => $_POST['autowatch_threshold'] ?? null,
+                    'batch'              => $_POST['autowatch_batch'] ?? null,
+                    'min_views'          => $_POST['autowatch_min_views'] ?? null,
+                    'max_views'          => $_POST['autowatch_max_views'] ?? null,
+                    'only_recent_days'   => $_POST['autowatch_only_recent_days'] ?? null,
+                ]);
+            }
+            if (isset($_POST['commentor_enabled']) || isset($_POST['commentor_threshold'])) {
+                \ApexOmega\Core\CommentGuardian::save_settings([
+                    'enabled'          => isset($_POST['commentor_enabled']),
+                    'threshold'        => $_POST['commentor_threshold'] ?? null,
+                    'max_per_post'     => $_POST['commentor_max_per_post'] ?? null,
+                    'min_comments'     => $_POST['commentor_min_comments'] ?? null,
+                    'max_comments'     => $_POST['commentor_max_comments'] ?? null,
+                    'daily_growth'     => $_POST['commentor_daily_growth'] ?? null,
+                    'batch'            => $_POST['commentor_batch'] ?? null,
+                    'only_recent_days' => $_POST['commentor_only_recent_days'] ?? null,
+                ]);
+            }
+
+            // 5) همگام‌سازی وزن‌محور — کنترل کامل (جدید 2.2.6)
+            if (isset($_POST['weight_sync_mode']) || isset($_POST['weight_sync_cooldown_hours'])) {
+                \ApexOmega\Core\ArtistManager::save_weight_sync_settings([
+                    'mode'               => $_POST['weight_sync_mode'] ?? null,
+                    'cooldown_hours'     => $_POST['weight_sync_cooldown_hours'] ?? null,
+                    'batch'              => $_POST['weight_sync_batch'] ?? null,
+                    'exclude_recent_days'=> $_POST['weight_sync_exclude_recent_days'] ?? null,
+                    'protect_selected'   => isset($_POST['weight_sync_protect_selected']),
+                    'protect_manual'     => isset($_POST['weight_sync_protect_manual']),
+                ]);
+            }
+
+            echo '<div class="notice notice-success"><p>تنظیمات ذخیره شد — همه بخش‌ها یک‌جا به‌روزرسانی شد.</p></div>';
         }
         $settings = wp_parse_args(get_option('apex_omega_settings', []), [
             'large_drop_threshold_percent' => 20,
@@ -237,6 +327,7 @@ class Admin {
             'max_default_percent' => 15,
             'enable_real_cron_hint' => true,
             'remove_data_on_uninstall' => false,
+            'never_decrease_views' => true,
         ]);
         $ai_set = \ApexOmega\Core\AI_Helper::get_settings();
         include APEX_OMEGA_DIR . 'admin/views/settings.php';
@@ -245,6 +336,23 @@ class Admin {
     public function render_tier(): void {
         global $wpdb;
         include APEX_OMEGA_DIR . 'admin/views/tier-distribution.php';
+    }
+
+    public function render_artists(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/artists-hub.php';
+    }
+    public function render_automation(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/automation-hub.php';
+    }
+    public function render_weight_sync(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/weight-sync.php';
+    }
+    public function render_hits(): void {
+        global $wpdb;
+        include APEX_OMEGA_DIR . 'admin/views/hits-hub.php';
     }
     public function render_analytics(): void {
         global $wpdb;
