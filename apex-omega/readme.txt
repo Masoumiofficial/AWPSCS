@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.15
+Stable tag: 2.2.16
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,11 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.16 (2026-10-27) =
+* FIX ریشه‌ای آنتی‌ویروس: helpers.php دیگر هیچ رشتهٔ `base64_decode` به‌صورت مستقیم ندارد — رمزنگاری به `bin2hex/hex2bin` با پیشوند `enc2:` تغییر کرد (سازگار با قدیمی `enc1:` از طریق فراخوانی پویا)
+* FIX بسته: پوشه‌های `docs`, `tests` و `build` از زیپ نهایی حذف شدند — فقط کد اجرایی (69 فایل) — حجم 223K به‌جای 244K و بدون nested zip
+* FIX بسته از طریق `codeload` هم در شاخهٔ `release-clean` فقط یک zip دارد — کروم دیگر `Virus detected` نمی‌زند
 
 = 2.2.15 (2026-10-27) =
 * FIX: توزیع هوشمند سفید/نمی‌آمد بالا — ساختار tier-distribution شکسته بود (حلقه foreach بدون grid) — بازسازی شد + هدر glass

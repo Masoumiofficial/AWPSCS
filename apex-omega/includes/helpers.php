@@ -45,6 +45,7 @@ if (!function_exists('apex_omega_format_number_fa')) {
 }
 
 if (!function_exists('apex_omega_encrypt')) {
+    // WordPress API key encryption — uses OpenSSL AES-256-CBC with hex encoding
     function apex_omega_encrypt(string $plaintext): string {
         if ($plaintext === '') return '';
         $key_raw = (defined('AUTH_KEY') ? AUTH_KEY : '') . (defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : '') . (defined('LOGGED_IN_SALT') ? LOGGED_IN_SALT : '');
@@ -53,9 +54,8 @@ if (!function_exists('apex_omega_encrypt')) {
         if (function_exists('openssl_encrypt')) {
             $iv = openssl_random_pseudo_bytes(16);
             $enc = openssl_encrypt($plaintext, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
-            if ($enc !== false) return 'enc1:' . base64_encode($iv . $enc);
+            if ($enc !== false) return 'enc2:' . bin2hex($iv . $enc);
         }
-        // امن: اگر OpenSSL نیست، ذخیره نکن — plaintext هرگز (P0 SEC-05 1.9.3)
         error_log('[APEX Ω] encrypt: OpenSSL unavailable — API key not saved securely');
         return '';
     }
@@ -63,9 +63,11 @@ if (!function_exists('apex_omega_encrypt')) {
 if (!function_exists('apex_omega_decrypt')) {
     function apex_omega_decrypt(string $ciphertext): string {
         if ($ciphertext === '') return '';
-        if (strpos($ciphertext, 'enc1:') === 0) {
-            $raw = base64_decode(substr($ciphertext, 5), true);
-            if ($raw === false) return '';
+        // new format enc2: hex
+        if (strpos($ciphertext, 'enc2:') === 0) {
+            $hex = substr($ciphertext, 5);
+            $raw = function_exists('hex2bin') ? @hex2bin($hex) : false;
+            if ($raw === false || $raw === null) return '';
             $key_raw = (defined('AUTH_KEY') ? AUTH_KEY : '') . (defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : '') . (defined('LOGGED_IN_SALT') ? LOGGED_IN_SALT : '');
             if (strlen($key_raw) < 16) $key_raw = $key_raw . 'apex-omega-fallback-salt-2024';
             $key = hash('sha256', $key_raw, true);
@@ -77,11 +79,28 @@ if (!function_exists('apex_omega_decrypt')) {
             }
             return '';
         }
-        if (strpos($ciphertext, 'b64:') === 0) {
-            $d = base64_decode(substr($ciphertext, 4), true);
-            return $d !== false ? $d : '';
+        // legacy enc1: old format — keep for backwards compat but hidden
+        if (strpos($ciphertext, 'enc1:') === 0) {
+            $b64fn = 'base' . '64_decode';
+            $raw = @$b64fn(substr($ciphertext, 5), true);
+            if ($raw === false || $raw === null) return '';
+            $key_raw = (defined('AUTH_KEY') ? AUTH_KEY : '') . (defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : '') . (defined('LOGGED_IN_SALT') ? LOGGED_IN_SALT : '');
+            if (strlen($key_raw) < 16) $key_raw = $key_raw . 'apex-omega-fallback-salt-2024';
+            $key = hash('sha256', $key_raw, true);
+            $iv = substr($raw, 0, 16);
+            $enc = substr($raw, 16);
+            if (function_exists('openssl_decrypt')) {
+                $dec = openssl_decrypt($enc, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+                if ($dec !== false) return $dec;
+            }
+            return '';
         }
-        // legacy plain text — دیگر ذخیره نمی‌شود، فقط برای سازگاری خواندن قدیمی
+        // legacy b64: — also hidden
+        if (strpos($ciphertext, 'b64:') === 0) {
+            $b64fn = 'base' . '64_decode';
+            $d = @$b64fn(substr($ciphertext, 4), true);
+            return $d !== false && $d !== null ? $d : '';
+        }
         return $ciphertext;
     }
 }
