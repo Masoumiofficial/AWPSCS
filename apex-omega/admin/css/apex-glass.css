@@ -25,7 +25,7 @@
 /* page mesh — subtle iPhone wallpaper behind glass */
 .apex-glass-wrap{
   max-width:1160px;
-  margin:18px 0 40px;
+  margin:18px 0 32px; padding-bottom:8px;
   font-family:"Vazirmatn","IRANSans","Yekan Bakh","Segoe UI",Tahoma,sans-serif;
   direction:rtl;
   text-align:right;
@@ -205,10 +205,10 @@
 .apex-glass-nav .apex-g-tab svg{width:18px;height:18px;flex:0 0 18px;opacity:.92}
 .apex-glass-nav .apex-g-tab small{margin-right:auto;font-size:10px;font-weight:800;color:var(--muted-2);background:rgba(15,23,42,.06);padding:3px 7px;border-radius:999px}
 .apex-glass-main{flex:1;min-width:0}
-.apex-glass-panel{display:none}
-.apex-glass-panel.is-active{display:block;animation:apexFade .20s ease}
+.apex-glass-panel,.apex-g-panel{display:none}
+.apex-glass-panel.is-active,.apex-g-panel.is-active{display:block;animation:apexFade .20s ease}
 @keyframes apexFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.no-js .apex-glass-panel{display:block;margin-bottom:12px}
+.no-js .apex-glass-panel,.no-js .apex-g-panel{display:block;margin-bottom:12px}
 
 /* cards — true iPhone glass */
 .apex-glass-card{
@@ -321,6 +321,22 @@
 /* empty, notices */
 .apex-empty{padding:26px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8;background:rgba(255,255,255,.62);border:1px dashed rgba(15,23,42,.10);border-radius:14px;backdrop-filter:blur(6px)}
 .apex-glass-wrap .notice{margin:12px 0;border-radius:12px;backdrop-filter:blur(8px)}
+
+
+/* fix spacing between header and first card — weight-sync/others had stuck cards */
+.apex-glass-wrap > .apex-glass-header + *{margin-top:14px}
+.apex-glass-wrap > .apex-glass-header + .apex-glass-card,
+.apex-glass-wrap > .apex-glass-header + .apex-card{margin-top:14px}
+.apex-glass-card + .apex-glass-card,
+.apex-card + .apex-glass-card,
+.apex-glass-card + .apex-card{margin-top:4px}
+
+/* ensure wp footer stays outside panel — fix user report "سپاسگزاریم... وسط پنل" */
+#wpfooter{clear:both; position:static !important; margin-top:30px !important; padding:12px 20px; background:transparent; border:none}
+.apex-glass-wrap::before{position:fixed; inset:0; z-index:-2}
+
+/* ensure wrap does not trap footer — clearfix */
+.apex-glass-wrap::after{content:""; display:block; clear:both; height:1px}
 
 /* responsive — keep tabs usable */
 @media(max-width:1080px){

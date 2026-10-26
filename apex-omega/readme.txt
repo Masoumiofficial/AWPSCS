@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.14
+Stable tag: 2.2.15
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,12 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.15 (2026-10-27) =
+* FIX: توزیع هوشمند سفید/نمی‌آمد بالا — ساختار tier-distribution شکسته بود (حلقه foreach بدون grid) — بازسازی شد + هدر glass
+* FIX: تب‌های تنظیمات (هوش مصنوعی/داده) کلیک نمی‌کرد — CSS selector اشتباه .apex-glass-panel vs .apex-g-panel — هر دو پشتیبانی شد
+* FIX: فوتر وردپرس "سپاسگزاریم..." وسط پنل می‌افتاد — wrap ناقص بسته می‌شد + استایل fixed pseudo — با clearfix و #wpfooter static شد
+* FIX: فاصله چسبیده همگام‌سازی وزن‌محور → پیشرفت تخصیص — اولین card بعد از header حالا 14px gap می‌گیرد، card+card 4px اضافه
 
 = 2.2.14 (2026-10-27) =
 * UI: ظاهر فوق‌حرفه‌ای شیشه‌ای آیفون — بازطراحی کامل glass v3 (blur 22px saturate 180%, inner highlight, mesh background, shadow لایه‌ای) — مرتب، شسته‌رفته

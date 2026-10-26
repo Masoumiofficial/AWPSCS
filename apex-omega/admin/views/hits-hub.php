@@ -326,4 +326,3 @@ $comment_total_site = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->comment
   upd();
 })();
 </script>
-</div>
