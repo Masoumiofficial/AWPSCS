@@ -818,6 +818,7 @@ class Ajax {
     private static function reseed_artist(): void {
         $term_id = (int)($_POST['term_id'] ?? 0);
         $tax = sanitize_text_field($_POST['taxonomy'] ?? '');
+        if ($tax === '__auto__') $tax = '';
         $res = \ApexOmega\Core\ArtistManager::reseed_artist_variance($term_id, $tax);
         if (empty($res['success'])) wp_send_json_error($res, 400);
         wp_send_json_success($res);

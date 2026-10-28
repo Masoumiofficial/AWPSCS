@@ -1151,13 +1151,25 @@ class ArtistManager {
         $ids = $q->posts ?: [];
         if (empty($ids)) return ['success'=>false,'message'=>'این هنرمند هیچ آهنگی ندارد (ترم خالی)'];
         $weight = (int)(get_option(self::OPTION_WEIGHTS, [])[$term_id] ?? 20);
-        // اگر وزن پیش‌فرض 20 است، سعی کن وزن هوشمند حدس بزنی (برای تنوع بهتر)
+        $best = (int) get_option('kksr_stars', 5); if($best<1) $best=5;
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        $total = count($ids);
+        $applied=0; $errors=[]; $details=[]; $snapshot_rows=[];
+        $before_views = [];
+        foreach($ids as $pid) $before_views[$pid]=(int)get_post_meta($pid,'views',true);
+        // اگر وزن پیش‌فرض 20 است، میانگین فعلی را هم در نظر بگیر (600k یکنواخت نباید tier_4 شود)
         if ($weight === 20) {
-            // حدس بر اساس نام: اگر تعداد آهنگ زیاد است، احتمالا مشهور — وزن متوسط بده
-            $weight = max(55, min(85, 50 + (int)($term->count / 5)));
+            $avg_old = $total ? array_sum($before_views)/max(1,$total) : 0;
+            if ($avg_old >= 800000) $weight = 82;
+            elseif ($avg_old >= 500000) $weight = 76;
+            elseif ($avg_old >= 200000) $weight = 65;
+            elseif ($avg_old >= 80000) $weight = 55;
+            elseif ($avg_old >= 30000) $weight = 42;
+            else $weight = max(55, min(85, 50 + (int)($term->count / 5)));
         }
         $tier_id = self::weight_to_tier_hint($weight);
-        $tiers = \ApexOmega\Core\TierManager::get_tiers();
+        $tiers = \\ApexOmega\\Core\\TierManager::get_tiers();
         $tmap=[]; foreach($tiers as $t) $tmap[$t['id']]=$t;
         $tier = $tmap[$tier_id] ?? $tmap['tier_4'];
         $best = (int) get_option('kksr_stars', 5); if($best<1) $best=5;
@@ -1179,17 +1191,25 @@ class ArtistManager {
             // شکستن یکنواختی: اگر oldها همه یکسان هستند، یک jitter ترتیبی اضافه کن تا دیگر مساوی نمانند
             // برای اولین اجرا، val ممکن است نزدیک old باشد — یک پراکندگی اجباری ترتیبی
             $pidHash = (($pid * 9301 + 49297) % 233280)/233280; // 0-1
-            // اگر old تکراری است (اکثر پست‌ها هم‌مقدار)، یک variance بیشتر
-            $spread = (int) round($cur_tier['views_max'] - $cur_tier['views_min']);
-            $forcedVar = (int) round(($pidHash - 0.5) * $spread * 0.18); // ±9% بازه — برای tier_2 => ±36k
-            $vals['views'] = max($vals['views'], $vals['views'] + $forcedVar);
+            // اگر old یکنواخت و بالاتر از tier است (و پرمیوم نیست)، تنوع را بر اساس old بساز تا هرگز کم نشود ولی متنوع شود — پرمیوم از generate_values خودش 8-12M می‌گیرد
+            if (!$is_premium && $old_views > 0 && $old_views > (int)$cur_tier['views_max']) {
+                // افزایش متنوع بر اساس old: 3% تا 18% (pidHash) + جیتر رندم کوچک
+                $jitter = (mt_rand(-400,400)/10000); // ±4%
+                $factor = 0.03 + $pidHash * 0.15 + $jitter; // 3% تا 18% ±4% => تقریبا -1% تا 22% (حداقل 2% تضمین)
+                $factor = max(0.02, $factor);
+                $vals['views'] = $old_views + (int) round($old_views * $factor);
+            } else {
+                $spread = (int) round($cur_tier['views_max'] - $cur_tier['views_min']);
+                $forcedVar = (int) round(($pidHash - 0.5) * $spread * 0.30); // ±15% بازه — شکستن یکنواختی قدیمی
+                $vals['views'] = max($vals['views'], $vals['views'] + $forcedVar);
+            }
             // محافظ هرگز کم نکن اما با تنوع
             $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']], false, $pid);
             $vals['casts']=$guarded['casts']; $vals['avg']=$guarded['avg']; $vals['ratings']=$guarded['ratings']; $vals['views']=$guarded['views'];
-            // اگر هنوز مساوی old ماند (چون guard + forcedVar کم بود)، یک افزایش حداقل اجباری
+            // اگر هنوز مساوی old ماند (چون guard + forcedVar کم بود)، یک افزایش حداقل اجباری با پراکندگی بیشتر
             if ($vals['views'] === $old_views) {
-                $minInc = (int) round($old_views * (0.012 + $pidHash * 0.025)); // 1.2–3.7%
-                $vals['views'] = $old_views + max(2500, $minInc);
+                $minInc = (int) round($old_views * (0.025 + $pidHash * 0.08)); // 2.5–10.5% — دیده‌شونده
+                $vals['views'] = $old_views + max(3500, $minInc);
                 // رای و امتیاز هم حداقل کمی بیشتر
                 if ($vals['casts'] <= $old_kksr['casts']) $vals['casts'] = $old_kksr['casts'] + (int)round($pidHash*8)+1;
                 if ($vals['avg'] <= $old_kksr['avg']) $vals['avg'] = min((float)$cur_tier['avg_max'], round($old_kksr['avg']+0.1,1));
