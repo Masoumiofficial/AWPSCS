@@ -114,6 +114,21 @@ class ArtistManager {
         return 'tier_7';
     }
 
+    // پیدا کردن tier مناسب برای بازدید — برای هماهنگی امتیاز/کامنت با بازه سفارشی
+    private static function find_tier_for_views(int $views, array $tiers): array {
+        foreach ($tiers as $t) {
+            if ($views >= (int)($t['views_min'] ?? 0) && $views <= (int)($t['views_max'] ?? PHP_INT_MAX)) return $t;
+        }
+        $closest = $tiers[0] ?? ['id'=>'tier_4','views_min'=>80000,'views_max'=>200000];
+        $minDiff = PHP_INT_MAX;
+        foreach ($tiers as $t) {
+            $mid = ((int)($t['views_min'] ?? 0) + (int)($t['views_max'] ?? 0)) / 2;
+            $diff = abs($views - $mid);
+            if ($diff < $minDiff) { $minDiff = $diff; $closest = $t; }
+        }
+        return $closest;
+    }
+
     public static function save_weights(array $weights): void {
         $clean = [];
         foreach ($weights as $tid=>$w) {
@@ -1155,7 +1170,7 @@ class ArtistManager {
         $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();
         $total = count($ids);
-        $applied=0; $errors=[]; $details=[]; $snapshot_rows=[];
+        $applied=0; $applied_comments=0; $errors=[]; $details=[]; $snapshot_rows=[]; $comment_details=[];
         $before_views = [];
         foreach($ids as $pid) $before_views[$pid]=(int)get_post_meta($pid,'views',true);
         // اگر وزن پیش‌فرض 20 است، میانگین فعلی را هم در نظر بگیر (600k یکنواخت نباید tier_4 شود)
@@ -1223,6 +1238,12 @@ class ArtistManager {
                     }
                     $vals['views'] = max($low, min($rmax + (int)($old_views*0.08), $vals['views']));
                 }
+                // هماهنگی امتیاز با بازه جدید — tier متناسب با views جدید (برای وزن و پرمیوم)
+                $newTierForRating = $is_premium ? ($tmap['tier_1'] ?? $tier) : self::find_tier_for_views((int)$vals['views'], $tiers);
+                $fresh = \ApexOmega\Core\TierManager::generate_values($newTierForRating, $best, (int)$weight, $is_hit, $pid, $is_premium);
+                $vals['casts'] = $fresh['casts'];
+                $vals['avg'] = $fresh['avg'];
+                $vals['ratings'] = $fresh['ratings'];
             } elseif (!$is_premium && $old_views > 0 && $old_views > (int)$cur_tier['views_max']) {
                 // افزایش متنوع بر اساس old: 3% تا 18% (pidHash) + جیتر رندم کوچک
                 $jitter = (mt_rand(-400,400)/10000); // ±4%
@@ -1267,6 +1288,47 @@ class ArtistManager {
                 $wpdb->query('COMMIT');
                 \ApexOmega\Core\History::log($pid,'views',$old_views,$vals['views'],'reseed_variance',$user_id,$exec,null,['tier'=>$tier_id,'weight'=>$weight,'term_id'=>$term_id]);
                 $applied++; $details[]=['post_id'=>$pid,'old'=>$old_views,'new'=>$vals['views']];
+                // ——— هماهنگی کامنت با بازدید/امتیاز جدید (هرگز کم نمی‌شود) ———
+                try {
+                    $cur_comments = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+                    $target_comments = \ApexOmega\Core\CommentGuardian::calculate_target((int)$vals['views'], (int)$weight, (float)$vals['avg'], $is_premium);
+                    $cg_settings = \ApexOmega\Core\CommentGuardian::get_settings();
+                    $max_per_post = (int)($cg_settings['max_per_post'] ?? 60);
+                    $target_comments = min($target_comments, $max_per_post);
+                    if ($cur_comments < $target_comments) {
+                        $need = $target_comments - $cur_comments;
+                        $need = max(1, min($need, 14)); // سقف هر تنوع تا 14 کامنت برای جلوگیری از سنگینی
+                        if (get_post_field('comment_status', $pid) !== 'open') wp_update_post(['ID'=>$pid,'comment_status'=>'open']);
+                        $artist_name_for_c = $term->name ?? '';
+                        $title_for_c = get_the_title($pid) ?: '';
+                        $inserted_c = 0;
+                        for ($ci=0; $ci<$need; $ci++) {
+                            if ($cur_comments + $inserted_c >= $target_comments) break;
+                            if ($cur_comments + $inserted_c >= $max_per_post) break;
+                            $who = \ApexOmega\Core\CommentGuardian::generate_name();
+                            $c_text = \ApexOmega\Core\CommentGuardian::generate_text($pid, $artist_name_for_c, $title_for_c, (int)$weight, (int)$vals['views'], $is_premium);
+                            $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 900));
+                            $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
+                            $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $pid, $c_text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
+                            if ($dup) $c_text .= ' ' . mt_rand(10,99);
+                            $fake_ip = mt_rand(1,223).'.'.mt_rand(0,255).'.'.mt_rand(0,255).'.'.mt_rand(1,254);
+                            $cid = wp_insert_comment(['comment_post_ID'=>$pid,'comment_author'=>$who['author'],'comment_author_email'=>$who['email'],'comment_author_url'=>'','comment_content'=>$c_text,'comment_type'=>'','comment_parent'=>0,'user_id'=>0,'comment_author_IP'=>$fake_ip,'comment_agent'=>'Mozilla/5.0','comment_date'=>$comment_time,'comment_date_gmt'=>$comment_time_gmt,'comment_approved'=>1]);
+                            if ($cid && !is_wp_error($cid)) {
+                                add_comment_meta($cid, '_apex_commentor', 1, true);
+                                add_comment_meta($cid, '_apex_weight', (int)$weight, true);
+                                wp_update_comment_count($pid);
+                                $inserted_c++;
+                                \ApexOmega\Core\History::log($pid,'comment',$cur_comments,$cur_comments+$inserted_c,'reseed_comment_sync',$user_id,$exec,null,['author'=>$who['author'],'weight'=>$weight,'target'=>$target_comments]);
+                            }
+                            usleep(15000);
+                        }
+                        if ($inserted_c > 0) {
+                            update_post_meta($pid, \ApexOmega\Core\CommentGuardian::META_LAST, current_time('mysql', true));
+                            $applied_comments += $inserted_c;
+                            $comment_details[] = ['post_id'=>$pid,'before'=>$cur_comments,'added'=>$inserted_c,'after'=>$cur_comments+$inserted_c,'target'=>$target_comments];
+                        }
+                    }
+                } catch (\Throwable $ce) { $errors[] = "کامنت پست $pid: ".$ce->getMessage(); }
             } catch(\Throwable $e){ $wpdb->query('ROLLBACK'); $errors[]="پست $pid: ".$e->getMessage(); }
             \ApexOmega\Core\Database::release_lock($lock);
         }
@@ -1274,7 +1336,10 @@ class ArtistManager {
             try { \ApexOmega\Core\Database::create_snapshot($exec,$user_id,[],['artist_term'=>$term_id,'reseed'=>true],$total,$applied,$snapshot_rows); } catch(\Throwable $e){}
             update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, ['counts'=>[],'filters'=>['artist_term'=>$term_id],'applied'=>$applied,'exec'=>$exec,'at'=>current_time('mysql',true),'errors'=>$errors,'reseed'=>true], false);
         }
-        return ['success'=>true,'applied'=>$applied,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'message'=> $applied ? "✅ تنوع‌دهی انجام شد: {$applied} آهنگ «{$term->name}» از {$total} — از 600k یکسان به بازه متنوع (هرگز کم نشد)" : 'هیچ تغییری اعمال نشد (همه قفل یا قبلا متنوع)'];
+        $msg_extra = '';
+        if ($has_custom_range) $msg_extra = " — بازه ".number_format_i18n($custom_min)." تا ".number_format_i18n($custom_max)."";
+        $comment_msg = $applied_comments ? " + {$applied_comments} کامنت هماهنگ" : '';
+        return ['success'=>true,'applied'=>$applied,'applied_comments'=>$applied_comments,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'comment_details'=>$comment_details,'custom_range'=> $has_custom_range ? ['min'=>$custom_min,'max'=>$custom_max] : null,'message'=> $applied ? "✅ تنوع‌دهی انجام شد: {$applied} آهنگ «{$term->name}» از {$total}{$msg_extra} — بازدید و امتیاز{$comment_msg} هماهنگ شد (هرگز کم نشد)" : 'هیچ تغییری اعمال نشد (همه قفل یا قبلا متنوع)'];
     }
 
 
