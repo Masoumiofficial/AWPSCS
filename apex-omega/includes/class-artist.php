@@ -1169,16 +1169,9 @@ class ArtistManager {
             else $weight = max(55, min(85, 50 + (int)($term->count / 5)));
         }
         $tier_id = self::weight_to_tier_hint($weight);
-        $tiers = \\ApexOmega\\Core\\TierManager::get_tiers();
+        $tiers = \ApexOmega\Core\TierManager::get_tiers();
         $tmap=[]; foreach($tiers as $t) $tmap[$t['id']]=$t;
         $tier = $tmap[$tier_id] ?? $tmap['tier_4'];
-        $best = (int) get_option('kksr_stars', 5); if($best<1) $best=5;
-        $exec = apex_omega_generate_uuid();
-        $user_id = get_current_user_id();
-        $total = count($ids);
-        $applied=0; $errors=[]; $details=[]; $snapshot_rows=[];
-        $before_views = [];
-        foreach($ids as $pid) $before_views[$pid]=(int)get_post_meta($pid,'views',true);
         // برای شکستن یکنواختی، حتی اگر تنوع فعلی وجود دارد، یک offset ترتیبی اضافه کن
         // هر پست با هش ID تنوع دارد، اما اگر همه 600k بودند، guard قبلی آنها را با +1-3% متنوع می‌کند — اینجا عمدا بیشتر تنوع می‌دهیم
         foreach($ids as $idx=>$pid) {
