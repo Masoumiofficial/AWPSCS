@@ -150,6 +150,18 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
         </div>
       </div>
       <div id="apex-reseed-preview" style="margin-top:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:11px;color:#475569;line-height:1.7;display:none;"></div>
+<<<<<<< HEAD
+=======
+      <div id="apex-reseed-progress" style="display:none;margin-top:12px;background:rgba(255,255,255,0.9);border:1px solid rgba(124,58,237,0.12);border-radius:14px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;color:#1e293b;margin-bottom:8px;">
+          <span id="apex-reseed-progress-text">0 از 0</span><span id="apex-reseed-progress-pct" style="background:#7c3aed;color:#fff;padding:2px 8px;border-radius:999px;font-size:10px;">0%</span>
+        </div>
+        <div style="background:#e5e7eb;border-radius:999px;height:14px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,0.08);">
+          <div id="apex-reseed-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#f59e0b);transition:width 0.5s cubic-bezier(0.2,0.8,0.2,1);"></div>
+        </div>
+        <small id="apex-reseed-progress-detail" style="color:#64748b;font-size:11px;display:block;margin-top:8px;line-height:1.6;"></small>
+      </div>
+>>>>>>> e16fcf6 (v2.2.20: تقسیم‌بندی تنوع‌دهی (15تایی) + نوار پیشرفت تعداد/درصد — جلوگیری از 503، امتیاز/کامنت هماهنگ)
     </div>
     <div style="padding:12px 20px 18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid rgba(15,23,42,0.06);background:rgba(248,250,252,0.7);border-radius:0 0 22px 22px;">
       <button type="button" id="apex-reseed-cancel" style="padding:10px 16px;border-radius:12px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.9);font-weight:700;cursor:pointer;">لغو</button>
@@ -266,6 +278,7 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
       if(!_reseedTid) return;
       var mn=parseInt(qs('apex-reseed-min').value||0), mx=parseInt(qs('apex-reseed-max').value||0);
       if(mn && mx && mn>mx){ alert('کف بازه نباید از سقف بیشتر باشد'); return; }
+<<<<<<< HEAD
       var payload={term_id:_reseedTid, taxonomy: qs('apex-artist-taxonomy')?.value||''};
       if(mn) payload.range_min=mn;
       if(mx) payload.range_max=mx;
@@ -278,6 +291,50 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
       }).catch(function(e){ alert('❌ '+e.message); }).finally(function(){
         if(origBtn){ origBtn.disabled=false; origBtn.textContent=o; }
         _apply.disabled=false; _apply.textContent='✅ اعمال تنوع';
+=======
+      var payload={term_id:_reseedTid, taxonomy: qs('apex-artist-taxonomy')?.value||'', chunk_size: 15};
+      if(mn) payload.range_min=mn;
+      if(mx) payload.range_max=mx;
+      var progressBox=qs('apex-reseed-progress'), bar=qs('apex-reseed-progress-bar'), txt=qs('apex-reseed-progress-text'), pctEl=qs('apex-reseed-progress-pct'), detail=qs('apex-reseed-progress-detail');
+      var origBtn=document.querySelector('.apex-reseed-btn[data-tid="'+_reseedTid+'"]');
+      _apply.disabled=true; _apply.textContent='در حال شروع…';
+      if(progressBox) progressBox.style.display='block';
+      if(bar) bar.style.width='0%';
+      if(txt) txt.textContent='در حال آماده‌سازی...';
+      if(pctEl) pctEl.textContent='0%';
+      if(detail) detail.textContent='';
+      apexPost('apex_start_reseed_job', payload).then(function(j){
+        if(!j.success) throw new Error(j.data.message||'خطا در شروع کار');
+        var exec=j.data.execution_id, total=j.data.total, chunk=j.data.chunk_size||15;
+        if(txt) txt.textContent='0 از '+total+' آهنگ';
+        if(pctEl) pctEl.textContent='0%';
+        if(detail) detail.textContent='کار '+exec.slice(0,8)+' — '+total+' آهنگ در صف (تقسیم‌بندی برای جلوگیری از 503)';
+        function processNext(){
+          return apexPost('apex_process_reseed_chunk', {execution_id: exec, chunk_size: chunk}).then(function(r){
+            if(!r.success) throw new Error(r.data.message||'خطا در پردازش');
+            var d=r.data;
+            var processed=d.processed||0, tot=d.total||total, percent=d.percent||0, remaining=d.remaining||0;
+            if(bar) bar.style.width=percent+'%';
+            if(txt) txt.textContent=processed+' از '+tot+' آهنگ';
+            if(pctEl) pctEl.textContent=percent+'%';
+            if(detail) detail.textContent='✅ '+processed+' اعمال شد — '+(d.applied_comments_in_chunk||0)+' کامنت این بسته — باقی: '+remaining+' — کل کامنت: '+(d.total_applied_comments||0);
+            if(d.status==='done'){
+              _apply.disabled=false; _apply.textContent='✅ اعمال تنوع';
+              if(origBtn){ origBtn.disabled=false; }
+              setTimeout(function(){ alert('✅ تنوع‌دهی تمام شد: '+processed+' از '+tot+' ('+percent+'%) — '+(d.total_applied_comments||0)+' کامنت هماهنگ — هرگز کم نشد'); closeReseedModal(); if(progressBox) progressBox.style.display='none'; if(bar) bar.style.width='0%'; }, 500);
+              return;
+            } else {
+              setTimeout(processNext, 380);
+            }
+          });
+        }
+        return processNext();
+      }).catch(function(e){
+        alert('❌ '+e.message);
+        _apply.disabled=false; _apply.textContent='✅ اعمال تنوع';
+        if(origBtn) origBtn.disabled=false;
+        if(progressBox) progressBox.style.display='none';
+>>>>>>> e16fcf6 (v2.2.20: تقسیم‌بندی تنوع‌دهی (15تایی) + نوار پیشرفت تعداد/درصد — جلوگیری از 503، امتیاز/کامنت هماهنگ)
       });
     });
 

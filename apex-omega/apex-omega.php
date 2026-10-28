@@ -3,7 +3,11 @@
  * Plugin Name:       APEX Ω — Advanced WordPress Statistics Control System
  * Plugin URI:        https://etehadwp.com/plugins/apex-omega
  * Description:       مدیریت دقیق، امن و زمان‌بندی‌شده آمار بازدید، امتیاز ستاره‌ای و آراء آهنگ‌ها با سازگاری کامل با kk Star Ratings. کنترل نوسان، تاریخچه کامل و بازگردانی هوشمند.
+<<<<<<< HEAD
  * Version:           2.2.19 * Requires at least: 5.8
+=======
+ * Version:           2.2.20 * Requires at least: 5.8
+>>>>>>> e16fcf6 (v2.2.20: تقسیم‌بندی تنوع‌دهی (15تایی) + نوار پیشرفت تعداد/درصد — جلوگیری از 503، امتیاز/کامنت هماهنگ)
  * Requires PHP:      7.4
  * Author:            اتحاد وردپرس | EtehadWP
  * Author URI:        https://etehadwp.com
@@ -19,7 +23,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+<<<<<<< HEAD
 define('APEX_OMEGA_VERSION', '2.2.19');define('APEX_OMEGA_FILE', __FILE__);
+=======
+define('APEX_OMEGA_VERSION', '2.2.20');define('APEX_OMEGA_FILE', __FILE__);
+>>>>>>> e16fcf6 (v2.2.20: تقسیم‌بندی تنوع‌دهی (15تایی) + نوار پیشرفت تعداد/درصد — جلوگیری از 503، امتیاز/کامنت هماهنگ)
 define('APEX_OMEGA_DIR', plugin_dir_path(__FILE__));
 define('APEX_OMEGA_URL', plugin_dir_url(__FILE__));
 define('APEX_OMEGA_BASENAME', plugin_basename(__FILE__));

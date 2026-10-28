@@ -50,6 +50,9 @@ class Ajax {
             'apex_clear_hits',
             'apex_apply_premium_selected',
             'apex_reseed_artist',
+            'apex_start_reseed_job',
+            'apex_process_reseed_chunk',
+            'apex_reseed_job_status',
             'apex_apply_comments_selected',
             'apex_comment_stats_selected',
         ];
@@ -186,6 +189,15 @@ class Ajax {
                 break;
             case 'apex_process_weight_chunk':
                 self::process_weight_chunk();
+                break;
+            case 'apex_start_reseed_job':
+                self::start_reseed_job();
+                break;
+            case 'apex_process_reseed_chunk':
+                self::process_reseed_chunk();
+                break;
+            case 'apex_reseed_job_status':
+                self::reseed_job_status();
                 break;
             case 'apex_toggle_hit':
                 self::toggle_hit();
@@ -826,6 +838,32 @@ class Ajax {
         $res = \ApexOmega\Core\ArtistManager::reseed_artist_variance($term_id, $tax, $rmin, $rmax);
         if (empty($res['success'])) wp_send_json_error($res, 400);
         wp_send_json_success($res);
+    }
+    private static function start_reseed_job(): void {
+        $term_id = (int)($_POST['term_id'] ?? 0);
+        $tax = sanitize_text_field($_POST['taxonomy'] ?? '');
+        if ($tax === '__auto__') $tax = '';
+        $rmin = isset($_POST['range_min']) && $_POST['range_min'] !== '' ? (int)$_POST['range_min'] : null;
+        $rmax = isset($_POST['range_max']) && $_POST['range_max'] !== '' ? (int)$_POST['range_max'] : null;
+        $chunk = isset($_POST['chunk_size']) ? max(5,min(50,(int)$_POST['chunk_size'])) : 15;
+        if ($rmin !== null) { $rmin = max(1000, min(12000000, $rmin)); }
+        if ($rmax !== null) { $rmax = max(1000, min(12000000, $rmax)); }
+        $res = \ApexOmega\Core\ArtistManager::start_reseed_job($term_id, $tax, $rmin, $rmax, $chunk);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function process_reseed_chunk(): void {
+        $exec = sanitize_text_field($_POST['execution_id'] ?? $_POST['exec'] ?? '');
+        $chunk = isset($_POST['chunk_size']) ? max(5,min(50,(int)$_POST['chunk_size'])) : 0;
+        $res = \ApexOmega\Core\ArtistManager::process_reseed_chunk($exec, $chunk);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function reseed_job_status(): void {
+        $exec = sanitize_text_field($_POST['execution_id'] ?? '');
+        $job = \ApexOmega\Core\Database::get_job($exec);
+        if (!$job) wp_send_json_error(['message'=>'کار یافت نشد'],404);
+        wp_send_json_success(['job'=>$job,'percent'=> $job['total']? round((int)$job['processed']/(int)$job['total']*100,1):0 ]);
     }
     private static function apply_premium_selected(): void {
         $with_comments = !empty($_POST['with_comments']);
