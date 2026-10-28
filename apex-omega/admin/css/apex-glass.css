@@ -1,0 +1,369 @@
+/* APEX Ω — Ultra Glass iPhone System v3.0 — مرتب، شسته‌رفته، بدون تکرار */
+:root{
+  --glass-bg:rgba(255,255,255,.62);
+  --glass-bg-strong:rgba(255,255,255,.84);
+  --glass-brd:rgba(255,255,255,.78);
+  --glass-brd-soft:rgba(255,255,255,.62);
+  --glass-blur:22px;
+  --glass-blur-soft:16px;
+  --ink:#0b1220;
+  --ink-2:#1e293b;
+  --muted:#64748b;
+  --muted-2:#94a3b8;
+  --accent:#5b5bd6;
+  --accent-2:#06b6d4;
+  --accent-3:#8b5cf6;
+  --radius-xl:22px;
+  --radius:18px;
+  --radius-sm:14px;
+  --radius-pill:999px;
+  --shadow-soft:0 12px 40px rgba(17,24,39,.07), 0 1px 3px rgba(17,24,39,.05);
+  --shadow-card:0 10px 30px rgba(15,23,42,.06), 0 1px 0 rgba(255,255,255,.85) inset;
+  --ring:0 0 0 4px rgba(91,91,214,.10);
+}
+
+/* page mesh — subtle iPhone wallpaper behind glass */
+.apex-glass-wrap{
+  max-width:1160px;
+  margin:18px 0 32px; padding-bottom:8px;
+  font-family:"Vazirmatn","IRANSans","Yekan Bakh","Segoe UI",Tahoma,sans-serif;
+  direction:rtl;
+  text-align:right;
+  position:relative;
+  isolation:isolate;
+}
+.apex-glass-wrap *{box-sizing:border-box}
+.apex-glass-wrap::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  background:
+    radial-gradient(900px 520px at 12% -4%, rgba(91,91,214,.09), transparent 60%),
+    radial-gradient(780px 560px at 92% 8%, rgba(6,182,214,.09), transparent 60%),
+    radial-gradient(720px 520px at 78% 92%, rgba(139,92,246,.07), transparent 60%);
+  opacity:1;
+}
+
+/* header — hero glass with inner highlight */
+.apex-glass-header{
+  display:flex;
+  gap:14px;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  padding:18px 20px;
+  border-radius:var(--radius-xl);
+  background:linear-gradient(180deg, rgba(255,255,255,.88), rgba(249,250,255,.70));
+  backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  border:1px solid var(--glass-brd);
+  box-shadow:var(--shadow-soft), 0 1px 0 rgba(255,255,255,.9) inset;
+  position:relative;
+  overflow:hidden;
+}
+.apex-glass-header::after{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:inherit;
+  background:linear-gradient(120deg, rgba(255,255,255,.55), transparent 38%, transparent 62%, rgba(255,255,255,.35));
+  pointer-events:none;
+  opacity:.55;
+}
+.apex-glass-header h1{
+  margin:0;
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:-.025em;
+  color:var(--ink);
+  line-height:1.25;
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.apex-glass-header h1 .apex-logo{
+  width:34px;height:34px;border-radius:11px;
+  display:grid;place-items:center;
+  background:linear-gradient(135deg,#5b5bd6,#06b6d4);
+  color:#fff;font-weight:900;font-size:14px;
+  box-shadow:0 6px 14px rgba(91,91,214,.22);
+  flex:0 0 34px;
+}
+.apex-glass-header p{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.7;
+  max-width:720px;
+}
+.apex-glass-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:relative;z-index:1}
+.apex-version-pill{
+  font-size:11px;font-weight:800;letter-spacing:.02em;
+  padding:6px 10px;border-radius:var(--radius-pill);
+  background:rgba(255,255,255,.82);
+  border:1px solid rgba(15,23,42,.06);
+  color:var(--muted);
+  display:inline-flex;gap:6px;align-items:center;
+  backdrop-filter:blur(8px);
+}
+
+/* buttons — premium glass */
+.apex-btn-primary{
+  appearance:none;
+  border:1px solid rgba(91,91,214,.18);
+  background:linear-gradient(180deg,#6767e8,#5b5bd6);
+  color:#fff;
+  padding:10px 16px;
+  border-radius:12px;
+  font-weight:800;
+  font-size:13px;
+  cursor:pointer;
+  box-shadow:0 8px 18px rgba(91,91,214,.22), 0 1px 0 rgba(255,255,255,.25) inset;
+  transition:.16s cubic-bezier(.2,.8,.2,1);
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  position:relative;
+}
+.apex-btn-primary:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(91,91,214,.26)}
+.apex-btn-primary:active{transform:translateY(0)}
+.apex-btn-primary:focus-visible{outline:none;box-shadow:var(--ring), 0 8px 18px rgba(91,91,214,.22)}
+.apex-btn-ghost{
+  appearance:none;
+  border:1px solid rgba(15,23,42,.07);
+  background:rgba(255,255,255,.72);
+  color:var(--ink-2);
+  padding:10px 14px;
+  border-radius:12px;
+  font-weight:700;
+  font-size:13px;
+  cursor:pointer;
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+  transition:.16s;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.apex-btn-ghost:hover{background:#fff;border-color:rgba(15,23,42,.10);transform:translateY(-.5px);box-shadow:0 6px 14px rgba(15,23,42,.06)}
+.apex-btn-ghost:focus-visible{outline:none;box-shadow:var(--ring)}
+
+/* layout — unified: settings & all hubs use same */
+.apex-glass-layout{
+  display:grid;
+  grid-template-columns:240px 1fr;
+  gap:14px;
+  margin-top:14px;
+  align-items:start;
+}
+.apex-glass-nav{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  position:sticky;
+  top:32px;
+  align-self:start;
+  padding:8px;
+  border-radius:var(--radius);
+  background:rgba(255,255,255,.42);
+  backdrop-filter:blur(var(--glass-blur-soft)) saturate(160%);
+  -webkit-backdrop-filter:blur(var(--glass-blur-soft)) saturate(160%);
+  border:1px solid rgba(255,255,255,.60);
+  box-shadow:0 8px 24px rgba(15,23,42,.05);
+}
+.apex-glass-nav .apex-g-tab{
+  appearance:none;
+  text-align:right;
+  width:100%;
+  padding:11px 13px;
+  border-radius:12px;
+  border:1px solid transparent;
+  background:transparent;
+  color:#334155;
+  font-weight:750;
+  font-size:13px;
+  cursor:pointer;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  transition:.16s cubic-bezier(.2,.8,.2,1);
+  white-space:nowrap;
+  position:relative;
+}
+.apex-glass-nav .apex-g-tab:hover{background:rgba(255,255,255,.62);border-color:rgba(15,23,42,.06)}
+.apex-glass-nav .apex-g-tab[aria-selected="true"]{
+  background:#fff;
+  border-color:rgba(15,23,42,.08);
+  color:#1e1b4b;
+  box-shadow:0 6px 16px rgba(15,23,42,.08), 0 1px 0 rgba(255,255,255,.9) inset;
+}
+.apex-glass-nav .apex-g-tab:focus-visible{outline:none;box-shadow:var(--ring)}
+.apex-glass-nav .apex-g-tab svg{width:18px;height:18px;flex:0 0 18px;opacity:.92}
+.apex-glass-nav .apex-g-tab small{margin-right:auto;font-size:10px;font-weight:800;color:var(--muted-2);background:rgba(15,23,42,.06);padding:3px 7px;border-radius:999px}
+.apex-glass-main{flex:1;min-width:0}
+.apex-glass-panel,.apex-g-panel{display:none}
+.apex-glass-panel.is-active,.apex-g-panel.is-active{display:block;animation:apexFade .20s ease}
+@keyframes apexFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.no-js .apex-glass-panel,.no-js .apex-g-panel{display:block;margin-bottom:12px}
+
+/* cards — true iPhone glass */
+.apex-glass-card{
+  background:var(--glass-bg);
+  backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);
+  border:1px solid var(--glass-brd);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow-card);
+  padding:16px;
+  margin-bottom:12px;
+  position:relative;
+  overflow:hidden;
+}
+.apex-glass-card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background:linear-gradient(180deg, rgba(255,255,255,.55), transparent 46%);
+  pointer-events:none;
+  opacity:.45;
+}
+.apex-glass-card > *{position:relative}
+.apex-glass-card h3{
+  margin:0 0 6px;
+  font-size:13px;
+  font-weight:900;
+  color:var(--ink);
+  letter-spacing:-.015em;
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.apex-glass-card h3 .dot{width:8px;height:8px;border-radius:999px;background:var(--accent);display:inline-block;flex:0 0 8px;box-shadow:0 0 0 6px rgba(91,91,214,.10)}
+.apex-glass-card .desc{margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:1.75}
+
+/* grids */
+.apex-g-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.apex-g-grid--3{grid-template-columns:repeat(3,1fr)}
+.apex-f{display:flex;flex-direction:column;gap:7px}
+.apex-f label{font-size:12px;font-weight:800;color:#1e293b;letter-spacing:-.01em}
+.apex-f input[type="number"],.apex-f input[type="text"],.apex-f input[type="password"],.apex-f input[type="url"],.apex-f select,.apex-f textarea{
+  width:100%;padding:11px 12px;border-radius:12px;
+  border:1px solid rgba(15,23,42,.08);
+  background:rgba(255,255,255,.82);
+  color:var(--ink);font-size:13px;transition:.16s;outline:none;
+  box-shadow:0 1px 0 rgba(255,255,255,.8) inset;
+}
+.apex-f input:focus,.apex-f select:focus,.apex-f textarea:focus{border-color:rgba(91,91,214,.32);box-shadow:var(--ring);background:#fff}
+.apex-f small{color:var(--muted);font-size:11px;line-height:1.6}
+
+/* switches — iOS style */
+.apex-switch{display:flex;align-items:center;gap:10px;padding:12px 12px;border-radius:12px;background:rgba(255,255,255,.62);border:1px solid rgba(15,23,42,.06);backdrop-filter:blur(6px)}
+.apex-switch span{font-size:13px;font-weight:650;color:var(--ink-2);line-height:1.6}
+.apex-switch input{width:38px;height:22px;appearance:none;background:#e2e8f0;border-radius:999px;position:relative;cursor:pointer;transition:.2s;flex:0 0 auto;margin:0;border:1px solid rgba(15,23,42,.08)}
+.apex-switch input:checked{background:var(--accent);border-color:var(--accent)}
+.apex-switch input::after{content:"";position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:999px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.16);transition:.22s cubic-bezier(.2,.8,.2,1)}
+.apex-switch input:checked::after{transform:translateX(-16px)}
+
+/* range */
+.apex-range{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.55);border:1px solid rgba(15,23,42,.06);border-radius:12px;padding:10px 12px}
+.apex-range input[type="range"]{flex:1;accent-color:var(--accent);height:4px}
+.apex-range output{font-size:12px;font-weight:800;color:var(--accent);min-width:48px;text-align:center;background:#fff;border:1px solid rgba(15,23,42,.06);border-radius:999px;padding:4px 8px}
+
+/* pills, badges */
+.apex-pill{font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;border:1px solid rgba(15,23,42,.08);background:rgba(255,255,255,.78);color:var(--muted);display:inline-flex;align-items:center;gap:6px;backdrop-filter:blur(6px)}
+.apex-pill--accent{background:rgba(91,91,214,.10);border-color:rgba(91,91,214,.16);color:#312e81}
+.apex-divider{height:1px;background:linear-gradient(90deg,transparent,rgba(15,23,42,.08),transparent);margin:14px 0}
+.apex-inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.apex-help{font-size:12px;color:var(--muted);background:rgba(248,250,252,.86);border:1px dashed rgba(15,23,42,.08);border-radius:12px;padding:11px 12px;line-height:1.8;backdrop-filter:blur(4px)}
+.apex-danger{border-color:rgba(220,38,38,.16)!important;background:rgba(255,255,255,.86)!important}
+.apex-danger h3{color:#991b1b}
+
+/* hub nav — now minimalist breadcrumb, not duplicate sidebar */
+.apex-hub-nav{display:none !important} /* hide old duplicate — WP sidebar is enough */
+.apex-breadcrumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 2px 0;font-size:12px;color:var(--muted)}
+.apex-breadcrumb a{color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.62);border:1px solid rgba(15,23,42,.06)}
+.apex-breadcrumb a:hover{color:var(--ink-2);background:#fff}
+.apex-breadcrumb span.sep{opacity:.4}
+
+/* badges, tables */
+.apex-badge{display:inline-flex;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid transparent;align-items:center;gap:5px;letter-spacing:-.01em}
+.apex-badge-hit{background:#fef3c7;color:#92400e;border-color:#fde68a}
+.apex-badge-auto{background:#ede9fe;color:#5b21b6;border-color:#ddd6fe}
+.apex-badge-regular{background:#f1f5f9;color:#334155;border-color:#e2e8f0}
+.apex-table{width:100%;border-collapse:separate;border-spacing:0;background:rgba(255,255,255,.88);border-radius:14px;overflow:hidden;border:1px solid rgba(15,23,42,.06);box-shadow:0 8px 24px rgba(15,23,42,.04)}
+.apex-table th,.apex-table td{padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:right;font-size:13px}
+.apex-table th{background:rgba(248,250,252,.96);font-weight:850;color:#334155;backdrop-filter:blur(6px)}
+.apex-table tr:last-child td{border-bottom:none}
+.apex-table tr:hover td{background:rgba(249,250,255,.6)}
+.apex-table-wrap{border-radius:14px;overflow:hidden;border:1px solid rgba(15,23,42,.06)}
+
+/* stat cards — glass mini */
+.apex-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:10px}
+.apex-stat{
+  padding:14px;border-radius:16px;
+  background:rgba(255,255,255,.70);
+  backdrop-filter:blur(12px) saturate(160%);
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:0 8px 20px rgba(15,23,42,.06);
+  position:relative;overflow:hidden;
+}
+.apex-stat::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.6),transparent);pointer-events:none}
+.apex-stat > *{position:relative}
+.apex-stat .k{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em}
+.apex-stat .v{font-size:22px;font-weight:900;color:var(--ink);margin-top:4px;letter-spacing:-.02em}
+.apex-stat .s{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* empty, notices */
+.apex-empty{padding:26px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8;background:rgba(255,255,255,.62);border:1px dashed rgba(15,23,42,.10);border-radius:14px;backdrop-filter:blur(6px)}
+.apex-glass-wrap .notice{margin:12px 0;border-radius:12px;backdrop-filter:blur(8px)}
+
+
+/* fix spacing between header and first card — weight-sync/others had stuck cards */
+.apex-glass-wrap > .apex-glass-header + *{margin-top:14px}
+.apex-glass-wrap > .apex-glass-header + .apex-glass-card,
+.apex-glass-wrap > .apex-glass-header + .apex-card{margin-top:14px}
+.apex-glass-card + .apex-glass-card,
+.apex-card + .apex-glass-card,
+.apex-glass-card + .apex-card{margin-top:4px}
+
+/* ensure wp footer stays outside panel — fix user report "سپاسگزاریم... وسط پنل" */
+#wpfooter{clear:both; position:static !important; margin-top:30px !important; padding:12px 20px; background:transparent; border:none}
+.apex-glass-wrap::before{position:fixed; inset:0; z-index:-2}
+
+/* ensure wrap does not trap footer — clearfix */
+.apex-glass-wrap::after{content:""; display:block; clear:both; height:1px}
+
+/* responsive — keep tabs usable */
+@media(max-width:1080px){
+  .apex-stat-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:900px){
+  .apex-glass-layout{grid-template-columns:1fr}
+  .apex-glass-nav{
+    flex-direction:row;
+    overflow:auto;
+    padding:8px;
+    position:static;
+    scrollbar-width:none;
+  }
+  .apex-glass-nav::-webkit-scrollbar{display:none}
+  .apex-glass-nav .apex-g-tab{flex:0 0 auto}
+  .apex-g-grid{grid-template-columns:1fr}
+  .apex-g-grid--3{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .apex-glass-header{padding:14px}
+  .apex-glass-card{padding:14px}
+  .apex-stat-grid{grid-template-columns:1fr 1fr}
+}
+/* accessibility */
+.apex-g-tab:focus-visible,.apex-btn-primary:focus-visible,.apex-btn-ghost:focus-visible{outline:none;box-shadow:var(--ring)}
+@media (prefers-reduced-motion:reduce){
+  .apex-glass-panel.is-active{animation:none}
+  .apex-btn-primary,.apex-btn-ghost,.apex-g-tab{transition:none}
+}

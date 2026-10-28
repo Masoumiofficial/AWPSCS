@@ -4,8 +4,7 @@ namespace ApexOmega\Core;
 if (!defined('ABSPATH')) exit;
 
 class Database {
-    const VERSION = '2.0.0-alpha'; // 2.0-alpha: timeseries+profiles+queue برای توزیع تکه‌تکه
-
+    const VERSION = '2.1.9'; // 2.1.3: کامنت 100% طبیعی رز موزیک + پراکندگی بازدید وزن 95
     public static function table_history(): string {
         global $wpdb;
         return $wpdb->prefix . 'apex_omega_history';

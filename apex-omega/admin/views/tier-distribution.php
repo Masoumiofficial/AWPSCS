@@ -11,16 +11,20 @@ $available_taxes = \ApexOmega\Core\ArtistManager::get_available_taxonomies();
 $saved_tax = get_option(\ApexOmega\Core\ArtistManager::OPTION_TAXONOMY, '');
 $last_snap = \ApexOmega\Core\Database::get_last_snapshot();
 ?>
-<div class="wrap apex-wrap">
-  <div class="apex-hero">
+<div class="wrap apex-glass-wrap" dir="rtl">
+  <div class="apex-glass-header">
     <div>
-      <h1 style="margin:0;font-size:26px;">🚀 توزیع هوشمند دسته‌ای</h1>
-      <p style="margin:6px 0 0;color:#50575e;">بدون انتخاب تکی — فقط بگو هر دسته چند آهنگ داشته باشد، بقیه خودکار و منطقی تنظیم می‌شود. <strong>کاملاً خودکار + آرتیست‌محور + Evergreen — v1.5.0 (بدون حالت ساده/حرفه‌ای — الگوی ریتم + Evergreen تیره‌محور)</strong></p>
+      <h1><span class="apex-logo">Ω</span> توزیع هوشمند دسته‌ای</h1>
+      <p>بدون انتخاب تکی — فقط بگو هر دسته چند آهنگ داشته باشد، بقیه خودکار و منطقی تنظیم می‌شود. <strong>کاملاً خودکار + آرتیست‌محور + Evergreen</strong></p>
     </div>
-    <div class="apex-hero-stats">
-      <div><span class="big"><?php echo esc_html(number_format_i18n($total_posts)); ?></span><small>آهنگ منتشرشده</small></div>
-      <div><span class="big" id="apex-total-selected">0</span><small>انتخاب‌شده</small></div>
-      <div><span class="big" id="apex-remaining" data-total="<?php echo esc_attr($total_posts); ?>"><?php echo esc_html($total_posts); ?></span><small>باقی‌مانده</small></div>
+    <div class="apex-glass-actions">
+      <div class="apex-stat" style="padding:8px 12px;border-radius:12px;display:flex;gap:10px;align-items:center">
+        <div><span class="k">آهنگ منتشرشده</span><div class="v" style="font-size:16px"><?php echo esc_html(number_format_i18n($total_posts)); ?></div></div>
+        <div style="width:1px;height:28px;background:rgba(15,23,42,.08)"></div>
+        <div><span class="k">انتخاب‌شده</span><div class="v" id="apex-total-selected" style="font-size:16px">0</div></div>
+        <div><span class="k">باقی‌مانده</span><div class="v" id="apex-remaining" data-total="<?php echo esc_attr($total_posts); ?>" style="font-size:16px"><?php echo esc_html($total_posts); ?></div></div>
+      </div>
+      <span class="apex-version-pill">v<?php echo esc_html(APEX_OMEGA_VERSION); ?></span>
     </div>
   </div>
 

@@ -26,7 +26,9 @@ class CommentGuardian {
             'max_per_post' => 60,  // سقف کل کامنت هر پست حتی الماس (اعتبارسنجی)
             'batch' => 0,          // 0=همه (حرفه‌ای: مؤثر 75/تیک → 375 روزانه بدون timeout)
             'only_recent_days' => 0, // 0=همه — پست قدیمی 0کامنت هم پوشش
-            'cooldown_hours' => 24, // 24h تعادل طبیعی
+            'cooldown_hours' => 6, // 2.0 hourly: 6h تعادل طبیعی (was 24h) — hourly rhythm
+            'high_views_auto' => true, // 2.1.0: کامنت خودکار برای آهنگ‌های پرطرفدار بدون دخالت انسانی
+            'high_views_threshold' => 100000, // آستانه پرطرفدار (100k)
         ];
         $saved = get_option(self::OPTION, []);
         if (!is_array($saved)) $saved = [];
@@ -36,10 +38,12 @@ class CommentGuardian {
         $out['min_comments'] = max(1, min(10, (int)$out['min_comments']));
         $out['max_comments'] = max($out['min_comments'], min(10, (int)$out['max_comments']));
         $out['daily_growth'] = max(1, min(5, (int)$out['daily_growth']));
-        $out['max_per_post'] = max(10, min(100, (int)$out['max_per_post']));
+        $out['max_per_post'] = max(10, min(500, (int)$out['max_per_post'])); // 2.0 hourly: raised from 100→500 (configurable, removes hard cap)
         $out['batch'] = max(0, min(500, (int)$out['batch'])); // 0=همه، الگوی روزانه
         $out['only_recent_days'] = max(0, min(365, (int)$out['only_recent_days']));
         $out['cooldown_hours'] = max(1, min(168, (int)$out['cooldown_hours']));
+        $out['high_views_auto'] = !empty($out['high_views_auto']);
+        $out['high_views_threshold'] = max(10000, min(1000000, (int)$out['high_views_threshold']));
         return $out;
     }
 
@@ -55,6 +59,8 @@ class CommentGuardian {
             'batch' => isset($data['batch']) ? (int)$data['batch'] : $cur['batch'],
             'only_recent_days' => isset($data['only_recent_days']) ? (int)$data['only_recent_days'] : $cur['only_recent_days'],
             'cooldown_hours' => isset($data['cooldown_hours']) ? (int)$data['cooldown_hours'] : $cur['cooldown_hours'],
+            'high_views_auto' => isset($data['high_views_auto']) ? !empty($data['high_views_auto']) : $cur['high_views_auto'],
+            'high_views_threshold' => isset($data['high_views_threshold']) ? (int)$data['high_views_threshold'] : $cur['high_views_threshold'],
         ];
         update_option(self::OPTION, $new, false);
         Scheduler::ensure_cron();
@@ -64,19 +70,19 @@ class CommentGuardian {
         return !empty(self::get_settings()['enabled']);
     }
 
-    // محاسبهٔ هدف کامنت — الگوی ریتم استاندارد: بازدید + وزن خواننده + امتیاز (همهٔ جوانب)
-    public static function calculate_target(int $views, int $weight, float $avg = 4.0): int {
+    // محاسبهٔ هدف کامنت — الگوی ریتم هرساعته (2026-10-21): بازدید + وزن + امتیاز همبسته، gradual increase never decrease
+    public static function calculate_target(int $views, int $weight, float $avg = 4.0, bool $is_premium = false): int {
         $views = max(0, $views);
         $weight = max(0, min(100, $weight));
-        // پایه بر اساس بازدید (طبق درخواست کاربر)
+        // پایه بر اساس بازدید — fresh 500-10000 → 3-10 (spec), scalable for million (~50)
         if ($views < 10000) {
-            $base_min = 2; $base_max = 3;
+            $base_min = 3; $base_max = 10; // freshly spec: 3-10 (was 2-3)
         } elseif ($views < 100000) {
-            $base_min = 5; $base_max = 10;
+            $base_min = 10; $base_max = 20; // was 5-10
         } elseif ($views < 500000) {
-            $base_min = 12; $base_max = 25;
+            $base_min = 20; $base_max = 40; // was 12-25
         } else {
-            $base_min = 30; $base_max = 60;
+            $base_min = 35; $base_max = 70; // was 30-60 — million scale
         }
         // ضریب وزن: خواننده ویژه 1.2×، نوپا 0.85× — مو لای درز نره
         if ($weight >= 85) {
@@ -100,9 +106,19 @@ class CommentGuardian {
         }
         $target = (int) round( (($base_min + $base_max)/2) * $mult + mt_rand(-1,1) );
         $target = max($base_min, min($base_max, $target));
-        // سقف نوپا حتی اگر بازدید بالا برود ولی وزن پایین: max 6
-        if ($weight < 30 && $target > 6 && $views < 50000) {
+        // سقف نوپا حتی اگر بازدید بالا برود ولی وزن پایین: max 6 — منتخب معاف
+        if (!$is_premium && $weight < 30 && $target > 6 && $views < 50000) {
             $target = min($target, 6);
+        }
+        // منتخب ویژه selected-works — پرفکت، توجه ویژه: 35% بیشتر + حداقل 18 کامنت برای میلیونی
+        if ($is_premium) {
+            $target = (int) round($target * 1.35);
+            // کف پریمیوم برای آثار میلیونی/نزدیک میلیونی
+            if ($views >= 500000 && $target < 22) $target = mt_rand(22, 28);
+            elseif ($views >= 100000 && $target < 16) $target = mt_rand(16, 22);
+            elseif ($views >= 10000 && $target < 10) $target = mt_rand(10, 14);
+            $target = max($target, $base_min);
+            $target = min($target, $base_max + 25); // سقف بازتر برای منتخب
         }
         return $target;
     }
@@ -124,12 +140,8 @@ class CommentGuardian {
             // تنوع پسوند فارسی
             $suffixes_fa = ['', '', '', '']; // همه پسوندهای عزیز/عزیزم/جون/جان/کوچولو حذف شد — نام تمیز ایرانی
             $suffix = $suffixes_fa[array_rand($suffixes_fa)];
-            // 15% عدد چسبان مثل امیر78
-            $num_suffix = '';
-            if (mt_rand(1,100) <= 15) {
-                $nums = ['78','2000','123','007','1369','1375','1380','99','2001'];
-                $num_suffix = $nums[array_rand($nums)];
-            }
+            // 2.0 hourly: no numeric suffix for Persian names — as requested (no numeric prefix/suffix before Persian names)
+            $num_suffix = ''; // removed 15% numeric logic for Persian
             $r = mt_rand(1,100);
             if ($r <= 20) {
                 $author = $f . $suffix . $num_suffix;
@@ -216,92 +228,176 @@ class CommentGuardian {
         return $t ?: $raw;
     }
 
-    // تولید متن کامنت — AI مرتبط به خواننده + fallback فارسی per tier + خودمونی + تیکه ترانه + غلط تایپی ریز
-    public static function generate_text(int $post_id, string $artist, string $title, int $weight, int $views): string {
+    // تولید متن کامنت — طبیعی مثل رز موزیک / موزیکس-فا (تحلیل 12 نمونه واقعی) — کوتاه، کشیده، غلط ریز، بدون تکرار
+    public static function generate_text(int $post_id, string $artist, string $title, int $weight, int $views, bool $is_premium = false): string {
+        $orig_weight = $weight; $orig_views = $views;
+        // منتخب ویژه — وزن موثر 95 برای پرفکت بودن (حتی اگر خواننده نوپا باشد)
+        if ($is_premium) { $weight = max($weight, 95); $views = max($views, 800000); }
+        // سن پست برای کامنت هوشمند — موزیک جدید نباید انتقاد قدیمی بخورد
+        $post_age_days = null;
+        if ($post_id) {
+            $d = get_post_field('post_date_gmt', $post_id);
+            if ($d) $post_age_days = (time() - strtotime($d . ' GMT')) / DAY_IN_SECONDS;
+            // اگر پست فاقد تاریخ بود، آن را متوسط در نظر بگیر
+            else $post_age_days = 100;
+        }
         $clean = self::clean_song_title($title, $artist);
-        $ai = self::generate_via_ai($artist, $clean, $weight, $views);
-        $txt = $ai ?: self::fallback_text($weight, $views, $clean);
-        // 15% یک تیکه از ترانه را اضافه کن — بدون گیومه «» یا ""، طبیعی مثل "اون تیکه که میگه درد دل منو بشنو خیلی دوس داشتم"
-        if (mt_rand(1,100) <= 15 && mb_strlen($clean) > 2 && mb_strlen($clean) < 40) {
-            $lyric_addons = [
-                " اون تیکه که میگه {$clean} خیلی دوس داشتم",
-                " مخصوصا اونجا که میگه {$clean} عااالیه",
-                " اون قسمتش که میگی {$clean} دلم رفت",
-                " تیکه {$clean} رو رو تکرارم",
+        // 35% AI (با لحن جدید طبیعی) ، 65% fallback محلی غیرتکراری
+        $use_ai = (mt_rand(1,100) <= 35);
+        $txt = null;
+        if ($use_ai) $txt = self::generate_via_ai($artist, $clean, $weight, $views, $post_age_days);
+        if (!$txt) $txt = self::fallback_text($weight, $views, $clean, $is_premium, $post_id, $post_age_days);
+        // ضد تکرار سراسری: اگر این متن اخیراً استفاده شده، دوباره بساز
+        $tries = 0;
+        while (self::is_recent_duplicate($txt, $post_id) && $tries < 4) {
+            $txt = self::fallback_text($weight, $views, $clean, $is_premium, $post_id, $post_age_days);
+            $tries++;
+        }
+        self::remember_text($txt);
+        // فقط 2% اسم آهنگ (خیلی کم) — بقیه نظر خالص بدون نام
+        if (mt_rand(1,100) <= 2 && mb_strlen($clean) > 2 && mb_strlen($clean) < 30) {
+            $addons = [
+                " اون قسمتش خیلی دوس داشتم",
+                " مخصوصا اونجاش",
+                " اون تیکه دلمو برد",
             ];
-            $txt .= $lyric_addons[array_rand($lyric_addons)];
+            if (mt_rand(1,100) <= 30) $txt .= $addons[array_rand($addons)];
         }
-        // 12% غلط تایپی ریز طبیعی (نه زیاد) — برای انسانی بودن
-        if (mt_rand(1,100) <= 12) {
-            $txt = self::add_typo($txt);
-        }
-        // طبیعی‌سازی نهایی: گاهی کشیدن حروف محاوره‌ای (خییلی، عااالی)
-        if (mt_rand(1,100) <= 10) {
-            $txt = str_replace(['خیلی','عالی','مرسی'], ['خییلی','عااالی','مرررسی'], $txt);
-        }
+        // نهایی: 18% کشیده‌نویسی خیلی طبیعی (عالییی → عالییییی) + 15% غلط ریز
+        if (mt_rand(1,100) <= 18) $txt = self::elongate($txt);
+        if (mt_rand(1,100) <= 15) $txt = self::add_typo($txt);
         return $txt;
     }
-    private static function add_typo(string $s): string {
-        $typos = [
-            'خیلی' => 'خییلی',
-            'خیلی ' => 'خیلی ',
-            'دوست' => 'دوس',
-            'دارم' => 'دارم',
-            'عالی' => 'عالیی',
-            'مرسی' => 'مرصی',
-            'داره' => 'داره',
-            'بود' => 'بود',
-            'ممنون' => 'ممنن',
-            'قشنگ' => 'قشنگگ',
-            'عشق' => 'عشقق',
-        ];
-        // فقط یکی از کلمات را به‌صورت تصادفی عوض کن تا اسپم نشود
-        $keys = array_keys($typos);
-        shuffle($keys);
-        foreach ($keys as $k) {
-            if (mb_strpos($s, $k) !== false) {
-                $s = str_replace($k, $typos[$k], $s);
+
+    private static function elongate(string $s): string {
+        // کشیده کردن یک مصوت تصادفی مثل عالی → عالییییی (الگوی رز موزیک)
+        $targets = ['ی' => 'یییی', 'ا' => 'ااا', 'و' => 'وووو', 'عالی' => 'عالییییی', 'خیلی' => 'خیلییییی', 'محشر' => 'محشرررره', 'قشنگ' => 'قشنگگگ'];
+        foreach ($targets as $k=>$v) {
+            if (mb_strpos($s, $k) !== false && mt_rand(1,100) <= 40) {
+                $s = str_replace($k, $v, $s);
                 break;
             }
         }
-        // گاهی یک حرف اضافی تایپی
-        if (mt_rand(0,1) && mb_strlen($s) > 10) {
-            $s = preg_replace('/([ا-ی])\1/u', '$1', $s, 1); // حذف تشدید برای طبیعی بودن
+        // اگر هیچ کلید نخورد و یک کلمه کوتاه بود، آخرش را بکش
+        if (mb_strlen($s) < 15 && mt_rand(1,100) <= 30) {
+            $s = preg_replace('/([یاه])$/u', '$1یییی', $s);
         }
         return $s;
     }
 
-    private static function generate_via_ai(string $artist, string $title, int $weight, int $views): ?string {
+    private static function add_typo(string $s): string {
+        // غلط‌های واقعی رز موزیک: اهنگ بجای آهنگ، آرمش، دوس، قرن بوقی املای شکسته
+        $map = [
+            'آهنگ' => 'اهنگ',
+            'عالی' => 'عالیی',
+            'خیلی' => 'خیلی',
+            'دوست' => 'دوس',
+            'دارم' => 'دارم',
+            'ممنون' => 'ممنون',
+            'قشنگ' => 'قشنگگ',
+            'عشق' => 'عشق',
+            'آرامش' => 'ارمش',
+            'بسیار' => 'خیلی',
+            'زیبا' => 'زیباا',
+        ];
+        // 50% تبدیل آهنگ→اهنگ (شایع‌ترین غلط)
+        if (mb_strpos($s, 'آهنگ') !== false && mt_rand(1,100) <= 50) {
+            $s = str_replace('آهنگ', 'اهنگ', $s);
+            return $s;
+        }
+        if (mb_strpos($s, 'عالی') !== false && mt_rand(1,100) <= 35) {
+            $s = str_replace('عالی', 'عالیی', $s);
+            return $s;
+        }
+        if (mb_strpos($s, 'خیلی') !== false && mt_rand(1,100) <= 25) {
+            $s = str_replace('خیلی', 'خیلییی', $s);
+            return $s;
+        }
+        $keys = array_keys($map);
+        shuffle($keys);
+        foreach ($keys as $k) {
+            if (mb_strpos($s, $k) !== false && mt_rand(1,100) <= 30) {
+                $s = str_replace($k, $map[$k], $s);
+                break;
+            }
+        }
+        // گاهی حذف نیم‌فاصله: می‌خوام → میخوام
+        if (strpos($s, '‌') !== false && mt_rand(1,100) <= 30) $s = str_replace('‌', '', $s);
+        // گاهی نقطه‌گذاری شکسته: ؟؟؟؟ یا .... یا …
+        if (mt_rand(1,100) <= 18) {
+            $s = rtrim($s, '.!؟?') . ['…', '....', '؟؟', '!!', ''][array_rand(['…', '....', '؟؟', '!!', ''])];
+            if (trim($s) === '') return $s;
+        }
+        return $s;
+    }
+
+    // ضد تکرار سراسری — آخرین 200 متن را نگه می‌دارد
+    private static function recent_key(): string { return 'apex_omega_recent_comments'; }
+    private static function is_recent_duplicate(string $txt, int $post_id): bool {
+        $key = self::recent_key();
+        $list = get_option($key, []);
+        if (!is_array($list)) $list = [];
+        $hash = md5(trim($txt));
+        if (in_array($hash, $list, true)) return true;
+        // همچنین چک داخل همین پست 24ساعت (قدیمی)
+        global $wpdb;
+        $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $post_id, $txt, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
+        return !empty($dup);
+    }
+    private static function remember_text(string $txt): void {
+        $key = self::recent_key();
+        $list = get_option($key, []);
+        if (!is_array($list)) $list = [];
+        $hash = md5(trim($txt));
+        array_unshift($list, $hash);
+        $list = array_slice(array_unique($list), 0, 200);
+        update_option($key, $list, false);
+    }
+
+    private static function generate_via_ai(string $artist, string $title, int $weight, int $views, ?float $post_age_days = null): ?string {
         $clean = self::clean_song_title($title, $artist);
         $settings = AI_Helper::get_settings();
         if (empty($settings['api_key'])) return null;
-        // لحن متنوع — نه همه + : 60% تحسین، 15% سلام+تعریف سایت/مدیر، 15% انتقاد ریز، 10% سوال/خنثی
+        // لحن بر اساس تحلیل رز موزیک: کوتاه محاوره‌ای، نه رسمی (2-7 کلمه ایده‌آل 60%) — با توجه به تازگی پست
+        $is_new_ai = ($post_age_days !== null && $post_age_days < 60);
         $roll = mt_rand(1,100);
-        if ($roll <= 60) {
-            if ($weight >= 85) $tone = 'هیجانی و عاشقانه، با ایموجی ❤️🔥';
-            elseif ($weight >= 60) $tone = 'تحسین تخصصی، اشاره به صدا/ملودی';
-            elseif ($weight >= 30) $tone = 'صمیمی و دوستانه';
-            else $tone = 'ساده و کوتاه، تشویق معمولی';
-        } elseif ($roll <= 75) {
-            $tone = 'اول با سلام شروع کن و از سایت/مدیر سایت تعریف کن (مثلاً: سلام، سایت عالیه/دم مدیر گرم) بعد نظرت رو بگو';
-        } elseif ($roll <= 90) {
-            $tone = 'انتقاد ریز و سازنده: هم از خواننده (مثلاً تنظیم/شعر می‌تونست بهتر باشه) و هم یه نکته ریز از سایت (تبلیغ/لود/چینش) — مؤدبانه و کوتاه';
+        if ($is_new_ai) {
+            // برای موزیک تازه (<60 روز) احتمال انتقاد را از 15% به 5% کم کن و هرگز «قدیمی» نگو
+            if ($roll <= 60) {
+                $tone = 'کوتاه و محاوره‌ای مثبت مثل کامنت واقعی رز موزیک برای موزیک جدید: "ممنون عالی بود" "حرف نداره" "آخرشه" — 2 تا 6 کلمه، خودمونی، هیجان تازه‌گی، گاهی کشیده مثل "عالییییی"';
+            } elseif ($roll <= 78) {
+                $tone = 'اول سلام کوتاه بعد نظر مثبت برای موزیک تازه: "سلام دمت گرم عالی بود" "تبریک بابت موزیک جدید" — صمیمی';
+            } elseif ($roll <= 83) {
+                $tone = 'سوال فنی ملایم برای موزیک جدید (نه انتقاد قدیمی): "کاش کیفیت ۳۲۰ بهتر بود" "میکسش میتونست بهتر باشه" "متنشو دارید؟" — مودبانه، 4-8 کلمه، هرگز نگی قدیمیه/تکراریه';
+            } else {
+                $tone = 'احساسی-شخصی کوتاه برای موزیک جدید: "وایبش عالیه" "حس خوبی داره" — 5-10 کلمه، تازه‌گی';
+            }
         } else {
-            $tone = 'خنثی یا سوالی: مثلاً بپرس کی منتشر شده یا نظر بقیه چیه — بدون اغراق مثبت';
+            if ($roll <= 55) {
+                $tone = 'کوتاه و محاوره‌ای مثل کامنت واقعی رز موزیک: "ممنون عالی بود" "حرف نداره" "آخرشه" — 2 تا 6 کلمه، خودمونی، بدون نقطه‌گذاری کامل، گاهی کشیده مثل "عالییییی"';
+            } elseif ($roll <= 70) {
+                $tone = 'اول سلام کوتاه بعد نظر: "سلام دمت گرم عالی بود" — صمیمی';
+            } elseif ($roll <= 85) {
+                $tone = 'انتقاد ملایم یا سوال کوتاه: "چرا اهنگای قدیمی میذارین؟" "کاش کیفیت بهتر بود" "سایت یکم کند لود میشه" — مودبانه ولی انتقادی، 4-8 کلمه';
+            } else {
+                $tone = 'احساسی-شخصی کوتاه: "یاد بچگیم افتادم" "با این اهنگ خاطره دارم" — 5-10 کلمه';
+            }
         }
-        $tier_label = $views < 10000 ? 'تازه' : ($views < 100000 ? 'متوسط' : ($views < 500000 ? 'محبوب' : 'ابرآهنگ'));
-        $colloquial = (mt_rand(1,100) <= 70) ? 'خیلی خودمونی و محاوره‌ای مثل کامنت واقعی سایت‌های موسیقی ایرانی (نکس‌وان، رادیوجوان) — با کلمات عامیانه مثل دمت گرم، عشقی، حال کردم، پشمام' : $tone;
-        // 20% از AI بخواه تیکه ترانه را بگوید — بدون گیومه
-        $lyric_hint = (mt_rand(1,100) <= 20) ? ' و حتماً بگو اون تیکه که میگه ' . $clean . ' خیلی دوس داشتم — با اشاره به ترانه ' . $clean : '';
-        $prompt = "تو یک شنوندهٔ ایرانی هستی. برای آهنگ " . $clean . " از خوانندهٔ " . $artist . " (وزن {$weight}/100، دسته {$tier_label}، بازدید {$views}) یک کامنت فارسی طبیعی 1-2 جمله‌ای بنویس — لحن {$colloquial}{$lyric_hint}، بدون هشتگ و بدون انگلیسی، اصلاً نگو دانلود آهنگ یا دانلود موزیک، فقط اسم ترانه را مثل " . $clean . " بگو، و هرگز از گیومه «» یا \"\" استفاده نکن، دقیقاً مرتبط باش. گاهی یک غلط تایپی ریز طبیعی بگذار (مثل خییلی، دوس، عااالی). فقط متن کامنت را برگردان.";
+        // نمونه‌های واقعی برای few-shot (نه کپی، فقط الگو طول/لحن) — برای تازه مثال قدیمی حذف شود
+        if ($is_new_ai) {
+            $examples = 'نمونه طول/لحن برای موزیک جدید (کپی نکن، فقط الگو): "ممنون عالی بود" / "آخرشه حرف نداره" / "عالییییییی تازه‌ست" / "محشره محسن جان ۲۰👌" / "تبریک بابت موزیک جدید" / "کیفیتش عالیه دمت گرم" / "وایبش حرف نداره…" / "بهترین اهنگشه به نظرم 😍"';
+        } else {
+            $examples = 'نمونه طول/لحن (کپی نکن، فقط الگو بگیر): "ممنون عالی بود" / "آخرشه حرف نداره" / "عالییییی" / "محشره محسن جان ۲۰👌" / "زیبا بود ارمش گرفتم" / "چرا اهنگای قرن بوقی میذارین؟؟؟" / "خیلییی قشنگه متنشم قشنگه…" / "بهترین اهنگشه به نظرم 😍"';
+        }
+        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. برای اهنگ \"".$clean."\" از \"".$artist."\" یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — قوانین: 1) فارسی محاوره‌ای 2-10 کلمه ترجیحا، حداکثر 15 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) 4) اسم اهنگ/خواننده را نیاور مگر خیلی لازم بود 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.";
         $payload = [
             'model' => $settings['model'] ?: 'gpt-4o-mini',
             'messages' => [
-                ['role'=>'system','content'=>'تو یک کاربر ایرانی موسیقی هستی. فقط یک کامنت فارسی طبیعی برگردان.'],
+                ['role'=>'system','content'=>'تو کاربر ایرانی سایت موزیک هستی. فقط یک کامنت کوتاه محاوره‌ای برگردان، نه رسمی و نه طولانی.'],
                 ['role'=>'user','content'=>$prompt],
             ],
-            'temperature'=>0.8,
-            'max_tokens'=>80,
+            'temperature'=>0.95,
+            'max_tokens'=>60,
         ];
         $resp = wp_remote_post($settings['endpoint'], [
             'headers'=>['Authorization'=>'Bearer '.$settings['api_key'],'Content-Type'=>'application/json'],
@@ -313,111 +409,158 @@ class CommentGuardian {
         $data = json_decode($body, true);
         $content = $data['choices'][0]['message']['content'] ?? '';
         $content = trim($content);
-        if (!$content || mb_strlen($content) < 8 || mb_strlen($content) > 400) return null;
-        // پاکسازی: اگر JSON برگردانده بود
-        $content = trim($content, " \t\n\r\0\x0B\"'");
+        // تمیزکاری: حذف نقل قول و هشتگ
+        $content = trim($content, " \t\n\r\0\x0B\"'«»");
+        $content = preg_replace('/^["\'«»]+|["\'«»]+$/u', '', $content);
+        $content = preg_replace('/#\S+/u', '', $content);
+        $content = trim($content);
+        if (!$content || mb_strlen($content) < 2 || mb_strlen($content) > 180) return null;
+        // اگر خیلی رسمی/طولانی بود (بیش از 12 کلمه و با نقطه پایان رسمی)، کوتاه کن
+        $words = preg_split('/\s+/u', $content);
+        if (count($words) > 14 && mb_strlen($content) > 70) {
+            // 40% مواقع ببرش 8-10 کلمه
+            if (mt_rand(1,100) <= 40) $content = implode(' ', array_slice($words, 0, mt_rand(6,10)));
+        }
         return $content;
     }
 
-    private static function fallback_text(int $weight, int $views, string $title = ''): string {
-        // خودمونی — مثل کامنت واقعی سایت پرطرفدار، نه رسمی
-        $low_pos = [
-            'دمت گرم خیلی حال کردم باهاش 🙏',
-            'پشمام صدات چقد قشنگه',
-            'وای خدا این چه آهنگیه دلم رفت',
-            'عجب چیزی بود عشق کردم',
-            'حاجی صدات حرف نداره',
-            'خیلی دوس داشتم مخصوصاً اون اولش',
-            'آهنگ قشنگیه دمت گرم',
-            'حس خوبی داره هی گوش میدم',
-            'خسته نباشی ترکوندی',
-            'داداش عالی بود',
-            'واقعاً چسبید به دلم',
+
+private static function fallback_text(int $weight, int $views, string $title = '', bool $is_premium = false, int $post_id = 0, ?float $post_age_days = null): string {
+        // سن پست را محاسبه کن برای فیلتر کامنت‌های نامناسب (مثل «چرا قدیمی میذارین» برای موزیک جدید)
+        if ($post_age_days === null && $post_id) {
+            $d = get_post_field('post_date_gmt', $post_id);
+            if ($d) $post_age_days = (time() - strtotime($d . ' GMT')) / DAY_IN_SECONDS;
+        }
+        // الهام از رز موزیک (12 نمونه) و موزیکس-فا — نه کپی، بلکه آنالیز طول/لحن/غلط
+        // الگوها: 2-5 کلمه کوتاه 40%، محاوره کوتاه 25%، انتقادی/سوالی 15%، شخصی-خاطره‌ای 10%، طولانی‌ احساسی 10%
+        // غلط‌ها: اهنگ بجای آهنگ (شایع)، کشیده عالییی/خیلییی، نقطه … ؟؟، نیم‌فاصله حذف
+        $ultra_short = [
+            'ممنون عالی بود', 'حرف نداره', 'آخرشه', 'عالی بود', 'محشره', 'دوسش دارم', 'خیلی قشنگه', 'بهترینه', 'عالیهه', 'قشنگ بود',
+            'دمت گرم', 'عشقی', 'حرف نداره واقعا', 'آخرشه واقعا', 'عالی بود مرسی', 'محشر بود', 'خفن بود', 'دوست داشتنیه', 'زیبا بود',
+            'مرسی عالی', 'عالییی', 'خیلییی خوبه', 'عالیههه', 'محشررره', 'قشنگهه', 'دوس داشتنیه', 'خفنه', 'عالی بود دمت گرم',
+            'ممنون قشنگ بود', 'عالییییی', 'خیلییی قشنگه', 'محشره واقعا', 'عالی بود خیلی', 'قشنگ بود مرسی',
         ];
-        $low_greet_site = [
-            'سلام بچه‌ها سایتتون عالیه دمتون گرم',
-            'سلام مدیر جان دمت گرم آرشیو خفنه',
-            'درود سایتتون واقعاً مرتبه ممنون',
-            'سلام خسته نباشید کارتون درسته',
+        $short_colloquial = [
+            'هم ریتمش هم متنش عالی', 'صداش حرف نداره', 'متنش خیلی قشنگه', 'ریتمش عالیه', 'اهنگ قشنگیه واقعا',
+            'خیلی اهنگ قشنگیه', 'دمتون گرم عالی بود', 'محشره عالی هست', 'عالیه دمتون گرم', 'خیلی دوسش دارم',
+            'اهنگش محشره', 'واقعا زیبا بود', 'عالی بود مرسی ازتون', 'دستتون درد نکنه', 'خسته نباشید عالی بود',
+            'خیلی خوب بود مرسی', 'قشنگ بود ممنون', 'عالی بود لذت بردم', 'صداتون حرف نداره', 'ترانه قشنگیه',
+            'ملودیش حرف نداره', 'ریتمش خیلی قشنگه', 'خوشم اومد واقعا', 'عالی خوندید', 'حسش عالی بود',
+            'ارمش گرفتم ممنون', 'اروم شدم باهاش', 'یاد قدیما افتادم', 'حس خوبی داره', 'دلنشینه واقعا',
         ];
-        $low_critic = [
-            'صدات خوبه ولی تنظیمش یکم ضعیفه',
-            'خوب بود ولی انتظارم بیشتر بود',
-            'بدک نیست ولی می‌تونست بهتر باشه',
-            'قشنگه ولی کیفیتش پایین بود یه‌کم',
-            'سایت خوبه فقط تبلیغش زیاده',
+        $medium_natural = [
+            'اهنگ دلنشینی بود لذت بردم', 'صداتون به دل میشینه خسته نباشید', 'ملودی قشنگی داره ممنون', 'ترانه احساسی بود موفق باشید',
+            'صدای گرمتون شنیدنیه', 'کار تمیزی بود امیدوارم بیشتر بشنویم', 'حس و حال خوبی داشت', 'تنظیمش به دل میشینه',
+            'با احساس خوندید عالی بود', 'قطعه ارومش بخشی بود', 'با عشق اجرا شده مشخصه', 'ممنون بابت این قطعه',
+            'حس خوبی بهم داد مرسی', 'خیلی وقت بود منتظرش بودم', 'هر بار گوش میدم بیشتر دوستش دارم', 'حالش خیلی خاصه',
+            'یکی از بهترین کاراتونه', 'اجراتون فوق العاده بود', 'وایب اهنگ خیلی قشنگه', 'این قطعه لایق شنیده شدنه',
+            'چقدر با احساس خوندید', 'ملودی گیرا و قشنگه', 'ترانه و تنظیم هر دو خوب بودن', 'ارومش بخش بود واقعا',
         ];
-        $mid_pos = [
-            'واقعاً حال کردم این قطعه فوق‌العاده‌ست 👏',
-            'ملودیش می‌شینه به دل صداتم گرم',
-            'رو تکرار گذاشتم بی‌نظیره',
-            'ترکیب شعر و صدات محشر شده',
-            'هر بار گوش میدم بیشتر دوسش دارم',
-            'اجرت قشنگه حسش میره تو جون آدم',
-            'تنظیم حرفه‌ایه دمت گرم',
-            'یکی از بهترین کارهاته به نظرم',
-            'وایبش خیلی خاصه عشق کردم',
-            'این قطعه لایق ترند شدنه واقعاً',
+        $critical_question = [
+            'چرا اهنگای قدیمی میذارین؟؟', 'کاش کیفیت 320 بهتر بود', 'تبلیغات سایت زیاده اذیت میکنه', 'پخش انلاین گیر میکنه گاهی',
+            'کاش متن اهنگم میذاشتین', 'چرا اهنگای تکراری میذارید', 'کیفیتش متوسط بود', 'میکسش میتونست بهتر باشه',
+            'شعرش یه جاش ضعیف بود', 'انتظار بیشتری داشتم ولی خوبه', 'سایت خوبه ولی دیر لود میشه', 'کاش نسخه ریمیکس هم بذارید',
+            'اهنگ قشنگه ولی قدیمیه یکم', 'کاورش قشنگ نیست ولی اهنگ خوبه', 'چرا اهنگای قرن بوقی میذارین؟؟؟',
+            'پخشش یکم با تاخیر لود میشه', 'تبلیغات یکم زیاده', 'کاش اهنگ جدیدتر بذارید', 'کی منتشر شده کسی میدونه؟',
+            'کسی متن اهنگو داره؟', 'نظرتون چیه بچه ها؟', 'این اهنگ جدیدشه؟', 'متنشو دارید؟', 'اهنگ شاد ندارید؟',
+            'کاش اهنگ شادم بذارید', 'صداش یکم ضعیف میکس شده', 'ریتمش تکراریه یکم', 'شعرش میتونست قویتر باشه',
         ];
-        $mid_greet_site = [
-            'سلام دمتون گرم بچه‌های سایت — چیدمانتون حرف نداره',
-            'سلام مدیر عزیز سایتتون همیشه به‌روزه مرسی',
-            'درود به تیم سایت خسته نباشید عالیه',
+        $personal = [
+            'من و عشقم داریم جدا میشیم این اهنگ وصف حالمونه 🙁', 'یاد بچگیم افتادم با این اهنگ', 'هر وقت ناراحتم اینو گوش میدم اروم میشم',
+            'با این اهنگ خاطره دارم خیلی', 'بهترین اهنگشه به نظرم باعث افتخارمونه 😍', 'این اهنگ منو یاد قدیما میندازه',
+            'دارم با این اهنگ گریه میکنم', 'شبام با این اهنگ میگذره', 'عاشق این اهنگم هر روز گوش میدم',
+            'خاطره دارم باهاش خیلی دوسش دارم', 'یاد عشق قدیمم افتادم', 'با عشقم با این اهنگ اشنا شدیم', 'هر وقت میشنوم دلم میگیره',
+            'خیلی وقت بود دنبالش بودم مرسی', 'واقعا به دلم نشست', 'ارامش گرفتم باهاش ممنون', 'حالم باهاش خوب میشه',
         ];
-        $mid_critic = [
-            'قشنگه ولی میکسش شلوغه کاش خلوت‌تر بود',
-            'خوبه ولی این دفعه یکنواخت شدی',
-            'سایت عالیه فقط پلیر یه‌کم لگ داره',
-            'کاش ورژن آکوستیک هم بدی اینو',
-            'شعرش یه‌جا لنگ می‌زنه به نظرم',
+        $long_emotional = [
+            'به جرات میتونم بگم بهترین اهنگشه باعث افتخارمونه همشهری 😍', 'متنش هم قشنگه ریتمش هم عالیه واقعا لذت بردم',
+            'هم ریتمش هم متنش هم صداش عالیه واقعا محشره', 'خیلی اهنگ قشنگیه متنش هم قشنگه دمش گرم',
+            'صداش معرکه است این قطعه خاص شده واقعا', 'هر ثانیه‌ش پر از احساس بود ممنون بابت این اثر',
+            'واقعا شاهکاره صدا و حس بی نظیره', 'این قطعه بی تردید ماندگار میشه', 'اجرای فوق العاده بود تبریک میگم',
+            'ترانه به یاد موندنی با تنظیمی خوب', 'بی نهایت لذت بردم جزو بهتریناست', 'صداتون معجزه میکنه',
         ];
-        $high_pos = [
-            '🔥 پشمام ترکوندی این آهنگ ابدیه',
-            'وای خدا این چی بود دیوونه شدم ❤️',
-            'اسطوره‌ای هیچکی مثل تو نمی‌تونه بخونه',
-            'محشره از ۱۰۰ بهت ۱۰۰ میدم',
-            'صدات معجزه‌ست این قطعه موندگاره',
-            'پرچمت بالاست دمت گرم',
-            'هر ثانیه‌ش عشقه مرسی بابت این آهنگ',
-            'این باید هیت سال بشه واقعاً',
-            'تاریخ موسیقی با تو قشنگ‌تره',
-            'بی‌نهایت دوسش دارم این آهنگ جاودانه‌ست',
-            'از بچگی با صدات بزرگ شدم ناب',
-        ];
-        $high_greet_site = [
-            'سلام و خسته نباشید به مدیر عزیز — آرشیوتون بی‌نظیره 👏',
-            'سلام سایتتون بهترین مرجع موزیکه دمتون گرم',
-        ];
-        $high_critic = [
-            'عالیه ولی کم‌کار شدی کاش بیشتر بدی',
-            'شاهکاره ولی موزیک‌ویدیوش می‌تونست بهتر باشه',
-            'سایت فوق‌العاده‌ست فقط کامنتا دیر لود میشه',
-            'صدات بی‌نظیره ولی این تراک نسبت به قبلی ضعیف‌تر بود',
-            'خوبه ولی کاش کنسرت بذاری',
-        ];
-        // انتخاب لحن
+
+        // تشخیص تازگی پست برای کامنت هوشمند — موزیک جدید نباید «چرا قدیمی میذارین» بخورد
+        $is_new_post = ($post_age_days !== null && $post_age_days < 60);
+        $is_mid_post = ($post_age_days !== null && $post_age_days >= 60 && $post_age_days < 180);
+        $is_old_post = ($post_age_days !== null && $post_age_days >= 180);
+        // فیلتر دسته انتقادی بر اساس سن — برای تازه‌ها فقط انتقاد فنی/سایتی، نه قدیمی بودن
+        if ($is_new_post) {
+            // برای موزیک تازه (کمتر از 60 روز) انتقادهای مربوط به قدیمی/تکراری حذف شود
+            $critical_question = array_values(array_filter($critical_question, function($c){
+                $bad = ['قدیمی','قرن بوقی','تکراری','قدیمیه یکم','جدیدتر بذارید'];
+                foreach ($bad as $b) if (mb_strpos($c, $b) !== false) return false;
+                return true;
+            }));
+            // اگر فیلتر همه را حذف کرد (نادر) fallback به سوالی عمومی
+            if (empty($critical_question)) $critical_question = ['کاش کیفیت 320 بهتر بود','سایت یکم کند لود میشه','میکسش میتونست بهتر باشه'];
+        } elseif ($is_mid_post) {
+            // 60-180 روز: نصف انتقاد قدیمی حذف (کمتر حساس)
+            if (mt_rand(1,100) <= 50) {
+                $critical_question = array_values(array_filter($critical_question, function($c){
+                    $soft_bad = ['قرن بوقی','قدیمی میذارین'];
+                    foreach ($soft_bad as $b) if (mb_strpos($c, $b) !== false) return false;
+                    return true;
+                }));
+            }
+        }
+        // وزن/بازدید → انتخاب وزن pool (نه همه مثبت! 15% انتقاد حتی برای پرطرفدار — ولی برای تازه کمتر)
+        $is_premium_effective = $is_premium;
+        $is_low = ($weight < 30 && $views < 15000);
+        $is_high = ($weight >= 75 || $views >= 400000);
         $roll = mt_rand(1,100);
-        $is_low = ($weight < 30 && $views < 10000);
-        $is_high = ($weight >= 75 || $views >= 500000);
-        if ($roll <= 60) {
-            $pool = $is_high ? $high_pos : ($is_low ? $low_pos : $mid_pos);
-        } elseif ($roll <= 75) {
-            $pool = $is_high ? $high_greet_site : ($is_low ? $low_greet_site : $mid_greet_site);
-        } elseif ($roll <= 90) {
-            $pool = $is_high ? $high_critic : ($is_low ? $low_critic : $mid_critic);
+        // برای موزیک تازه احتمال انتقاد را از 15% به 7% کم کن + سوالی سبک بیشتر شود
+        $critical_chance = $is_new_post ? 7 : 15; // درصد ورود به critical
+        // محاسبه آستانه: ultra 38% + colloquial 24% = 62% → بعد critical 7/15% → بقیه personal/medium/long
+
+        if ($is_premium_effective) {
+            // پرفکت: 35% کوتاه، 40% محاوره، 15% شخصی، 10% متوسط — بدون انتقاد
+            if ($roll <= 35) $pool = $ultra_short;
+            elseif ($roll <= 65) $pool = $short_colloquial;
+            elseif ($roll <= 80) $pool = $personal;
+            elseif ($roll <= 92) $pool = $medium_natural;
+            else $pool = $long_emotional;
         } else {
-            $pool = ['نظرتون چیه؟ متوسط بود به نظرم','کی منتشر شده کسی می‌دونه؟','منتظر نظرات بقیه‌ام','بد نیست فعلاً گوش میدم','کسی متن ترانه رو داره؟'];
+            // آستانه پویا بر اساس تازگی
+            $crit_end = 62 + $critical_chance; // مثلا تازه: 69، قدیمی: 77
+            $personal_end = $crit_end + 10; // 10% شخصی
+            $medium_end = $personal_end + 6; // 6% متوسط
+            if ($roll <= 38) {
+                $pool = $ultra_short;
+            } elseif ($roll <= 62) {
+                $pool = $short_colloquial;
+            } elseif ($roll <= $crit_end) {
+                $pool = $critical_question; // انتقاد/سوال — برای تازه فیلتر و کمتر
+            } elseif ($roll <= $personal_end) {
+                $pool = $personal;
+            } elseif ($roll <= $medium_end) {
+                $pool = $medium_natural;
+            } else {
+                $pool = $long_emotional;
+            }
         }
-        $extra = ['','', ' ❤️',' 🔥',' 👏',' 🙏',' 😍',' ✨',''];
-        if ($roll > 75) $extra = ['','', '',' 🙏'];
-        $txt = $pool[array_rand($pool)] . $extra[array_rand($extra)];
-        // گاهی محاوره‌ای کشیدن
-        if (mt_rand(1,100) <= 15) {
-            $txt = str_replace(['عالی','خیلی','دوست'], ['عااالی','خییلی','دوس'], $txt);
+        // برای تازه‌ها بیشتر کوتاه، برای پرطرفدار بیشتر متوسط/طولانی ولی هنوز تنوع انتقاد حفظ شود
+        if ($is_low && $roll > 80) $pool = $ultra_short;
+        // if ($is_high && $roll <= 10) $pool = $critical_question; // حتی هیت‌ها انتقاد میخورند
+
+        $txt = $pool[array_rand($pool)];
+
+        // 22% ایموجی سبک (نه زیاده) — الگوی رز موزیک: ❤️👌😍🙁✨👏
+        if (mt_rand(1,100) <= 22) {
+            $emojis = [' ❤️',' 👌',' 😍',' 🙏',' ✨',' 👏',' 😊',' 🔥',''];
+            $txt .= $emojis[array_rand($emojis)];
+            // گاهی دو تایی مثل ۲۰👌👌
+            if (mt_rand(1,100) <= 12) $txt = trim($txt) . ' ' . ['20👌','20👌👌','❤️❤️','😍😍'][array_rand(['20👌','20👌👌','❤️❤️','😍😍'])];
         }
-        if (mt_rand(1,100) > 85 && count($pool) > 1) {
-            $txt .= ' ' . $pool[array_rand($pool)];
+        // 14% ترکیب دو جمله کوتاه با هم (برای تنوع طول)
+        if (mt_rand(1,100) <= 14) {
+            $extra_pool = $ultra_short;
+            $extra = $extra_pool[array_rand($extra_pool)];
+            if ($extra !== $txt) $txt .= ' ' . $extra;
         }
+        // 10% بدون نقطه پایان — طبیعی (رز موزیک خیلی‌ها نقطه ندارند)
+        if (mt_rand(1,100) <= 10) $txt = rtrim($txt, '.!؟?');
+
         return $txt;
     }
 
@@ -429,13 +572,13 @@ class CommentGuardian {
         $log = ob_get_clean();
         return ['before'=>$before,'after'=>$after,'log'=>$log];
     }
-    // تیک هر ۶ ساعت (۴ بار/روز) — همهٔ پست‌ها بر اساس بازدید+امتیاز — درخواست 1.8.5
+    // تیک هر ۱ ساعت (ریتم هرساعته 2026-10-21) — همهٔ پست‌ها بر اساس بازدید+امتیاز، gradual increase never decrease
     public static function tick(bool $verbose = false): void {
         if (!self::is_enabled()) return;
-        // گیت ۶ساعته — فقط هر ۲۱۶۰۰ ثانیه اجرا شود (دستی verbose دور می‌زند)
+        // گیت ۱ساعته — فقط هر ۳۶۰۰ ثانیه اجرا شود (دستی verbose دور می‌زند)
         if (!$verbose) {
             $last = (int) get_option('apex_omega_commentor_last_tick_ts', 0);
-            if ($last && (time() - $last < 21600)) return;
+            if ($last && (time() - $last < 3600)) return;
             update_option('apex_omega_commentor_last_tick_ts', time(), false);
         }
         $s = self::get_settings();
@@ -453,6 +596,13 @@ class CommentGuardian {
             // 1.8.9: پست‌های بدون کامنت حتی اگر قدیمی باشند نباید فیلتر شوند — خجالت‌آور است
             $where_recent = $wpdb->prepare(" AND (p.post_date_gmt >= %s OR NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c0 WHERE c0.comment_post_ID = p.ID AND c0.comment_approved='1')) ", $cutoff);
         }
+        // 2.1.0: گزینه خودکار برای پرطرفدارها >100k بدون دخالت انسانی
+        $high_auto = !empty($s['high_views_auto']);
+        $high_thr = (int)($s['high_views_threshold'] ?? 100000);
+        $cooldown_bypass_sql = '';
+        if ($high_auto) {
+            $cooldown_bypass_sql = $wpdb->prepare(" OR CAST(pm.meta_value AS UNSIGNED) >= %d ", $high_thr);
+        }
         // 1.8.7: برای هیت‌های میلیونی، recent_days سخت‌گیر نباش — اگر بازدید >500k حتی اگر قدیمی باشد شامل شود
         // این را در SQL جدا هندل می‌کنیم: اگر only_recent_days>0 ولی بازدید بالا باشد، اجازه بده
         // پس where_recent را برای هیت‌ها شل می‌کنیم در PHP بعداً (فعلا نگه می‌داریم اما در tick برای 657 چک ویژه داریم)
@@ -461,7 +611,13 @@ class CommentGuardian {
         // 1.8.0: بدون سقف 20 — روزانه همهٔ پست‌های سایت بر اساس الگوی ریتم (بازدید+امتیاز+وزن)
         // batch=0 یعنی بدون LIMIT — روزانه همه
         // 1.9.0 حرفه‌ای: batch=0 یعنی همه ولی هر تیک 75تا (5×75=375 روزانه) — توازن سرعت/منابع
-        $effective_batch = $batch > 0 ? $batch : 75;
+        $effective_batch = $batch > 0 ? $batch : ($verbose ? 120 : 55); // 2.1.1: manual 120/h برای پر کردن صفرها سریع‌تر، auto 55/h
+        // 2.1.1 بک‌فیل سریع برای صفرها: اگر 80+ پست بدون کامنت داریم، بچ را افزایش بده
+        $zero_cnt_check = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} p WHERE p.post_type='post' AND p.post_status='publish' AND NOT EXISTS (SELECT 1 FROM {$wpdb->comments} c WHERE c.comment_post_ID=p.ID AND c.comment_approved='1')");
+        if ($zero_cnt_check > 80) {
+            $effective_batch = min(150, $effective_batch + 60);
+            if ($verbose) echo "zero backfill boost: zero=$zero_cnt_check batch=$effective_batch\n";
+        }
         $limit_clause = $wpdb->prepare("LIMIT %d", $effective_batch);
         // 1.8.7: cooldown هوشمند — هیت‌ها زودتر دوباره کامنت بگیرند
         // برای پست‌های میلیونی cooldown را از 24h به 12h/6h کاهش می‌دهیم، پس cutoff را پویا می‌سازیم
@@ -473,13 +629,15 @@ class CommentGuardian {
             LEFT JOIN (SELECT comment_post_ID, COUNT(*) as c FROM {$wpdb->comments} WHERE comment_approved='1' GROUP BY comment_post_ID) cc ON cc.comment_post_ID = p.ID
             WHERE p.post_type='post' AND p.post_status='publish'
             {$where_recent}
-            AND NOT EXISTS (
-                SELECT 1 FROM {$wpdb->postmeta} pm2
-                WHERE pm2.post_id = p.ID
-                AND pm2.meta_key = %s
-                AND pm2.meta_value >= %s
+            AND (
+                NOT EXISTS (
+                    SELECT 1 FROM {$wpdb->postmeta} pm2
+                    WHERE pm2.post_id = p.ID
+                    AND pm2.meta_key = %s
+                    AND pm2.meta_value >= %s
+                ){$cooldown_bypass_sql}
             )
-            ORDER BY cc.c ASC, CAST(pm.meta_value AS UNSIGNED) DESC, p.post_date_gmt DESC, p.ID DESC
+            ORDER BY COALESCE(cc.c,0) ASC, p.post_date_gmt DESC, CAST(pm.meta_value AS UNSIGNED) DESC, p.ID DESC
             {$limit_clause}
         ";
         $cooldown_cutoff = gmdate('Y-m-d H:i:s', time() - $cooldown);
@@ -540,7 +698,12 @@ class CommentGuardian {
             // هدف کامنت بر اساس بازدید + وزن (همبسته)
             $stats = Adapter_KKSR::get_stats($pid);
             $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
-            $target = self::calculate_target($cur_views, $weight, $avg);
+            $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            $target = self::calculate_target($cur_views, $weight, $avg, $is_premium);
+            // 2.1.0: برای پرطرفدار >100k خودکار بدون دخالت انسانی — هدف را 15% بیشتر کن
+            if ($high_auto && $cur_views >= $high_thr) {
+                $target = min($max_per_post, $target + max(1, (int)ceil($target * 0.15)));
+            }
             // سقف کلی
             $target = min($target, $max_per_post);
             // تعداد فعلی کامنت‌های تأییدشده
@@ -552,29 +715,41 @@ class CommentGuardian {
             // چند تا اضافه کنیم؟ — تازه 2-3 یکباره، پرطرفدار روزانه متناسب با بازدید (میلیونی بیشتر)
             // 1.8.7: سوتی ممنوع برای هیت‌ها — اگر بازدید میلیونی ولی کامنت صفر، پر کن تا خجالت نکشی
             $need = $target - $current;
-            $is_mega_hit = ($cur_views >= 500000 && ($avg >= 4.7 || $cur_views >= 1000000));
-            $is_zero_fill = ($current === 0 && $target >= 20);
-            if ($is_zero_fill && $is_mega_hit) {
-                // پر کردن اولیه: هیت میلیونی با 0 کامنت ضایع است — یکجا 10-14 تا بگذار
-                $need = min($need, mt_rand(10, 14));
-                if ($verbose) echo "mega-fill pid=$pid views=$cur_views avg=$avg target=$target need=$need (burst)\n";
-            } elseif ($is_zero_fill && $cur_views >= 300000) {
-                $need = min($need, mt_rand(6, 9));
-            } elseif ($cur_views < $threshold) {
-                $need = min($need, mt_rand($s['min_comments'], $s['max_comments']));
-            } else {
-                // مقیاس هوشمند: میلیونی روزانه 3-5، صد هزار 2-3، تازه‌پرمخاطب 1-2
-                if ($cur_views >= 1000000) {
-                    $daily_scaled = max($daily_growth + 2, 6);
-                    $need = min($need, mt_rand(3, $daily_scaled));
-                } elseif ($cur_views >= 500000) {
-                    $daily_scaled = max($daily_growth + 1, 5);
-                    $need = min($need, mt_rand(2, $daily_scaled));
+            // 2.1.1: صفر را سریع پر کن — اولویت ویژه برای پست‌های بدون کامنت
+            if ($current === 0) {
+                if ($cur_views >= 500000) {
+                    $need = min($need, mt_rand(min(8, $target), min(12, $target)));
                 } elseif ($cur_views >= 100000) {
-                    $daily_scaled = max($daily_growth, 3);
-                    $need = min($need, mt_rand(1, $daily_scaled));
+                    $need = min($need, mt_rand(min(5, $target), min(9, $target)));
+                } elseif ($cur_views >= 10000) {
+                    $need = min($need, mt_rand(min(4, $target), min(7, $target)));
                 } else {
-                    $need = min($need, mt_rand(1, $daily_growth));
+                    $need = min($need, mt_rand(4, min(6, $target)));
+                }
+                if ($verbose) echo "zero-fill pid=$pid views=$cur_views target=$target need=$need\\n";
+            } else {
+                $is_mega_hit = ($cur_views >= 500000 && ($avg >= 4.7 || $cur_views >= 1000000));
+                $is_zero_fill = ($current === 0 && $target >= 20);
+                if ($is_zero_fill && $is_mega_hit) {
+                    $need = min($need, mt_rand(10, 14));
+                    if ($verbose) echo "mega-fill pid=$pid views=$cur_views avg=$avg target=$target need=$need (burst)\\n";
+                } elseif ($is_zero_fill && $cur_views >= 300000) {
+                    $need = min($need, mt_rand(6, 9));
+                } elseif ($cur_views < $threshold) {
+                    $need = min($need, mt_rand($s['min_comments'], $s['max_comments']));
+                } else {
+                    if ($cur_views >= 1000000) {
+                        $daily_scaled = max($daily_growth + 2, 6);
+                        $need = min($need, mt_rand(3, $daily_scaled));
+                    } elseif ($cur_views >= 500000) {
+                        $daily_scaled = max($daily_growth + 1, 5);
+                        $need = min($need, mt_rand(2, $daily_scaled));
+                    } elseif ($cur_views >= 100000) {
+                        $daily_scaled = max($daily_growth, 3);
+                        $need = min($need, mt_rand(1, $daily_scaled));
+                    } else {
+                        $need = min($need, mt_rand(1, $daily_growth));
+                    }
                 }
             }
             $need = max(1, min(14, $need));
@@ -593,7 +768,7 @@ class CommentGuardian {
                 if ($current + $inserted >= $target) break;
                 if ($current + $inserted >= $max_per_post) break;
                 $who = self::generate_name();
-                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views);
+                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium ?? false);
                 // کمی تنوع زمانی: هر کامنت 2-10 دقیقه فاصله (برای طبیعی بودن تاریخ)
                 $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 600));
                 $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
@@ -604,7 +779,7 @@ class CommentGuardian {
                 ));
                 if ($dup) {
                     // متن تکراری — fallback دیگر بگیر
-                    $text = self::fallback_text($weight, $cur_views) . ' ' . mt_rand(10,99);
+                    $text = self::fallback_text($weight, $cur_views, '', $is_premium ?? false) . ' ' . mt_rand(10,99);
                 }
                 $cid = wp_insert_comment([
                     'comment_post_ID' => $pid,
@@ -693,7 +868,8 @@ class CommentGuardian {
             $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
             $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
             $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
-            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg);
+            $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected((int)$r['ID']);
+            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg, $is_premium);
             $current = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
             $samples[] = ['ID'=>$pid,'title'=>mb_strimwidth($r['post_title']??'',0,40,'…'),'views'=>(int)$r['cur_views'],'weight'=>$weight,'avg'=>$avg,'target'=>$target,'current'=>$current];
         }
@@ -704,7 +880,7 @@ class CommentGuardian {
 
     public static function send_for_post(int $post_id, int $requested_count): array {
         if (!get_post($post_id)) return ['success'=>false,'message'=>'نوشته یافت نشد.'];
-        $requested_count = max(1, min(60, $requested_count));
+        $requested_count = max(1, min(500, $requested_count)); // 2.0 hourly: raised 60→500, final clamp by max_per_post below
         $settings = self::get_settings();
         $max_per_post = (int)$settings['max_per_post'];
         // Check current count
@@ -721,6 +897,7 @@ class CommentGuardian {
         $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
         $artist_name = self::get_primary_artist($post_id);
         if (!$artist_name) $artist_name = 'هنرمند ناشناس';
+        $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected($post_id);
         // Open comment_status if closed
         if (get_post_field('comment_status', $post_id) !== 'open') {
             wp_update_post(['ID' => $post_id, 'comment_status' => 'open']);
@@ -764,6 +941,157 @@ class CommentGuardian {
             update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>1,'comments'=>$inserted,'exec'=>$exec], false);
         }
         return ['success'=>true,'inserted'=>$inserted,'requested'=>$requested_count,'current'=>$current+$inserted,'max'=>$max_per_post];
+    }
+
+    /**
+     * 💬 Bulk برای آثار منتخب — مثل بازدید، ولی برای کامنت
+     * $mode: 'add' = افزودن N جدید (پیش‌فرض، مثل بازدید بازه), 'set' = رساندن به حداقل N
+     * $count_min/$count_max: بازه تصادفی هر پست (اگر max=0 یا خالی → همان min)
+     */
+    public static function bulk_apply_to_ids(array $post_ids, int $count_min = 5, int $count_max = 0, array $options = []): array {
+        if (empty($post_ids)) return ['success'=>false,'message'=>'هیچ پستی انتخاب نشده'];
+        $count_min = max(1, min(500, $count_min));
+        if ($count_max) $count_max = max($count_min, min(500, $count_max));
+        else $count_max = $count_min;
+        $mode = $options['mode'] ?? 'add'; // add|set
+        $only_zero = !empty($options['only_zero']);
+        $is_premium_opt = $options['is_premium'] ?? null; // null=auto by is_premium_selected
+        $settings = self::get_settings();
+        $max_per_post = (int)$settings['max_per_post'];
+        global $wpdb;
+        $exec = apex_omega_generate_uuid();
+        $user_id = get_current_user_id();
+        $total = count($post_ids);
+        $applied_posts = 0;
+        $applied_comments = 0;
+        $skipped = 0;
+        $errors = [];
+        $details = [];
+        // برای توزیع آماری
+        $buckets = ['0'=>0,'1-5'=>0,'6-15'=>0,'16-30'=>0,'30+'=>0];
+        $before_total = 0;
+        // اول آمار قبل
+        foreach ($post_ids as $pid) {
+            if (!$pid || !get_post($pid)) { $skipped++; continue; }
+            $cur = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            $before_total += $cur;
+            // bucket before
+            if ($cur === 0) $buckets['0']++;
+            elseif ($cur <= 5) $buckets['1-5']++;
+            elseif ($cur <= 15) $buckets['6-15']++;
+            elseif ($cur <= 30) $buckets['16-30']++;
+            else $buckets['30+']++;
+        }
+        // پردازش هر پست
+        foreach ($post_ids as $pid) {
+            $pid = (int)$pid;
+            if (!$pid || !get_post($pid)) continue;
+            // فیلتر only_zero
+            $cur = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            if ($only_zero && $cur > 0) { $skipped++; continue; }
+            if ($cur >= $max_per_post) { $skipped++; continue; }
+            $remaining = $max_per_post - $cur;
+            // چند تا برای این پست؟
+            $need = mt_rand($count_min, $count_max);
+            if ($mode === 'set') {
+                // رساندن به حداقل N: اگر الان 3 تا دارد و N=10 می‌خواهد → 7 تا اضافه
+                if ($cur >= $need) { $skipped++; continue; }
+                $need = $need - $cur;
+            }
+            $need = min($need, $remaining, 500);
+            if ($need <= 0) { $skipped++; continue; }
+            $title = get_the_title($pid) ?: '';
+            $weight = \ApexOmega\Core\ArtistManager::get_weight_for_post($pid);
+            $cur_views = (int) get_post_meta($pid, 'views', true);
+            $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+            $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
+            $artist_name = self::get_primary_artist($pid);
+            if (!$artist_name) $artist_name = 'هنرمند ناشناس';
+            $is_premium = $is_premium_opt !== null ? (bool)$is_premium_opt : \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
+            // comment_status باز
+            if (get_post_field('comment_status', $pid) !== 'open') {
+                wp_update_post(['ID' => $pid, 'comment_status' => 'open']);
+            }
+            $inserted = 0;
+            for ($i=0; $i < $need; $i++) {
+                if ($cur + $inserted >= $max_per_post) break;
+                $who = self::generate_name();
+                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium);
+                $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 1800));
+                $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
+                // duplicate 24h چک
+                $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $pid, $text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
+                if ($dup) $text = self::fallback_text($weight, $cur_views, '', $is_premium) . ' ' . mt_rand(10,99);
+                $cid = wp_insert_comment([
+                    'comment_post_ID' => $pid,
+                    'comment_author' => $who['author'],
+                    'comment_author_email' => $who['email'],
+                    'comment_author_url' => '',
+                    'comment_content' => $text,
+                    'comment_type' => '',
+                    'comment_parent' => 0,
+                    'user_id' => 0,
+                    'comment_author_IP' => self::fake_ip(),
+                    'comment_agent' => 'Mozilla/5.0',
+                    'comment_date' => $comment_time,
+                    'comment_date_gmt' => $comment_time_gmt,
+                    'comment_approved' => 1,
+                ]);
+                if ($cid && !is_wp_error($cid)) {
+                    add_comment_meta($cid, '_apex_commentor', 1, true);
+                    add_comment_meta($cid, '_apex_weight', $weight, true);
+                    wp_update_comment_count($pid);
+                    $inserted++;
+                    \ApexOmega\Core\History::log($pid, 'comment', $cur, $cur + $inserted, 'bulk_comment_selected', $user_id, $exec, null, ['author'=>$who['author'],'weight'=>$weight,'requested'=>$need,'is_premium'=>$is_premium]);
+                }
+                usleep(20000);
+            }
+            if ($inserted > 0) {
+                update_post_meta($pid, self::META_LAST, current_time('mysql', true));
+                update_post_meta($pid, self::META_COUNT, (int)get_post_meta($pid, self::META_COUNT, true) + $inserted);
+                $applied_posts++;
+                $applied_comments += $inserted;
+                $details[] = ['post_id'=>$pid,'before'=>$cur,'added'=>$inserted,'after'=>$cur+$inserted];
+            } else {
+                $skipped++;
+            }
+        }
+        if ($applied_comments > 0) {
+            update_option('apex_omega_commentor_last_run', ['at'=>current_time('mysql', true),'posts'=>$applied_posts,'comments'=>$applied_comments,'exec'=>$exec,'bulk_selected'=>true], false);
+        }
+        // آمار بعد
+        $after_total = 0;
+        $after_buckets = ['0'=>0,'1-5'=>0,'6-15'=>0,'16-30'=>0,'30+'=>0];
+        foreach ($post_ids as $pid) {
+            $cur = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+            $after_total += $cur;
+            if ($cur === 0) $after_buckets['0']++;
+            elseif ($cur <= 5) $after_buckets['1-5']++;
+            elseif ($cur <= 15) $after_buckets['6-15']++;
+            elseif ($cur <= 30) $after_buckets['16-30']++;
+            else $after_buckets['30+']++;
+        }
+        $pct_posts = $total ? round($applied_posts / $total * 100, 1) : 0;
+        $avg_before = $total ? round($before_total / $total, 1) : 0;
+        $avg_after = $total ? round($after_total / $total, 1) : 0;
+        return [
+            'success'=>true,
+            'total'=>$total,
+            'applied_posts'=>$applied_posts,
+            'applied_comments'=>$applied_comments,
+            'skipped'=>$skipped,
+            'percent'=>$pct_posts,
+            'avg_before'=>$avg_before,
+            'avg_after'=>$avg_after,
+            'before_total'=>$before_total,
+            'after_total'=>$after_total,
+            'buckets_before'=>$buckets,
+            'buckets_after'=>$after_buckets,
+            'execution_id'=>$exec,
+            'errors'=>$errors,
+            'details'=>$details,
+            'message'=> $applied_comments ? "✅ {$applied_comments} کامنت به {$applied_posts} از {$total} آهنگ ({$pct_posts}٪) اضافه شد — میانگین {$avg_before} → {$avg_after}" : 'هیچ کامنتی اضافه نشد (همه به سقف رسیده یا فیلتر شدند)',
+        ];
     }
 
     private static function get_primary_artist(int $post_id): string {
