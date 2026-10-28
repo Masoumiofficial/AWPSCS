@@ -71,7 +71,7 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
                 <td><input type="number" class="apex-artist-weight" data-tid="<?php echo esc_attr($a['term_id']); ?>" value="<?php echo esc_attr($a['weight']); ?>" min="0" max="100" style="width:80px;text-align:center;font-weight:800;"></td>
                 <td><span class="apex-badge" style="background:<?php echo esc_attr($tiers[array_search($a['tier_hint'], array_column($tiers,'id'))]['color'] ?? '#6b7280'); ?>;color:#fff;"><?php echo esc_html($tiers[array_search($a['tier_hint'], array_column($tiers,'id'))]['label'] ?? $a['tier_hint']); ?></span></td>
                 <td><input type="range" class="apex-artist-slider" data-tid="<?php echo esc_attr($a['term_id']); ?>" min="0" max="100" value="<?php echo esc_attr($a['weight']); ?>" style="width:120px;accent-color:#f59e0b;"></td>
-                <td><button type="button" class="button button-apex secondary apex-reseed-btn" data-tid="<?php echo esc_attr($a['term_id']); ?>" style="padding:2px 8px;font-size:11px;white-space:nowrap">🔀 تنوع‌دهی</button></td>
+                <td><button type="button" class="button button-apex secondary apex-reseed-btn" data-tid="<?php echo esc_attr($a['term_id']); ?>" data-name="<?php echo esc_attr($a['name']); ?>" data-count="<?php echo esc_attr($a['count']); ?>" style="padding:2px 8px;font-size:11px;white-space:nowrap">🔀 تنوع‌دهی</button></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -110,6 +110,54 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
     </div>
   </div>
 </div>
+
+<!-- 🎛️ پاپ‌آپ تنوع‌دهی با بازه قابل تنظیم — glass iPhone -->
+<div id="apex-reseed-modal" style="display:none;position:fixed;inset:0;z-index:99999;align-items:center;justify-content:center;padding:16px;">
+  <div id="apex-reseed-backdrop" style="position:absolute;inset:0;background:rgba(15,23,42,0.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);"></div>
+  <div style="position:relative;width:100%;max-width:560px;max-height:90vh;overflow:auto;background:rgba(255,255,255,0.96);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);border:1px solid rgba(255,255,255,0.85);border-radius:22px;box-shadow:0 24px 64px rgba(15,23,42,0.18), 0 1px 0 rgba(255,255,255,0.9) inset;padding:0;animation:apexFade 0.2s ease;">
+    <div style="padding:18px 20px 14px;border-bottom:1px solid rgba(15,23,42,0.06);display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:0;background:rgba(255,255,255,0.96);border-radius:22px 22px 0 0;z-index:1;">
+      <div>
+        <h3 style="margin:0;font-size:16px;font-weight:900;color:#0f172a;display:flex;gap:8px;align-items:center;">🔀 تنوع‌دهی هنرمند <span style="background:linear-gradient(135deg,#7c3aed,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;" id="apex-reseed-artist-name"></span></h3>
+        <small id="apex-reseed-artist-meta" style="color:#64748b;font-size:11px;"></small>
+      </div>
+      <button type="button" id="apex-reseed-close" style="width:32px;height:32px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.8);cursor:pointer;font-size:16px;line-height:1;">✕</button>
+    </div>
+    <div style="padding:16px 20px;">
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:10px 12px;font-size:12px;color:#92400e;line-height:1.7;">
+        <strong>هرگز کم نمی‌شود</strong> — بازه انتخابی فقط برای <strong>افزایش متنوع</strong> استفاده می‌شود. اگر آهنگی الان ۶۰۰k باشد و بازه ۱۰۰k-۳۰۰k انتخاب کنید، به‌جای کاهش، تا <strong>۳-۲۲٪ افزایش</strong> می‌گیرد. تنوع واقعی با هش ID هر آهنگ تضمین می‌شود.
+      </div>
+      <div style="margin-top:14px;">
+        <label style="font-size:12px;font-weight:800;color:#1e293b;display:block;margin-bottom:6px;">بازه دلخواه بازدید (هر آهنگ عددی متفاوت در همین بازه می‌گیرد):</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <label class="apex-f" style="margin:0;"><span style="font-size:11px;font-weight:700;color:#475569;">کف بازه (حداقل)</span><input type="number" id="apex-reseed-min" min="1000" max="12000000" step="1000" placeholder="100000" style="width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.9);font-weight:700;"></label>
+          <label class="apex-f" style="margin:0;"><span style="font-size:11px;font-weight:700;color:#475569;">سقف بازه (حداکثر)</span><input type="number" id="apex-reseed-max" min="1000" max="12000000" step="1000" placeholder="300000" style="width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.9);font-weight:700;"></label>
+        </div>
+        <small style="color:#64748b;font-size:11px;display:block;margin-top:6px;">مثال: ۱۰۰,۰۰۰ تا ۳۰۰,۰۰۰ → هر آهنگ عددی یکتا بین این دو می‌گیرد + هرگز کم نمی‌شود.</small>
+      </div>
+      <div style="margin-top:12px;">
+        <span style="font-size:11px;font-weight:800;color:#334155;">پیشنهادهای سریع:</span>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
+          <button type="button" class="apex-range-preset" data-min="10000" data-max="30000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">10k – 30k</button>
+          <button type="button" class="apex-range-preset" data-min="30000" data-max="80000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">30k – 80k</button>
+          <button type="button" class="apex-range-preset" data-min="80000" data-max="200000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">80k – 200k</button>
+          <button type="button" class="apex-range-preset" data-min="100000" data-max="300000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">100k – 300k ⭐</button>
+          <button type="button" class="apex-range-preset" data-min="200000" data-max="500000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">200k – 500k</button>
+          <button type="button" class="apex-range-preset" data-min="500000" data-max="900000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">500k – 900k</button>
+          <button type="button" class="apex-range-preset" data-min="900000" data-max="2000000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">0.9M – 2M</button>
+          <button type="button" class="apex-range-preset" data-min="1000000" data-max="5000000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">1M – 5M</button>
+          <button type="button" class="apex-range-preset" data-min="8000000" data-max="12000000" style="padding:6px 10px;border-radius:999px;border:1px solid #f59e0b;background:#fffbeb;font-size:11px;font-weight:800;cursor:pointer;">💎 8M – 12M پرمیوم</button>
+          <button type="button" class="apex-range-preset" data-min="" data-max="" data-auto="1" style="padding:6px 10px;border-radius:999px;border:1px dashed #7c3aed;background:#f5f3ff;font-size:11px;font-weight:800;cursor:pointer;">🤖 خودکار هوشمند</button>
+        </div>
+      </div>
+      <div id="apex-reseed-preview" style="margin-top:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:11px;color:#475569;line-height:1.7;display:none;"></div>
+    </div>
+    <div style="padding:12px 20px 18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid rgba(15,23,42,0.06);background:rgba(248,250,252,0.7);border-radius:0 0 22px 22px;">
+      <button type="button" id="apex-reseed-cancel" style="padding:10px 16px;border-radius:12px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.9);font-weight:700;cursor:pointer;">لغو</button>
+      <button type="button" id="apex-reseed-apply" style="padding:10px 18px;border-radius:12px;border:1px solid rgba(124,58,237,0.2);background:linear-gradient(180deg,#7c3aed,#6d28d9);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 8px 18px rgba(124,58,237,0.22);">✅ اعمال تنوع</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   function getNonce(){ return (window.ApexOmega&&ApexOmega.nonce) || document.querySelector('input[name=\"_wpnonce\"]')?.value || document.querySelector('#_wpnonce')?.value || ''; }
@@ -164,7 +212,77 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
       }).catch(function(err){ if(resEl) resEl.textContent='❌ '+err; }).finally(function(){ btn.disabled=false; btn.textContent='💾 ذخیره الگوی ریتم';});
     });
     var ratio=qs('apex-rhythm-artist-ratio'); if(ratio && !ratio.dataset.vanilla){ ratio.dataset.vanilla='1'; ratio.addEventListener('input', function(){ var v=parseInt(this.value||85); var a=qs('apex-rhythm-artist-val'); if(a) a.textContent=v+'%'; var t=qs('apex-rhythm-title-val'); if(t) t.textContent=(100-v)+'%';});}
-    document.querySelectorAll('.apex-reseed-btn').forEach(function(btn){ if(btn.dataset.vanilla) return; btn.dataset.vanilla='1'; btn.addEventListener('click', function(e){ e.preventDefault(); e.stopImmediatePropagation(); var tid=this.dataset.tid; if(!confirm('تنوع‌دهی مجدد برای این هنرمند؟ همه آهنگ‌هایش متنوع می‌شود (هرگز کم نمی‌کند)')) return; var orig=this.textContent; this.disabled=true; this.textContent='در حال تنوع…'; apexPost('apex_reseed_artist',{term_id:tid,taxonomy:qs('apex-artist-taxonomy')?.value||''}).then(function(j){ if(j.success){ alert('✅ '+j.data.message+' — '+j.data.applied+' آهنگ'); } else alert('❌ '+(j.data.message||'خطا')); }).catch(function(e){ alert('❌ '+e.message); }).finally((function(btn2){ return function(){ btn2.disabled=false; btn2.textContent=orig; }; })(this)); }); });
+    // ——— تنوع‌دهی پاپ‌آپ با بازه قابل تنظیم ———
+    var _reseedTid=null,_reseedBtn=null;
+    function formatNum(n){ if(!n) return '-'; return Number(n).toLocaleString('fa-IR'); }
+    function openReseedModal(tid,name,count){
+      _reseedTid=tid;
+      var modal=qs('apex-reseed-modal'); if(!modal) return;
+      qs('apex-reseed-artist-name').textContent=name||('ID '+tid);
+      qs('apex-reseed-artist-meta').textContent=(count? count+' آهنگ • ':'')+'بازه مورد نظر را انتخاب کن (هرگز کم نمی‌شود)';
+      var minEl=qs('apex-reseed-min'), maxEl=qs('apex-reseed-max');
+      if(!minEl.value) minEl.value='100000';
+      if(!maxEl.value) maxEl.value='300000';
+      updateReseedPreview();
+      modal.style.display='flex';
+      document.body.style.overflow='hidden';
+    }
+    function closeReseedModal(){
+      var modal=qs('apex-reseed-modal'); if(modal) modal.style.display='none';
+      document.body.style.overflow='';
+      _reseedTid=null; _reseedBtn=null;
+    }
+    function updateReseedPreview(){
+      var minEl=qs('apex-reseed-min'), maxEl=qs('apex-reseed-max'), box=qs('apex-reseed-preview');
+      if(!minEl||!maxEl||!box) return;
+      var mn=parseInt(minEl.value||0), mx=parseInt(maxEl.value||0);
+      if(!mn && !mx){ box.style.display='none'; return; }
+      if(mn && mx && mn>mx){ box.innerHTML='<span style="color:#dc2626;">⚠️ کف بازه از سقف بیشتر است — جابجا می‌شود</span>'; box.style.display='block'; return; }
+      var range = mn && mx ? formatNum(mn)+' تا '+formatNum(mx) : (mn? 'از '+formatNum(mn): 'تا '+formatNum(mx));
+      box.innerHTML='📊 پیش‌نمایش: هر آهنگ عددی یکتا در بازه <strong>'+range+'</strong> می‌گیرد. تفاوت 100k-300k حدود <strong>200,000</strong> تنوع ایجاد می‌کند (نه 100). همه افزایشی.';
+      box.style.display='block';
+    }
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeReseedModal(); });
+    document.querySelectorAll('.apex-range-preset').forEach(function(b){
+      b.addEventListener('click', function(){
+        var mn=this.getAttribute('data-min'), mx=this.getAttribute('data-max'), auto=this.getAttribute('data-auto');
+        var minEl=qs('apex-reseed-min'), maxEl=qs('apex-reseed-max');
+        if(auto){ minEl.value=''; maxEl.value=''; }
+        else { minEl.value=mn; maxEl.value=mx; }
+        updateReseedPreview();
+        document.querySelectorAll('.apex-range-preset').forEach(function(x){ x.style.outline=''; x.style.boxShadow=''; });
+        this.style.outline='2px solid #7c3aed'; this.style.boxShadow='0 0 0 4px rgba(124,58,237,0.12)';
+      });
+    });
+    var _minEl=document.getElementById('apex-reseed-min'), _maxEl=document.getElementById('apex-reseed-max');
+    if(_minEl) _minEl.addEventListener('input', updateReseedPreview);
+    if(_maxEl) _maxEl.addEventListener('input', updateReseedPreview);
+    var _back=qs('apex-reseed-backdrop'), _close=qs('apex-reseed-close'), _cancel=qs('apex-reseed-cancel');
+    if(_back) _back.addEventListener('click', closeReseedModal);
+    if(_close) _close.addEventListener('click', closeReseedModal);
+    if(_cancel) _cancel.addEventListener('click', closeReseedModal);
+    var _apply=qs('apex-reseed-apply');
+    if(_apply) _apply.addEventListener('click', function(){
+      if(!_reseedTid) return;
+      var mn=parseInt(qs('apex-reseed-min').value||0), mx=parseInt(qs('apex-reseed-max').value||0);
+      if(mn && mx && mn>mx){ alert('کف بازه نباید از سقف بیشتر باشد'); return; }
+      var payload={term_id:_reseedTid, taxonomy: qs('apex-artist-taxonomy')?.value||''};
+      if(mn) payload.range_min=mn;
+      if(mx) payload.range_max=mx;
+      var origBtn=document.querySelector('.apex-reseed-btn[data-tid="'+_reseedTid+'"]');
+      if(origBtn){ origBtn.disabled=true; var o=origBtn.textContent; origBtn.textContent='در حال تنوع…'; }
+      _apply.disabled=true; _apply.textContent='در حال اعمال…';
+      apexPost('apex_reseed_artist', payload).then(function(j){
+        if(j.success){ alert('✅ '+j.data.message+' — '+j.data.applied+' آهنگ'); closeReseedModal(); }
+        else alert('❌ '+(j.data.message||'خطا'));
+      }).catch(function(e){ alert('❌ '+e.message); }).finally(function(){
+        if(origBtn){ origBtn.disabled=false; origBtn.textContent=o; }
+        _apply.disabled=false; _apply.textContent='✅ اعمال تنوع';
+      });
+    });
+
+    document.querySelectorAll('.apex-reseed-btn').forEach(function(btn){ if(btn.dataset.vanilla) return; btn.dataset.vanilla='1'; btn.addEventListener('click', function(e){ e.preventDefault(); e.stopImmediatePropagation(); openReseedModal(this.dataset.tid, this.dataset.name, this.dataset.count); }); });
+
     document.querySelectorAll('.apex-artist-slider').forEach(function(sl){ if(sl.dataset.vanilla) return; sl.dataset.vanilla='1'; sl.addEventListener('input', function(){ var tid=this.dataset.tid; var inp=document.querySelector('.apex-artist-weight[data-tid=\"'+tid+'\"]'); if(inp) inp.value=this.value; }); });
     document.querySelectorAll('.apex-artist-weight').forEach(function(inp){ if(inp.dataset.vanilla) return; inp.dataset.vanilla='1'; inp.addEventListener('input', function(){ var tid=this.dataset.tid; var sl=document.querySelector('.apex-artist-slider[data-tid=\"'+tid+'\"]'); if(sl) sl.value=this.value; }); });
   }

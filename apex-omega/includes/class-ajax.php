@@ -819,7 +819,11 @@ class Ajax {
         $term_id = (int)($_POST['term_id'] ?? 0);
         $tax = sanitize_text_field($_POST['taxonomy'] ?? '');
         if ($tax === '__auto__') $tax = '';
-        $res = \ApexOmega\Core\ArtistManager::reseed_artist_variance($term_id, $tax);
+        $rmin = isset($_POST['range_min']) && $_POST['range_min'] !== '' ? (int)$_POST['range_min'] : null;
+        $rmax = isset($_POST['range_max']) && $_POST['range_max'] !== '' ? (int)$_POST['range_max'] : null;
+        if ($rmin !== null) { $rmin = max(1000, min(12000000, $rmin)); }
+        if ($rmax !== null) { $rmax = max(1000, min(12000000, $rmax)); }
+        $res = \ApexOmega\Core\ArtistManager::reseed_artist_variance($term_id, $tax, $rmin, $rmax);
         if (empty($res['success'])) wp_send_json_error($res, 400);
         wp_send_json_success($res);
     }

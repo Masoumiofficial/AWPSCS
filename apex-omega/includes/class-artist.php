@@ -1140,7 +1140,7 @@ class ArtistManager {
     }
 
     // تنوع‌دهی مجدد برای هنرمندی با آثار یکنواخت (مثل علیرضا قربانی 600k یکسان) — فورس بدون cooldown/lower_only
-    public static function reseed_artist_variance(int $term_id, string $taxonomy = ''): array {
+    public static function reseed_artist_variance(int $term_id, string $taxonomy = '', ?int $range_min = null, ?int $range_max = null): array {
         if (!$term_id) return ['success'=>false,'message'=>'شناسه هنرمند نامعتبر'];
         if (!$taxonomy) $taxonomy = self::detect_artist_taxonomy();
         if (!$taxonomy) return ['success'=>false,'message'=>'تاکسونومی هنرمند یافت نشد'];
@@ -1172,6 +1172,18 @@ class ArtistManager {
         $tiers = \ApexOmega\Core\TierManager::get_tiers();
         $tmap=[]; foreach($tiers as $t) $tmap[$t['id']]=$t;
         $tier = $tmap[$tier_id] ?? $tmap['tier_4'];
+        // بازه سفارشی کاربر (اگر انتخاب کرده) — اعتبارسنجی و نرمال‌سازی
+        $has_custom_range = false; $custom_min = null; $custom_max = null;
+        if ($range_min !== null || $range_max !== null) {
+            $cmin = $range_min !== null ? (int)$range_min : 1000;
+            $cmax = $range_max !== null ? (int)$range_max : 12000000;
+            if ($cmin < 1000) $cmin = 1000;
+            if ($cmax > 12000000) $cmax = 12000000;
+            if ($cmin > $cmax) { $tmp=$cmin; $cmin=$cmax; $cmax=$tmp; }
+            // اگر بازه خیلی تنگ (کمتر از 2000) گسترش ده برای تنوع
+            if (($cmax - $cmin) < 2000) $cmax = $cmin + max(5000, (int)($cmin*0.15));
+            $custom_min = $cmin; $custom_max = $cmax; $has_custom_range = true;
+        }
         // برای شکستن یکنواختی، حتی اگر تنوع فعلی وجود دارد، یک offset ترتیبی اضافه کن
         // هر پست با هش ID تنوع دارد، اما اگر همه 600k بودند، guard قبلی آنها را با +1-3% متنوع می‌کند — اینجا عمدا بیشتر تنوع می‌دهیم
         foreach($ids as $idx=>$pid) {
@@ -1184,8 +1196,34 @@ class ArtistManager {
             // شکستن یکنواختی: اگر oldها همه یکسان هستند، یک jitter ترتیبی اضافه کن تا دیگر مساوی نمانند
             // برای اولین اجرا، val ممکن است نزدیک old باشد — یک پراکندگی اجباری ترتیبی
             $pidHash = (($pid * 9301 + 49297) % 233280)/233280; // 0-1
-            // اگر old یکنواخت و بالاتر از tier است (و پرمیوم نیست)، تنوع را بر اساس old بساز تا هرگز کم نشود ولی متنوع شود — پرمیوم از generate_values خودش 8-12M می‌گیرد
-            if (!$is_premium && $old_views > 0 && $old_views > (int)$cur_tier['views_max']) {
+            // بازه سفارشی: اگر کاربر بازه انتخاب کرده، اولویت با بازه است (با حفظ هرگز کم نشدن)
+            if ($has_custom_range) {
+                $rmin = $custom_min; $rmax = $custom_max;
+                if ($old_views >= $rmax) {
+                    // قدیمی بالاتر از سقف بازه است — نمی‌توانیم کم کنیم، پس فقط افزایش متنوع
+                    $jitter = (mt_rand(-200,200)/10000);
+                    $factor = 0.03 + $pidHash * 0.12 + $jitter;
+                    $factor = max(0.02, $factor);
+                    $vals['views'] = $old_views + (int) round($old_views * $factor);
+                } elseif ($old_views < $rmin) {
+                    // جهش به داخل بازه با تنوع هش
+                    $jitter = (mt_rand(-500,500)/10000) * ($rmax - $rmin) * 0.03;
+                    $vals['views'] = (int) round($rmin + ($rmax - $rmin) * $pidHash + $jitter);
+                    $vals['views'] = max($rmin, min($rmax, $vals['views']));
+                } else {
+                    // داخل بازه است — تنوع با حفظ افزایش حداقل
+                    $minInc = max(3500, (int) round($old_views * (0.02 + $pidHash * 0.05)));
+                    $low = $old_views + $minInc;
+                    if ($low > $rmax) {
+                        $vals['views'] = $low; // بازه تنگ، اجازه خروج جزئی برای حفظ افزایش
+                    } else {
+                        $remaining = $rmax - $low;
+                        $pos = $pidHash * 0.65 + (mt_rand(0,400)/1000) * 0.35;
+                        $vals['views'] = (int) round($low + $remaining * $pos);
+                    }
+                    $vals['views'] = max($low, min($rmax + (int)($old_views*0.08), $vals['views']));
+                }
+            } elseif (!$is_premium && $old_views > 0 && $old_views > (int)$cur_tier['views_max']) {
                 // افزایش متنوع بر اساس old: 3% تا 18% (pidHash) + جیتر رندم کوچک
                 $jitter = (mt_rand(-400,400)/10000); // ±4%
                 $factor = 0.03 + $pidHash * 0.15 + $jitter; // 3% تا 18% ±4% => تقریبا -1% تا 22% (حداقل 2% تضمین)

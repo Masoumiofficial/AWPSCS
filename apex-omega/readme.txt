@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.17
+Stable tag: 2.2.18
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,10 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.18 (2026-10-28) =
+* FEATURE تنوع‌دهی بازه‌محور: پاپ‌آپ شیشه‌ای با بازه قابل تنظیم (10k-12M) برای هر هنرمند — هر آهنگ عددی یکتا در بازه انتخابی (مثلا 100k-300k → 200k تنوع) — به هیچ عنوان کم نمی‌شود (اگر آهنگ بالاتر از سقف باشد فقط افزایش، اگر داخل بازه باشد با تضمین افزایش حداقل 3500)
+* FIX پاپ‌آپ جایگزین confirm تکراری شد — تک‌تأیید با dataset.vanilla guard حفظ شد
 
 = 2.2.17 (2026-10-28) =
 * FIX تنوع‌دهی هنرمندان: دو تأیید حذف — `dataset.vanilla` guard (تک confirm)، `__auto__`→'' نرمال‌سازی taxonomy (رفع «هنرمند یافت نشد») و واریانس محسوس با حفظ «هرگز کم نمی‌کند» — وزن هوشمند بر اساس میانگین فعلی (600k→76-82) + پراکندگی 3-22% بر اساس هش ID
