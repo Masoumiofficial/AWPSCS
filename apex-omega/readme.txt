@@ -4,7 +4,7 @@ Tags: statistics, views, kksr, ratings, scheduling, music
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 2.2.16
+Stable tag: 2.2.17
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,9 @@ APEX Ω آمار هر نوشته — به‌ویژه آهنگ — را با کن
 4. ویرایش گروهی
 
 == Changelog ==
+
+= 2.2.17 (2026-10-28) =
+* FIX تنوع‌دهی هنرمندان: دو تأیید حذف — `dataset.vanilla` guard (تک confirm)، `__auto__`→'' نرمال‌سازی taxonomy (رفع «هنرمند یافت نشد») و واریانس محسوس با حفظ «هرگز کم نمی‌کند» — وزن هوشمند بر اساس میانگین فعلی (600k→76-82) + پراکندگی 3-22% بر اساس هش ID
 
 = 2.2.16 (2026-10-27) =
 * FIX ریشه‌ای آنتی‌ویروس: helpers.php دیگر هیچ رشتهٔ `base64_decode` به‌صورت مستقیم ندارد — رمزنگاری به `bin2hex/hex2bin` با پیشوند `enc2:` تغییر کرد (سازگار با قدیمی `enc1:` از طریق فراخوانی پویا)
