@@ -191,6 +191,13 @@ class CommentGuardian {
     }
 
     // تمیز کردن عنوان خام (حذف "دانلود آهنگ ..." + اسم خواننده) — از متا کمک بگیر نه کپی عنوان
+    // trim امن برای فارسی — trim() بایتی رشتهٔ UTF-8 را خراب می‌کند (باگ قدیمی: حرف اول/آخر می‌پرید)
+    private static function trim_sep(string $s, string $extra = ''): string {
+        $class = '\s\-–—|:،؛«»""\'\x{200C}\x{200F}\x{200E}' . $extra;
+        $r = preg_replace('/^[' . $class . ']+|[' . $class . ']+$/u', '', (string)$s);
+        return $r === null ? trim((string)$s) : $r;
+    }
+
     private static function clean_song_title(string $raw, string $artist): string {
         $t = trim($raw);
         // حذف پیشوندهای رایج
@@ -209,9 +216,7 @@ class CommentGuardian {
             // حذف نسخه بدون فاصله (مثلاً "همایون شجریانبازگشت زال" — نادر ولی)
         }
         // حذف جداکننده‌های باقی‌مانده از ابتدا/انتها
-        $t = trim($t, " -–—|:	
-
- ");
+        $t = self::trim_sep($t);
         $t = preg_replace('/^[\-–—|:\s]+/u','', $t);
         $t = preg_replace('/[\-–—|:\s]+$/u','', $t);
         // اگر هنوز "دانلود" مانده بود
@@ -221,11 +226,193 @@ class CommentGuardian {
         if (!$t || mb_strlen($t) < 2) {
             $t = trim(str_ireplace('دانلود آهنگ','', $raw));
             $t = trim(str_ireplace('دانلود','', $t));
-            $t = trim($t, " -–—|:");
+            $t = self::trim_sep($t);
         }
         // حذف گیومه‌های باقی‌مانده
-        $t = trim($t, "«»\"'‘’“”");
+        $t = self::trim_sep($t, "‘’“”");
         return $t ?: $raw;
+    }
+
+
+    /* ============ لایهٔ ارتباط طبیعی با خواننده / آهنگ / تیکهٔ ترانه ============ */
+    // نام کوتاه خواننده برای «... جان»
+    private static function artist_first_word(string $a): string {
+        $a = trim(preg_replace('/\s*\([^)]*\)/u', '', $a));
+        $w = preg_split('/\s+/u', $a) ?: [];
+        return count($w) ? trim($w[0]) : '';
+    }
+    private static function artist_short(string $a): string {
+        $a = trim(preg_replace('/\s*\([^)]*\)/u', '', $a));
+        $w = preg_split('/\s+/u', $a) ?: [];
+        if (count($w) > 2) $a = implode(' ', array_slice($w, 0, 2));
+        return trim($a);
+    }
+    // عنوان آهنگ کوتاه و امن برای استفاده داخل کامنت
+    private static function title_short(string $t, int $max_words = 4): string {
+        $t = trim(preg_replace('/\s+/u', ' ', $t));
+        $t = preg_replace('/\s*[\(\[][^\)\]]*[\)\]]\s*/u', ' ', $t);
+        $t = self::trim_sep($t);
+        if ($t === '') return '';
+        $w = preg_split('/\s+/u', $t) ?: [];
+        if (count($w) > $max_words) $t = implode(' ', array_slice($w, 0, $max_words));
+        if (mb_strlen($t) > 34) $t = mb_substr($t, 0, 34);
+        return trim($t);
+    }
+    // استخراج یک تیکهٔ واقعی از متن ترانه (اگر روی سایت موجود باشد) — بدون حدس زدن
+    private static function extract_lyric_hook(int $post_id): string {
+        if (!$post_id) return '';
+        $keys = ['lyrics','lyric','song_lyrics','apex_lyrics','متن_آهنگ','متن آهنگ','متن','ترانه','_lyrics'];
+        $raw = '';
+        foreach ($keys as $k) {
+            $v = get_post_meta($post_id, $k, true);
+            if (is_string($v) && mb_strlen(trim($v)) > 12) { $raw = $v; break; }
+        }
+        if ($raw === '') {
+            $c = (string) get_post_field('post_content', $post_id);
+            if (mb_strlen($c) > 200) $raw = $c;
+        }
+        if (mb_strlen($raw) < 12) return '';
+        $clean = wp_strip_all_tags($raw);
+        $clean = html_entity_decode($clean, ENT_QUOTES, 'UTF-8');
+        $lines = preg_split('/[\r\n\.\!؟\|]+/u', $clean) ?: [];
+        $cands = [];
+        foreach ($lines as $ln) {
+            $ln = self::trim_sep($ln);
+            if (mb_strlen($ln) < 12 || mb_strlen($ln) > 46) continue;
+            if (preg_match('/https?:|www\.|\.(mp3|zip|jpg|png|rar)|دانلود|کلیک|سایت|پخش|اشتراک|حق نشر/u', $ln)) continue;
+            if (preg_match('/[A-Za-z]{4,}/u', $ln)) continue;
+            $w = preg_split('/\s+/u', $ln) ?: [];
+            if (count($w) < 3 || count($w) > 7) continue;
+            $cands[] = $ln;
+        }
+        if (!$cands) return '';
+        return $cands[($post_id * 9301 + 49297) % count($cands)];
+    }
+    // اگر متن ترانه روی سایت نبود: اشارهٔ تماتیک به تیکهٔ ترانه (هیچ نقل‌قول جعلی نمی‌سازیم)
+    private static function lyric_theme_lines(): array {
+        return [
+            'اون تیکه که از دلتنگی میگه دلمو گرفت',
+            'جایی که از رفتن میگه بغض کردم',
+            'اون قسمتش که از عشق میگه حرف نداره',
+            'بیت آخرش خیلی سنگینه',
+            'متنش انگار حرف دل خودمه',
+            'اون تیکه که میگه تنهام مونده… وای',
+            'قسمت آرومش که پچ‌پچ میکنه عالیه',
+            'جایی که صداش می‌شکنه دلم می‌ریزه',
+            'شعرش از اوناست که باید چند بار گوش بدی تا بفهمی',
+            'اون تیکه‌ای که آروم میخونه رو چند بار برگردوندم',
+            'متنش انقدر قشنگه که دلم نمیاد رد شم',
+            'همون قسمتش که نفس میگیره، عالیه',
+            'تیکهٔ آخرش منو برد',
+            'جایی که میگه برمیگردم، دلم لرزید',
+            'اون پاراگراف که آروم شروع میشه محشره',
+        ];
+    }
+    // ساخت جملهٔ «تعریف از خواننده» یا «اشاره به آهنگ» یا «تیکهٔ ترانه»
+    private static function relevance_line(int $post_id, string $artist, string $title, int $weight): array {
+        static $used = [];
+        $u = array_merge(['artist'=>0,'title'=>0,'lyric'=>0], is_array($used[$post_id] ?? null) ? $used[$post_id] : []);
+        $used[$post_id] = $u;
+        $cap_artist = 3; $cap_title = 2; $cap_lyric = 3;
+        $pool = [];
+        if ($u['artist'] < $cap_artist) $pool = array_merge($pool, array_fill(0, 45, 'artist'));
+        if ($u['title']  < $cap_title)  $pool = array_merge($pool, array_fill(0, 25, 'title'));
+        if ($u['lyric']  < $cap_lyric)  $pool = array_merge($pool, array_fill(0, 30, 'lyric'));
+        if (!$pool) return ['type'=>'','text'=>''];
+        $type = $pool[array_rand($pool)];
+        $choices = [$type];
+        $rest = array_values(array_diff(['artist','title','lyric'], [$type]));
+        shuffle($rest);
+        $choices = array_merge($choices, $rest);
+        foreach ($choices as $type) {
+            if (!empty($u[$type])) continue;
+            if ($type === 'artist') {
+                $a = self::artist_short($artist);
+                $f = self::artist_first_word($artist);
+                if (mb_strlen($a) < 3) continue;
+                $full = [
+                    '{a} همیشه عالی میخونه',
+                    'صدای {a} خودش آرامشه',
+                    '{a} ترکوند با این کار',
+                    '{a} از اون خواننده‌هاست که هر چی بده گوش میدم',
+                    'دمت گرم {a}',
+                    '{a} صدات به دل میشینه',
+                    '{a} چقدر با احساس میخونی',
+                    '{a} بهترینه به نظرم',
+                    '{a} خسته نباشی، عالی بود',
+                    'کارای {a} همیشه یه چیز دیگه‌ست',
+                ];
+                $first = ['{f} جان دمت گرم','{f} جان محشره','{f} جان چقدر قشنگ خوندی','{f} جان عالی بود','{f} جان ترکوندی'];
+                if (mb_strlen($f) >= 2 && mt_rand(1,100) <= 30) {
+                    $line = $first[array_rand($first)];
+                    $line = str_replace('{f}', $f, $line);
+                } else {
+                    $line = $full[array_rand($full)];
+                    $line = str_replace('{a}', $a, $line);
+                }
+                $used[$post_id]['artist'] = ($used[$post_id]['artist'] ?? 0) + 1;
+                return ['type'=>'artist','text'=>$line];
+            }
+            if ($type === 'title') {
+                $tt = self::title_short($title);
+                if (mb_strlen($tt) < 3) continue;
+                $tpl = [
+                    '«{t}» یکی از قشنگترین کاراتونه',
+                    '«{t}» رو چند بار گوش دادم هنوز سیر نشدم',
+                    '«{t}» از اون کاراست که خسته نمیشی',
+                    '«{t}» رو برای دوستم فرستادم اونم عاشقش شد',
+                    'اسم «{t}» هم به دل میشینه',
+                    '«{t}» رو تو پلی‌لیستم گذاشتم',
+                    '«{t}» یه روز کلاسیک میشه',
+                    '«{t}» با این حسش… حرف نداره',
+                    'از وقتی «{t}» اومده فقط همینو گوش میدم',
+                ];
+                $line = str_replace('{t}', $tt, $tpl[array_rand($tpl)]);
+                $used[$post_id]['title'] = ($used[$post_id]['title'] ?? 0) + 1;
+                return ['type'=>'title','text'=>$line];
+            }
+            // lyric
+            $hook = self::extract_lyric_hook($post_id);
+            if ($hook !== '') {
+                $tpl = [
+                    'اون تیکه که میگه «{h}» دلمو برد',
+                    'قسمت «{h}» رو چند بار برگردوندم',
+                    '«{h}» این قسمتش خیلی قشنگه',
+                    'جایی که میگه «{h}» مو به تنم سیخ شد',
+                    'تیکهٔ «{h}» با چه حسی خونده شده',
+                    'همون «{h}» ته دلمو خالی کرد',
+                ];
+                $line = str_replace('{h}', $hook, $tpl[array_rand($tpl)]);
+                $used[$post_id]['lyric'] = ($used[$post_id]['lyric'] ?? 0) + 1;
+                return ['type'=>'lyric','text'=>$line];
+            }
+            $themes = self::lyric_theme_lines();
+            $line = $themes[array_rand($themes)];
+            $used[$post_id]['lyric'] = ($used[$post_id]['lyric'] ?? 0) + 1;
+            return ['type'=>'lyric','text'=>$line];
+        }
+        return ['type'=>'','text'=>''];
+    }
+    // چسباندن طبیعی جملهٔ اضافه به کامنت پایه (بدون خراب کردن لحن قبلی)
+    private static function weave(string $base, string $extra, bool $is_lyric = false): string {
+        $base = trim($base);
+        $extra = trim($extra);
+        if ($base === '') return $extra;
+        if ($extra === '') return $base;
+        if (mb_strlen($base) + mb_strlen($extra) > 165) return $base;
+        // ایموجی انتهای کامنت را برمی‌داریم، بعد از چسباندن دوباره آخر می‌گذاریم
+        $emoji = '';
+        if (preg_match('/(\s*(?:[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]\x{FE0F}?\s*)+)$/u', $base, $m)) {
+            $emoji = trim($m[1]);
+            $base = rtrim(mb_substr($base, 0, mb_strlen($base) - mb_strlen($m[1])));
+        }
+        $r = mt_rand(1,100);
+        if ($r <= 45) $out = rtrim($base, '.!…') . '، ' . $extra;
+        elseif ($r <= 62) $out = $base . ' — ' . $extra;
+        elseif ($r <= 76) $out = rtrim($base, '.!…') . '… ' . $extra;
+        elseif ($r <= 88 || $is_lyric) $out = rtrim($base, '.!…') . '. ' . $extra;
+        else $out = $base . '، ' . $extra;
+        return $emoji !== '' ? $out . ' ' . $emoji : $out;
     }
 
     // تولید متن کامنت — طبیعی مثل رز موزیک / موزیکس-فا (تحلیل 12 نمونه واقعی) — کوتاه، کشیده، غلط ریز، بدون تکرار
@@ -245,7 +432,7 @@ class CommentGuardian {
         // 35% AI (با لحن جدید طبیعی) ، 65% fallback محلی غیرتکراری
         $use_ai = (mt_rand(1,100) <= 35);
         $txt = null;
-        if ($use_ai) $txt = self::generate_via_ai($artist, $clean, $weight, $views, $post_age_days);
+        if ($use_ai) $txt = self::generate_via_ai($artist, $clean, $weight, $views, $post_age_days, $post_id);
         if (!$txt) $txt = self::fallback_text($weight, $views, $clean, $is_premium, $post_id, $post_age_days);
         // ضد تکرار سراسری: اگر این متن اخیراً استفاده شده، دوباره بساز
         $tries = 0;
@@ -263,74 +450,63 @@ class CommentGuardian {
             ];
             if (mt_rand(1,100) <= 30) $txt .= $addons[array_rand($addons)];
         }
-        // نهایی: 18% کشیده‌نویسی خیلی طبیعی (عالییی → عالییییی) + 15% غلط ریز
-        if (mt_rand(1,100) <= 18) $txt = self::elongate($txt);
-        if (mt_rand(1,100) <= 15) $txt = self::add_typo($txt);
+        // نهایی: یا کشیده‌نویسی یا یک غلط ریز (نه هر دو روی هم — خروجی خراب نشود)
+        $style_roll = mt_rand(1,100);
+        if ($style_roll <= 17) $txt = self::elongate($txt);
+        elseif ($style_roll <= 31) $txt = self::add_typo($txt);
+
+        // ===== لایهٔ ارتباط: تعریف از خواننده / نام آهنگ / تیکهٔ ترانه =====
+        // روی ترکیب قبلی سوار می‌شود و چیزی از پول‌های موجود را حذف نمی‌کند.
+        $is_negative_final = (bool) preg_match('/ضعیف|اذیت|کند|تکراری|قدیمی|گیر|تاخیر|چرا|کاش|متوسط|نبود|نیست|میکسش|شعرش|کیفیتش/u', $txt);
+        if (!$is_negative_final && mt_rand(1,100) <= 55 && mb_strlen($txt) < 145 && !preg_match('/[A-Za-z]{5,}/u', $clean)) {
+            $rel = self::relevance_line($post_id, $artist, $clean, $weight);
+            if (!empty($rel['text'])) {
+                $dup = false;
+                if ($rel['type'] === 'title') {
+                    $tt = self::title_short($clean);
+                    if (mb_strlen($tt) >= 3 && mb_stripos($txt, $tt) !== false) $dup = true;
+                } elseif ($rel['type'] === 'artist') {
+                    $aa = self::artist_short($artist);
+                    if (mb_strlen($aa) >= 3 && mb_stripos($txt, $aa) !== false) $dup = true;
+                }
+                if (!$dup) $txt = self::weave($txt, $rel['text'], $rel['type'] === 'lyric');
+            }
+        }
         return $txt;
     }
 
     private static function elongate(string $s): string {
-        // کشیده کردن یک مصوت تصادفی مثل عالی → عالییییی (الگوی رز موزیک)
-        $targets = ['ی' => 'یییی', 'ا' => 'ااا', 'و' => 'وووو', 'عالی' => 'عالییییی', 'خیلی' => 'خیلییییی', 'محشر' => 'محشرررره', 'قشنگ' => 'قشنگگگ'];
-        foreach ($targets as $k=>$v) {
-            if (mb_strpos($s, $k) !== false && mt_rand(1,100) <= 40) {
-                $s = str_replace($k, $v, $s);
-                break;
-            }
-        }
-        // اگر هیچ کلید نخورد و یک کلمه کوتاه بود، آخرش را بکش
-        if (mb_strlen($s) < 15 && mt_rand(1,100) <= 30) {
-            $s = preg_replace('/([یاه])$/u', '$1یییی', $s);
-        }
-        return $s;
-    }
-
-    private static function add_typo(string $s): string {
-        // غلط‌های واقعی رز موزیک: اهنگ بجای آهنگ، آرمش، دوس، قرن بوقی املای شکسته
+        // فقط کلمات کامل و امن کشیده می‌شوند (هیچ‌وقت وسط کلمه) — مثل «عالییییی» واقعی
         $map = [
-            'آهنگ' => 'اهنگ',
-            'عالی' => 'عالیی',
-            'خیلی' => 'خیلی',
-            'دوست' => 'دوس',
-            'دارم' => 'دارم',
-            'ممنون' => 'ممنون',
-            'قشنگ' => 'قشنگگ',
-            'عشق' => 'عشق',
-            'آرامش' => 'ارمش',
-            'بسیار' => 'خیلی',
-            'زیبا' => 'زیباا',
+            'عالی' => 'عالیییی', 'عالیه' => 'عالیههه', 'خیلی' => 'خیلییی', 'محشره' => 'محشررره',
+            'محشر' => 'محشررر', 'قشنگه' => 'قشنگهه', 'قشنگ' => 'قشنگگ', 'بهترینه' => 'بهترینهه',
+            'خفنه' => 'خفنننه', 'حرف نداره' => 'حرف ندارهه',
+            'آخرشه' => 'آخرشهه', 'زیبا' => 'زیباا',
         ];
-        // 50% تبدیل آهنگ→اهنگ (شایع‌ترین غلط)
-        if (mb_strpos($s, 'آهنگ') !== false && mt_rand(1,100) <= 50) {
-            $s = str_replace('آهنگ', 'اهنگ', $s);
-            return $s;
-        }
-        if (mb_strpos($s, 'عالی') !== false && mt_rand(1,100) <= 35) {
-            $s = str_replace('عالی', 'عالیی', $s);
-            return $s;
-        }
-        if (mb_strpos($s, 'خیلی') !== false && mt_rand(1,100) <= 25) {
-            $s = str_replace('خیلی', 'خیلییی', $s);
-            return $s;
-        }
-        $keys = array_keys($map);
-        shuffle($keys);
-        foreach ($keys as $k) {
-            if (mb_strpos($s, $k) !== false && mt_rand(1,100) <= 30) {
-                $s = str_replace($k, $map[$k], $s);
-                break;
+        foreach ($map as $w => $rep) {
+            $q = preg_quote($w, '/');
+            if (preg_match('/(?<![\p{L}])' . $q . '(?![\p{L}])/u', $s)) {
+                $out = preg_replace('/(?<![\p{L}])' . $q . '(?![\p{L}])/u', $rep, $s, 1);
+                if (is_string($out) && $out !== $s) return $out;
             }
-        }
-        // گاهی حذف نیم‌فاصله: می‌خوام → میخوام
-        if (strpos($s, '‌') !== false && mt_rand(1,100) <= 30) $s = str_replace('‌', '', $s);
-        // گاهی نقطه‌گذاری شکسته: ؟؟؟؟ یا .... یا …
-        if (mt_rand(1,100) <= 18) {
-            $s = rtrim($s, '.!؟?') . ['…', '....', '؟؟', '!!', ''][array_rand(['…', '....', '؟؟', '!!', ''])];
-            if (trim($s) === '') return $s;
         }
         return $s;
     }
-
+    private static function add_typo(string $s): string {
+        // حداکثر یک تغییر کوچک — عمداً بدون کشیده‌کردن حروف (آن کار elongate است)
+        if (mb_strpos($s, 'آهنگ') !== false && mt_rand(1,100) <= 55) {
+            return str_replace('آهنگ', 'اهنگ', $s);
+        }
+        if (mb_strpos($s, '‌') !== false && mt_rand(1,100) <= 40) {
+            return str_replace('‌', '', $s);
+        }
+        if (mt_rand(1,100) <= 22) {
+            $s = rtrim($s, '.!؟?…');
+            $ends = ['…', '....', '!!'];
+            return $s . $ends[array_rand($ends)];
+        }
+        return $s;
+    }
     // ضد تکرار سراسری — آخرین 200 متن را نگه می‌دارد
     private static function recent_key(): string { return 'apex_omega_recent_comments'; }
     private static function is_recent_duplicate(string $txt, int $post_id): bool {
@@ -354,7 +530,7 @@ class CommentGuardian {
         update_option($key, $list, false);
     }
 
-    private static function generate_via_ai(string $artist, string $title, int $weight, int $views, ?float $post_age_days = null): ?string {
+    private static function generate_via_ai(string $artist, string $title, int $weight, int $views, ?float $post_age_days = null, int $post_id = 0): ?string {
         $clean = self::clean_song_title($title, $artist);
         $settings = AI_Helper::get_settings();
         if (empty($settings['api_key'])) return null;
@@ -389,7 +565,18 @@ class CommentGuardian {
         } else {
             $examples = 'نمونه طول/لحن (کپی نکن، فقط الگو بگیر): "ممنون عالی بود" / "آخرشه حرف نداره" / "عالییییی" / "محشره محسن جان ۲۰👌" / "زیبا بود ارمش گرفتم" / "چرا اهنگای قرن بوقی میذارین؟؟؟" / "خیلییی قشنگه متنشم قشنگه…" / "بهترین اهنگشه به نظرم 😍"';
         }
-        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. برای اهنگ \"".$clean."\" از \"".$artist."\" یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — قوانین: 1) فارسی محاوره‌ای 2-10 کلمه ترجیحا، حداکثر 15 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) 4) اسم اهنگ/خواننده را نیاور مگر خیلی لازم بود 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.";
+        // تیکهٔ واقعی ترانه (اگر موجود باشد) + نام خواننده/آهنگ برای اشارهٔ طبیعی
+        $hook = self::extract_lyric_hook($post_id);
+        $hook_hint = $hook !== '' ? ' تیکهٔ ترانهٔ واقعی این آهنگ: «'.$hook.'» — اگر خواستی فقط همین را نقل کن، چیزی از خودت به‌عنوان شعر نساز.' : '';
+        $rel_roll = mt_rand(1,100);
+        if ($rel_roll <= 40) {
+            $rel_rule = 'در این کامنت حتماً به‌طور طبیعی از خواننده ('.$artist.') تعریف کن، مثلا «دمت گرم '.self::artist_first_word($artist).'» یا «صدای '.self::artist_short($artist).' آرامشه» — خودمونی و کوتاه.';
+        } elseif ($rel_roll <= 65) {
+            $rel_rule = 'در این کامنت اسم آهنگ («'.self::title_short($clean).'») را طبیعی بیاور و تعریف کن، مثل «'.self::title_short($clean).' رو چند بار گوش دادم».';
+        } else {
+            $rel_rule = 'در این کامنت به تیکه/متن ترانه اشاره کن و بگو کدام قسمت به دلت نشست.'.$hook_hint;
+        }
+        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. برای اهنگ \"".$clean."\" از \"".$artist."\" یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — $rel_rule — قوانین: 1) فارسی محاوره‌ای 2-12 کلمه ترجیحا، حداکثر 18 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) 4) هرگز شعر جعلی نساز؛ اگر تیکهٔ ترانه را نمی‌دانی، فقط تماتیک اشاره کن («اون تیکه که از دلتنگی میگه») 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.";
         $payload = [
             'model' => $settings['model'] ?: 'gpt-4o-mini',
             'messages' => [
@@ -543,20 +730,45 @@ private static function fallback_text(int $weight, int $views, string $title = '
         if ($is_low && $roll > 80) $pool = $ultra_short;
         // if ($is_high && $roll <= 10) $pool = $critical_question; // حتی هیت‌ها انتقاد میخورند
 
+        $natural_touch = [
+            'چند بار پشت سر هم گوش دادم', 'اینو تو پلی‌لیستم گذاشتم', 'از اون کاراست که خسته نمیشی',
+            'با هدفون گوش بدید یه چیز دیگه‌ست', 'امروز از صبح همینو گوش میدم', 'حالم با این خوب شد',
+            'دقیقا حالم رو خوب کرد', 'بعد از یه روز کاری چسبید', 'همین رو میخواستم امروز',
+            'تنظیمش تمیزه', 'کیفیت میکسش خوبه', 'قسمت آرومش خیلی خوب دراومده',
+            'به دوستمم فرستادم', 'توی ماشین فقط همین بود', 'اینو باید با صدای بلند گوش داد',
+            'چقدر خوب شد که اومد', 'منتظرش بودم واقعا', 'دلم میخواست یه همچین کاری بیاد',
+        ];
         $txt = $pool[array_rand($pool)];
-
-        // 22% ایموجی سبک (نه زیاده) — الگوی رز موزیک: ❤️👌😍🙁✨👏
-        if (mt_rand(1,100) <= 22) {
-            $emojis = [' ❤️',' 👌',' 😍',' 🙏',' ✨',' 👏',' 😊',' 🔥',''];
-            $txt .= $emojis[array_rand($emojis)];
-            // گاهی دو تایی مثل ۲۰👌👌
-            if (mt_rand(1,100) <= 12) $txt = trim($txt) . ' ' . ['20👌','20👌👌','❤️❤️','😍😍'][array_rand(['20👌','20👌👌','❤️❤️','😍😍'])];
+        // کامنت انتقادی/سوالی نباید تعریف/ایموجی چسبیده بگیرد (طبیعی نیست)
+        $is_negative = (bool) preg_match('/ضعیف|اذیت|کند|تکراری|قدیمی|گیر|تاخیر|چرا|کاش|متوسط|نبود|نیست|میکسش|شعرش|کیفیتش/u', $txt);
+        // 14% یک جملهٔ طبیعی دوم (حرف آدم‌وار، نه تعریف تکراری)
+        if (!$is_negative && mt_rand(1,100) <= 14 && mb_strlen($txt) < 70 && !in_array($txt, $natural_touch, true)) {
+            $nt = $natural_touch[array_rand($natural_touch)];
+            $txt = $txt . '، ' . $nt;
         }
-        // 14% ترکیب دو جمله کوتاه با هم (برای تنوع طول)
-        if (mt_rand(1,100) <= 14) {
-            $extra_pool = $ultra_short;
-            $extra = $extra_pool[array_rand($extra_pool)];
-            if ($extra !== $txt) $txt .= ' ' . $extra;
+
+        // 22% ایموجی سبک (نه زیاده) — هرگز روی کامنت انتقادی (طبیعی نیست)
+        if (!$is_negative && mt_rand(1,100) <= 22) {
+            $emojis = [' ❤️',' 👌',' 😍',' 🙏',' ✨',' 👏',' 😊',' 🔥'];
+            $txt .= $emojis[array_rand($emojis)];
+            // گاهی دو تایی مثل ۲۰👌👌 — فقط اگر ایموجی دیگری نباشد
+            if (mt_rand(1,100) <= 10) {
+                $txt = rtrim($txt);
+                if (!preg_match('/[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]/u', $txt)) $txt .= ' 20👌';
+            }
+        }
+        // 12% ترکیب دو جمله کوتاه با هم (برای تنوع طول) — بدون تکرار و بدون چسبیدن به انتقاد
+        if (!$is_negative && mt_rand(1,100) <= 12 && mb_strlen($txt) < 75) {
+            $extra = $ultra_short[array_rand($ultra_short)];
+            $head = mb_substr($extra, 0, 7);
+            if ($extra !== $txt && mb_strpos($txt, $head) === false) {
+                $hold = '';
+                if (preg_match('/(\s*(?:[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]\x{FE0F}?\s*)+)$/u', $txt, $m)) {
+                    $hold = trim($m[1]);
+                    $txt = rtrim(mb_substr($txt, 0, mb_strlen($txt) - mb_strlen($m[1])));
+                }
+                $txt .= ' ' . $extra . ($hold !== '' ? ' ' . $hold : '');
+            }
         }
         // 10% بدون نقطه پایان — طبیعی (رز موزیک خیلی‌ها نقطه ندارند)
         if (mt_rand(1,100) <= 10) $txt = rtrim($txt, '.!؟?');

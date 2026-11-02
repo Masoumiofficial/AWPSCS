@@ -150,8 +150,6 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
         </div>
       </div>
       <div id="apex-reseed-preview" style="margin-top:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:11px;color:#475569;line-height:1.7;display:none;"></div>
-<<<<<<< HEAD
-=======
       <div id="apex-reseed-progress" style="display:none;margin-top:12px;background:rgba(255,255,255,0.9);border:1px solid rgba(124,58,237,0.12);border-radius:14px;padding:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;color:#1e293b;margin-bottom:8px;">
           <span id="apex-reseed-progress-text">0 از 0</span><span id="apex-reseed-progress-pct" style="background:#7c3aed;color:#fff;padding:2px 8px;border-radius:999px;font-size:10px;">0%</span>
@@ -161,7 +159,6 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
         </div>
         <small id="apex-reseed-progress-detail" style="color:#64748b;font-size:11px;display:block;margin-top:8px;line-height:1.6;"></small>
       </div>
->>>>>>> e16fcf6 (v2.2.20: تقسیم‌بندی تنوع‌دهی (15تایی) + نوار پیشرفت تعداد/درصد — جلوگیری از 503، امتیاز/کامنت هماهنگ)
     </div>
     <div style="padding:12px 20px 18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid rgba(15,23,42,0.06);background:rgba(248,250,252,0.7);border-radius:0 0 22px 22px;">
       <button type="button" id="apex-reseed-cancel" style="padding:10px 16px;border-radius:12px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.9);font-weight:700;cursor:pointer;">لغو</button>
@@ -278,20 +275,6 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
       if(!_reseedTid) return;
       var mn=parseInt(qs('apex-reseed-min').value||0), mx=parseInt(qs('apex-reseed-max').value||0);
       if(mn && mx && mn>mx){ alert('کف بازه نباید از سقف بیشتر باشد'); return; }
-<<<<<<< HEAD
-      var payload={term_id:_reseedTid, taxonomy: qs('apex-artist-taxonomy')?.value||''};
-      if(mn) payload.range_min=mn;
-      if(mx) payload.range_max=mx;
-      var origBtn=document.querySelector('.apex-reseed-btn[data-tid="'+_reseedTid+'"]');
-      if(origBtn){ origBtn.disabled=true; var o=origBtn.textContent; origBtn.textContent='در حال تنوع…'; }
-      _apply.disabled=true; _apply.textContent='در حال اعمال…';
-      apexPost('apex_reseed_artist', payload).then(function(j){
-        if(j.success){ alert('✅ '+j.data.message+' — '+j.data.applied+' آهنگ'); closeReseedModal(); }
-        else alert('❌ '+(j.data.message||'خطا'));
-      }).catch(function(e){ alert('❌ '+e.message); }).finally(function(){
-        if(origBtn){ origBtn.disabled=false; origBtn.textContent=o; }
-        _apply.disabled=false; _apply.textContent='✅ اعمال تنوع';
-=======
       var payload={term_id:_reseedTid, taxonomy: qs('apex-artist-taxonomy')?.value||'', chunk_size: 15};
       if(mn) payload.range_min=mn;
       if(mx) payload.range_max=mx;
@@ -334,7 +317,6 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
         _apply.disabled=false; _apply.textContent='✅ اعمال تنوع';
         if(origBtn) origBtn.disabled=false;
         if(progressBox) progressBox.style.display='none';
->>>>>>> e16fcf6 (v2.2.20: تقسیم‌بندی تنوع‌دهی (15تایی) + نوار پیشرفت تعداد/درصد — جلوگیری از 503، امتیاز/کامنت هماهنگ)
       });
     });
 
