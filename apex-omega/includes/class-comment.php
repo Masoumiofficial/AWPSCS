@@ -126,6 +126,13 @@ class CommentGuardian {
         } elseif (!$is_premium && $weight < 45 && $views < 150000 && $target > 12) {
             $target = mt_rand(8, 12);
         }
+        // آهنگ ترند: حجم کامنت وایرال (کف ۴۰ و کمی افزایش) — چون در دستهٔ ترند است
+        if ($post_id && function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post($post_id)) {
+            $target = (int) round($target * 1.15);
+            if ($is_premium && $target < 45) $target = mt_rand(45, 55);
+            elseif (!$is_premium && $target < 40) $target = mt_rand(40, 48);
+            $target = min($target, 90);
+        }
         // بیوگرافی/خبر: این نوع صفحات ذاتاً کامنت کمتری می‌گیرند و پر از تعریف نیستند
         if ($post_id) {
             $ctype = self::detect_content_type($post_id);
@@ -278,7 +285,13 @@ class CommentGuardian {
         if ($t === '' || mb_strlen($t) < 3) return '';
         $w = preg_split('/\s+/u', $t) ?: [];
         if (count($w) > $max_words) $t = implode(' ', array_slice($w, 0, $max_words));
-        if (mb_strlen($t) > 34) $t = mb_substr($t, 0, 34);
+        if (mb_strlen($t) > 34) {
+            // برش از مرز کلمه (نه وسط کلمه)
+            $cut = mb_substr($t, 0, 34);
+            $sp = mb_strrpos($cut, ' ');
+            if ($sp !== false && $sp > 12) $cut = mb_substr($cut, 0, $sp);
+            $t = trim($cut);
+        }
         return trim($t);
     }
     // استخراج یک تیکهٔ واقعی از متن ترانه (اگر روی سایت موجود باشد) — بدون حدس زدن
@@ -382,6 +395,98 @@ class CommentGuardian {
         return 'low';
     }
 
+    /* ============ استخر اختصاصی «آهنگ‌های ترند» — وایرال و نوستالژی، بر اساس خود خواننده و آهنگ ============ */
+    private static function trend_pool(int $post_id, string $artist, string $title, string $focus = 'mixed'): array {
+        // اگر نام خواننده پاس داده نشد، از خود آهنگ استخراج کن (کامنت باید دقیقاً مربوط به همان خواننده باشد)
+        if (mb_strlen(trim($artist)) < 2 && $post_id) {
+            $artist = self::get_primary_artist($post_id);
+        }
+        $a = self::artist_short($artist);
+        $f = self::artist_first_word($artist);
+        // عنوان تمیز: «دانلود آهنگ ...» و نام خواننده حذف می‌شود تا نام واقعی آهنگ در کامنت بیاید
+        $tt = self::title_short(self::clean_song_title($title, $artist));
+        $hook = self::extract_lyric_hook($post_id);
+
+        // —— عمومی: وایرال / نوستالژی ——
+        $generic = [
+            'این آهنگ یه زمانی همه‌جا بود، هنوزم حرف نداره',
+            'قدیمیه ولی هیچ‌وقت از مد نمیفته',
+            'نسل ما با این آهنگ بزرگ شد',
+            'این ترند شد، حقش بود؛ از اول شاهکار بود',
+            'چرا تازه همه فهمیدن این آهنگ چقدر خوبه؟',
+            'جزو خاطرات یه نسلِ، دست نزنید بهش',
+            'این آهنگ مال دوران طلایی موزیک ایرانه',
+            'هنوز تو همه پلی‌لیست‌ها هست',
+            'چند سال گذشته، هنوز گوش میدم',
+            'اینو همه بلدن، از حفظ',
+            'وایرال شدنش تعجب نداره، آهنگ موندگاریه',
+            'همه تو مهمونی اینو میخونن',
+            'این آهنگ ترند شده یعنی مردم سلیقه دارن',
+            'یادش بخیر، اون موقع همه با این آهنگ زندگی می‌کردن',
+            'این آهنگ کلاسیک شده دیگه',
+            'از اون آهنگاست که با یه بار گوش دادن فراموش نمی‌شه',
+            'ترند شدنش دوباره زنده‌ش کرد، خوشحالم',
+            'چقدر خاطره با این آهنگ دارم',
+        ];
+
+        // —— با نام دقیق آهنگ ——
+        $by_title = [];
+        if (mb_strlen($tt) >= 3) {
+            $by_title = [
+                '«' . $tt . '» رو همه از حفظن',
+                '«' . $tt . '» هنوزم تو گوشیه همه‌ست',
+                'اینکه «' . $tt . '» ترند شده نشون می‌ده مردم سلیقه دارن',
+                '«' . $tt . '» رو سال‌هاست گوش میدم هنوز سیر نشدم',
+                'کاش بازم مثل «' . $tt . '» ساخته بشه',
+                '«' . $tt . '» یه بار تو گوشت بیاد دیگه از سرت بیرون نمی‌ره',
+                'کسی هست که «' . $tt . '» رو یادش نباشه؟',
+                '«' . $tt . '» جزو بهترین کارای این چند ساله',
+                'هنوز «' . $tt . '» رو تو ماشین گوش میدم',
+                'تصادفی نیست که «' . $tt . '» ترند شده',
+            ];
+        }
+
+        // —— با نام خواننده ——
+        $by_artist = [];
+        if (mb_strlen($a) >= 3) {
+            $by_artist = [
+                'بهترین کار ' . $a . ' همینه به نظرم',
+                $a . ' با این آهنگ یه نسل رو عاشق خودش کرد',
+                'صدای ' . $a . ' تو این آهنگ معرکه‌ست',
+                'این از اون کارای موندگار ' . $a . ' هست',
+                'هنوزم که ' . $a . ' اینو میخونه سالن منفجر می‌شه',
+                $a . ' هیچ‌وقت از مد نمیفته',
+            ];
+            if (mb_strlen($f) >= 2) {
+                $by_artist[] = $f . ' جان این آهنگت هیچ‌وقت قدیمی نمی‌شه';
+                $by_artist[] = $f . ' جان با این آهنگ نسل ما رو ساختی';
+            }
+        }
+
+        // —— با تیکهٔ ترانه ——
+        $by_lyric = [];
+        if ($hook !== '') {
+            $by_lyric = [
+                'اون تیکه که میگه «' . $hook . '» هنوز مو به تنم سیخ می‌کنه',
+                '«' . $hook . '» رو نسل ما از حفظه',
+                'همون «' . $hook . '» رو تو خیابون همه می‌خوندن',
+                'جایی که می‌گه «' . $hook . '» هنوز دلم می‌لرزه',
+            ];
+        } else {
+            $by_lyric = [
+                'اون تیکه که از دلتنگی می‌گه هنوز دلمو می‌گیره',
+                'قسمت آرومش رو چند بار برگردوندم',
+                'متنش انگار حرف دل خودمه',
+            ];
+        }
+
+        if ($focus === 'title' && $by_title) return array_values(array_unique($by_title));
+        if ($focus === 'artist' && $by_artist) return array_values(array_unique($by_artist));
+        if ($focus === 'lyric' && $by_lyric) return array_values(array_unique($by_lyric));
+        if ($focus === 'generic') return array_values(array_unique($generic));
+
+        return array_values(array_unique(array_merge($generic, $by_title, $by_artist, $by_lyric)));
+    }
     // متن پایه بر اساس نوع محتوا (بیوگرافی/خبر هیچ‌وقت کامنت آهنگ نمی‌گیرد)
     private static function typed_pool(string $ctype, string $recog, bool $is_premium = false, bool $is_new_post = false): array {
         $bio = [
@@ -575,11 +680,11 @@ class CommentGuardian {
         $use_ai = (mt_rand(1,100) <= 35);
         $txt = null;
         if ($use_ai) $txt = self::generate_via_ai($artist, $clean, $weight, $views, $post_age_days, $post_id);
-        if (!$txt) $txt = self::fallback_text($weight, $views, $clean, $is_premium, $post_id, $post_age_days);
+        if (!$txt) $txt = self::fallback_text($weight, $views, $clean, $is_premium, $post_id, $post_age_days, $artist);
         // ضد تکرار سراسری: اگر این متن اخیراً استفاده شده، دوباره بساز
         $tries = 0;
         while (self::is_recent_duplicate($txt, $post_id) && $tries < 4) {
-            $txt = self::fallback_text($weight, $views, $clean, $is_premium, $post_id, $post_age_days);
+            $txt = self::fallback_text($weight, $views, $clean, $is_premium, $post_id, $post_age_days, $artist);
             $tries++;
         }
         self::remember_text($txt);
@@ -603,8 +708,11 @@ class CommentGuardian {
         $ctype_final = self::detect_content_type($post_id, $title);
         $recog_final = self::recognition_level($weight, $views);
         $is_music = in_array($ctype_final, ['song','album','video'], true);
+        $is_trend_final = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post($post_id);
         // ناشناخته: تعریف از خواننده نمی‌چسبانیم و احتمال اشاره هم کمتر است
-        $rel_chance = ($recog_final === 'low') ? 0 : 55;
+        // ترند: برعکس — آهنگ قدیمی و شناخته‌شده است، پس تقریباً همیشه به خواننده/آهنگ/تیکه اشاره می‌شود
+        $rel_chance = $is_trend_final ? 35 : (($recog_final === 'low') ? 0 : 55);
+        if ($is_trend_final) $is_music = true;
         if ($is_music && !$is_negative_final && mt_rand(1,100) <= $rel_chance && mb_strlen($txt) < 145 && !preg_match('/[A-Za-z]{5,}/u', $clean)) {
             $rel = self::relevance_line($post_id, $artist, $clean, $weight);
             if (!empty($rel['text'])) {
@@ -747,8 +855,15 @@ class CommentGuardian {
         } else {
             $rel_rule = 'در این کامنت به تیکه/متن ترانه اشاره کن و بگو کدام قسمت به دلت نشست.'.$hook_hint;
         }
+        $is_trend_ai = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post($post_id);
+        if ($is_trend_ai && $ctype_ai === 'song') {
+            $type_rule = 'این آهنگ در دستهٔ «آهنگ‌های ترند» است و معمولاً قدیمی و وایرال شده؛ لحن باید نوستالژی و هیجان «چرا تازه ترند شد؟» باشد («این آهنگ یه زمان همه‌جا بود»، «حقش بود ترند بشه»، «نسل ما با این بزرگ شد»). در همین کامنت اسم خواننده یا آهنگ را طبیعی بیاور.';
+            $lyric_rule_hint = true;
+        } else {
+            $lyric_rule_hint = false;
+        }
         $recog_ai = self::recognition_level($weight, $views);
-        $known_rule = ($recog_ai === 'low')
+        $known_rule = ($recog_ai === 'low' && !$is_trend_ai)
             ? ' این خواننده یا اثر شناخته‌شده نیست؛ پس تعریف بی‌جا و بزرگ‌نمایی نکن. طبیعی‌تر است کنجکاو باشی یا بی‌طرف نظر بدهی («اولین باره اسمشو می‌شنوم، بد نبود»، «برای شروع بد نیست») و حداکثر یک ایراد کوچک بگیری.'
             : '';
         if ($ctype_ai === 'bio') {
@@ -799,7 +914,7 @@ class CommentGuardian {
     }
 
 
-private static function fallback_text(int $weight, int $views, string $title = '', bool $is_premium = false, int $post_id = 0, ?float $post_age_days = null): string {
+private static function fallback_text(int $weight, int $views, string $title = '', bool $is_premium = false, int $post_id = 0, ?float $post_age_days = null, string $artist = ''): string {
         // سن پست را محاسبه کن برای فیلتر کامنت‌های نامناسب (مثل «چرا قدیمی میذارین» برای موزیک جدید)
         if ($post_age_days === null && $post_id) {
             $d = get_post_field('post_date_gmt', $post_id);
@@ -982,6 +1097,20 @@ private static function fallback_text(int $weight, int $views, string $title = '
                 'به دوستمم فرستادم', 'توی ماشین فقط همین بود', 'اینو باید با صدای بلند گوش داد',
                 'چقدر خوب شد که اومد', 'منتظرش بودم واقعا', 'دلم میخواست یه همچین کاری بیاد',
             ];
+        }
+        // آهنگ ترند: لحن وایرال/نوستالژی با نام خود خواننده و آهنگ (با بقیه قاطی نمی‌شود)
+        $is_trend_post = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post($post_id);
+        if ($is_trend_post && empty($title) && $post_id) $title = (string) get_the_title($post_id);
+        if ($is_trend_post) {
+            // وزن تمرکز: ۳۵٪ نام آهنگ، ۳۰٪ نام خواننده، ۲۰٪ تیکهٔ ترانه، ۱۵٪ عمومی/وایرال
+            $roll_t = mt_rand(1,100);
+            if ($roll_t <= 35) $focus = 'title';
+            elseif ($roll_t <= 65) $focus = 'artist';
+            elseif ($roll_t <= 85) $focus = 'lyric';
+            else $focus = 'generic';
+            $pool = self::trend_pool($post_id, (string)$artist, (string)$title, $focus);
+            if (!$pool) $pool = self::trend_pool($post_id, (string)$artist, (string)$title, 'generic');
+            if (!$pool) $pool = $ultra_short;
         }
         $txt = $pool[array_rand($pool)];
         // کامنت انتقادی/سوالی نباید تعریف/ایموجی چسبیده بگیرد (طبیعی نیست)
@@ -1555,7 +1684,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
         ];
     }
 
-    private static function get_primary_artist(int $post_id): string {
+    public static function get_primary_artist(int $post_id): string {
         $tax = ArtistManager::detect_artist_taxonomy();
         if ($tax) {
             $terms = wp_get_post_terms($post_id, $tax, ['fields'=>'names']);

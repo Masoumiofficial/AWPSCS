@@ -39,6 +39,10 @@ class Adapter_Views {
 
     public static function set_views(int $post_id, int $views, string $source = 'manual', ?string $execution_id = null): bool {
         $views = max(0, $views);
+        // آهنگ‌های ترند هرگز از سقف ۲.۸M عبور نمی‌کنند (منابع خودکار؛ ویرایش دستی آزاد است)
+        if (function_exists('apex_omega_trend_clamp_views')) {
+            $views = apex_omega_trend_clamp_views($post_id, $views, $source);
+        }
         $old = self::get_views($post_id);
 
         global $wpdb;

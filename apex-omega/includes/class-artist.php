@@ -1170,7 +1170,7 @@ class ArtistManager {
         $exec = apex_omega_generate_uuid();
         $user_id = get_current_user_id();
         $total = count($ids);
-        $applied=0; $applied_comments=0; $errors=[]; $details=[]; $snapshot_rows=[]; $comment_details=[];
+        $applied=0; $applied_comments=0; $errors=[]; $details=[]; $snapshot_rows=[]; $comment_details=[]; $trend_applied=0;
         $before_views = [];
         foreach($ids as $pid) $before_views[$pid]=(int)get_post_meta($pid,'views',true);
         // اگر وزن پیش‌فرض 20 است، میانگین فعلی را هم در نظر بگیر (600k یکنواخت نباید tier_4 شود)
@@ -1202,6 +1202,7 @@ class ArtistManager {
         // برای شکستن یکنواختی، حتی اگر تنوع فعلی وجود دارد، یک offset ترتیبی اضافه کن
         // هر پست با هش ID تنوع دارد، اما اگر همه 600k بودند، guard قبلی آنها را با +1-3% متنوع می‌کند — اینجا عمدا بیشتر تنوع می‌دهیم
         foreach($ids as $idx=>$pid) {
+            $tier_id_post = $tier_id;
             $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
             // اگر منتخب است، tier را الماس کن — حتی اگر وزن پایین باشد
             $cur_tier = $tier; if ($is_premium) $cur_tier = $tmap['tier_1'] ?? $tier;
@@ -1211,9 +1212,21 @@ class ArtistManager {
             // شکستن یکنواختی: اگر oldها همه یکسان هستند، یک jitter ترتیبی اضافه کن تا دیگر مساوی نمانند
             // برای اولین اجرا، val ممکن است نزدیک old باشد — یک پراکندگی اجباری ترتیبی
             $pidHash = (($pid * 9301 + 49297) % 233280)/233280; // 0-1
-            // بازه سفارشی: اگر کاربر بازه انتخاب کرده، اولویت با بازه است (با حفظ هرگز کم نشدن)
-            if ($has_custom_range) {
-                $rmin = $custom_min; $rmax = $custom_max;
+            // آهنگ‌های دستهٔ ترند بازهٔ اختصاصی خودشان را دارند (500k-2.8M) و با بقیه قاطی نمی‌شوند
+            $is_trend = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post((int)$pid);
+            if ($is_trend) $trend_applied++;
+            $use_range = $has_custom_range || $is_trend;
+            $tb_trend = $is_trend ? apex_omega_trend_band() : null;
+            if ($use_range) {
+                if ($is_trend) {
+                    $rmin = (int)$tb_trend['min']; $rmax = (int)$tb_trend['max'];
+                } else {
+                    $rmin = $custom_min; $rmax = $custom_max;
+                }
+                if ($is_trend) {
+                    // آهنگ ترند: مستقیماً داخل بازهٔ خودش (حتی اگر قبلاً بالاتر از سقف بوده)
+                    $vals['views'] = self::compute_trend_views((int)$pid, (int)$old_views, $tb_trend);
+                }
                 if ($old_views >= $rmax) {
                     // قدیمی بالاتر از سقف بازه است — نمی‌توانیم کم کنیم، پس فقط افزایش متنوع
                     $jitter = (mt_rand(-200,200)/10000);
@@ -1240,10 +1253,13 @@ class ArtistManager {
                 }
                 // هماهنگی امتیاز با بازه جدید — tier متناسب با views جدید (برای وزن و پرمیوم)
                 $newTierForRating = $is_premium ? ($tmap['tier_1'] ?? $tier) : self::find_tier_for_views((int)$vals['views'], $tiers);
+                $rating_tier_id = (string)($newTierForRating['id'] ?? 'tier_1');
                 $fresh = \ApexOmega\Core\TierManager::generate_values($newTierForRating, $best, (int)$weight, $is_hit, $pid, $is_premium);
                 $vals['casts'] = $fresh['casts'];
                 $vals['avg'] = $fresh['avg'];
                 $vals['ratings'] = $fresh['ratings'];
+                // متای tier باید با همان سطح امتیاز هماهنگ باشد (نه وزن خام)
+                $tier_id = (string)($newTierForRating['id'] ?? $tier_id);
             } elseif (!$is_premium && $old_views > 0 && $old_views > (int)$cur_tier['views_max']) {
                 // افزایش متنوع بر اساس old: 3% تا 18% (pidHash) + جیتر رندم کوچک
                 $jitter = (mt_rand(-400,400)/10000); // ±4%
@@ -1267,7 +1283,8 @@ class ArtistManager {
                 if ($vals['avg'] <= $old_kksr['avg']) $vals['avg'] = min((float)$cur_tier['avg_max'], round($old_kksr['avg']+0.1,1));
                 $vals['ratings'] = round($vals['avg'] * $vals['casts'] / $best * 5, 2);
             }
-            if ($vals['views'] < $old_views) continue; // هرگز کم نکن — اضافی
+            if (!$is_trend && $vals['views'] < $old_views) continue;
+            if ($is_trend && $tb_trend) { $vals['views'] = max((int)$tb_trend['min'], min((int)$tb_trend['max'], (int)$vals['views'])); } // هرگز کم نکن — اضافی
             $detect = \ApexOmega\Core\Adapter_KKSR::detect();
             global $wpdb;
             $lock="apex_tier_{$pid}"; if(!\ApexOmega\Core\Database::acquire_lock($lock, 20)) { $errors[]="پست $pid قفل"; continue; }
@@ -1337,16 +1354,123 @@ class ArtistManager {
             update_option(\ApexOmega\Core\TierManager::OPTION_LAST_DISTRIBUTION, ['counts'=>[],'filters'=>['artist_term'=>$term_id],'applied'=>$applied,'exec'=>$exec,'at'=>current_time('mysql',true),'errors'=>$errors,'reseed'=>true], false);
         }
         $msg_extra = '';
-        if ($has_custom_range) $msg_extra = " — بازه ".number_format_i18n($custom_min)." تا ".number_format_i18n($custom_max)."";
+        if ($has_custom_range) $msg_extra = " — بازه ".number_format_i18n($custom_min)." تا ".number_format_i18n($custom_max);
+        if ($trend_applied > 0 && function_exists('apex_omega_trend_message')) $msg_extra .= apex_omega_trend_message($trend_applied);
         $comment_msg = $applied_comments ? " + {$applied_comments} کامنت هماهنگ" : '';
-        return ['success'=>true,'applied'=>$applied,'applied_comments'=>$applied_comments,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'comment_details'=>$comment_details,'custom_range'=> $has_custom_range ? ['min'=>$custom_min,'max'=>$custom_max] : null,'message'=> $applied ? "✅ تنوع‌دهی انجام شد: {$applied} آهنگ «{$term->name}» از {$total}{$msg_extra} — بازدید و امتیاز{$comment_msg} هماهنگ شد (هرگز کم نشد)" : 'هیچ تغییری اعمال نشد (همه قفل یا قبلا متنوع)'];
+        return ['success'=>true,'applied'=>$applied,'applied_comments'=>$applied_comments,'total'=>$total,'execution_id'=>$exec,'errors'=>$errors,'details'=>$details,'comment_details'=>$comment_details,'custom_range'=> $has_custom_range ? ['min'=>$custom_min,'max'=>$custom_max] : null, 'trend_count'=>$trend_applied,'message'=> $applied ? "✅ تنوع‌دهی انجام شد: {$applied} آهنگ «{$term->name}» از {$total}{$msg_extra} — بازدید و امتیاز{$comment_msg} هماهنگ شد (هرگز کم نشد)" : 'هیچ تغییری اعمال نشد (همه قفل یا قبلا متنوع)'];
     }
 
 
 
+    /**
+     * بازدید داخل بازهٔ ترند (۵۰۰k–۲.۸M).
+     * آهنگ‌هایی که بالاتر از سقف ترند هستند به داخل بازه برگردانده می‌شوند (کاهش هدفمند فقط برای همین دسته).
+     * بقیه فقط افزایش متنوع می‌گیرند.
+     */
+    private static function compute_trend_views(int $pid, int $old_views, array $band): int {
+        $rmin = (int)$band['min']; $rmax = (int)$band['max'];
+        $h = (($pid * 9301 + 49297) % 233280) / 233280;
+        if ($old_views > $rmax) {
+            // بالاتر از سقف: برگشت به ۲ تا ۱۰ درصد زیر سقف (۲.۵۲M تا ۲.۷۴M)
+            $cut = 0.02 + $h * 0.08;
+            $v = (int) round($rmax - (($rmax - $rmin) * $cut));
+            return max($rmin, min($rmax, $v));
+        }
+        if ($old_views >= (int)round($rmax * 0.97)) {
+            // نزدیک سقف: همان مقدار، یا رشد بسیار ریز تا سقف
+            $head = $rmax - $old_views;
+            if ($head <= 1000) return $old_views;
+            return $old_views + (int) round($head * (0.2 + $h * 0.5));
+        }
+        if ($old_views < $rmin) {
+            $jitter = (mt_rand(-500, 500) / 10000) * ($rmax - $rmin) * 0.03;
+            $v = (int) round($rmin + ($rmax - $rmin) * $h + $jitter);
+            return max($rmin, min($rmax, $v));
+        }
+        $inc = max(5000, (int) round($old_views * (0.02 + $h * 0.05)));
+        $low = $old_views + $inc;
+        if ($low >= $rmax) return $old_views;
+        $v = (int) round($low + ($rmax - $low) * ($h * 0.6 + mt_rand(0, 300) / 1000 * 0.4));
+        return max($low, min($rmax, $v));
+    }
+
+    /** همهٔ آهنگ‌های دستهٔ «ترند» (برای همگام‌سازی یک‌جا) */
+    public static function get_trend_post_ids(): array {
+        if (!function_exists('apex_omega_trend_terms')) return [];
+        $terms = apex_omega_trend_terms();
+        if (!$terms) return [];
+        $tax_query = ['relation' => 'OR'];
+        foreach (['category', 'post_tag'] as $tax) {
+            if (taxonomy_exists($tax)) $tax_query[] = ['taxonomy' => $tax, 'field' => 'term_id', 'terms' => $terms];
+        }
+        if (count($tax_query) < 2) return [];
+        $q = new \WP_Query([
+            'post_type' => 'post', 'post_status' => 'publish', 'posts_per_page' => 2000,
+            'fields' => 'ids', 'no_found_rows' => true, 'tax_query' => $tax_query,
+        ]);
+        return $q->posts ?: [];
+    }
+
     // ── Job chunked برای تنوع‌دهی هنرمند — جلوگیری از 503 (تقسیم‌بندی + درصد) ──
-    public static function start_reseed_job(int $term_id, string $taxonomy = '', ?int $range_min = null, ?int $range_max = null, int $chunk_size = 15): array {
+    public static function start_reseed_job(int $term_id, string $taxonomy = '', ?int $range_min = null, ?int $range_max = null, int $chunk_size = 15, bool $trend_mode = false): array {
         if (function_exists('set_time_limit')) @set_time_limit(90);
+        if ($trend_mode) {
+            // حالت «همهٔ آهنگ‌های ترند» — بدون نیاز به انتخاب هنرمند
+            $ids = self::get_trend_post_ids();
+            if (empty($ids)) return ['success'=>false,'message'=>'هیچ آهنگی در دستهٔ ترند پیدا نشد'];
+            $term = (object)['name'=>'آهنگ‌های ترند','count'=>count($ids)];
+            $taxonomy = '';
+            $term_id = 0;
+            $weight = 76; // ترند: خوانندهٔ شناخته‌شده
+            $best = (int) get_option('kksr_stars', 5); if($best<1) $best=5;
+            $before_views = [];
+            foreach($ids as $pid) $before_views[$pid]=(int)get_post_meta($pid,'views',true);
+            $tier_id = self::weight_to_tier_hint($weight);
+            $tiers = \ApexOmega\Core\TierManager::get_tiers();
+            $tmap=[]; foreach($tiers as $t) $tmap[$t['id']]=$t;
+            $tier = $tmap[$tier_id] ?? $tmap['tier_4'];
+            $has_custom_range = false; $custom_min=null; $custom_max=null;
+            $flat=[]; $trend_count=0;
+            $tb = apex_omega_trend_band();
+            foreach($ids as $pid) {
+                $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
+                $cur_tier = $is_premium ? ($tmap['tier_1'] ?? $tier) : $tier;
+                $vals = \ApexOmega\Core\TierManager::generate_values($cur_tier, $best, (int)$weight, $is_hit, $pid, $is_premium);
+                $old_views = $before_views[$pid] ?? 0;
+                $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
+                $rmin = (int)$tb['min']; $rmax = (int)$tb['max'];
+                $vals['views'] = self::compute_trend_views((int)$pid, (int)$old_views, $tb);
+                // امتیاز هماهنگ با بازهٔ ترند
+                $newTierForRating = $is_premium ? ($tmap['tier_1'] ?? $tier) : self::find_tier_for_views((int)$vals['views'], $tiers);
+                $fresh = \ApexOmega\Core\TierManager::generate_values($newTierForRating, $best, (int)$weight, $is_hit, $pid, $is_premium);
+                $rating_tier_id = (string)($newTierForRating['id'] ?? 'tier_1');
+                $vals['casts'] = $fresh['casts']; $vals['avg'] = $fresh['avg']; $vals['ratings'] = $fresh['ratings'];
+                // views اجازهٔ کاهش هدفمند دارد (فقط برای برگرداندن به بازهٔ ترند) — امتیاز هرگز کم نمی‌شود
+                $guarded = apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$vals['views']],
+                    ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']], false, $pid);
+                $vals['casts']=$guarded['casts']; $vals['avg']=$guarded['avg']; $vals['ratings']=$guarded['ratings'];
+                if ($vals['views'] < $rmin || $vals['views'] > $rmax) { $vals['views'] = max($rmin, min($rmax, (int)$vals['views'])); }
+                $flat[] = [
+                    'post_id'=>$pid,
+                    'post_title'=>get_the_title($pid) ?: (string)$pid,
+                    'tier_id'=>$rating_tier_id,
+                    'weight'=>$weight, 'is_hit'=>$is_hit, 'is_premium'=>$is_premium,
+                    'old_views'=>$old_views, 'new_views'=>$vals['views'],
+                    'old_casts'=>$old_kksr['casts'], 'old_avg'=>$old_kksr['avg'], 'old_ratings'=>$old_kksr['ratings'],
+                    'new_casts'=>$vals['casts'], 'new_avg'=>$vals['avg'], 'new_ratings'=>$vals['ratings'],
+                    'best'=>$best,
+                ];
+                $trend_count++;
+            }
+            if (empty($flat)) return ['success'=>false,'message'=>'هیچ آهنگ ترندی برای همگام‌سازی آماده نشد'];
+            $exec = apex_omega_generate_uuid();
+            $total = count($flat);
+            $chunk_size = max(5, min(50, $chunk_size));
+            $filters = ['trend_mode'=>true,'range_min'=>$tb['min'],'range_max'=>$tb['max'],'term_name'=>'آهنگ‌های ترند'];
+            \ApexOmega\Core\Database::create_job($exec, get_current_user_id(), [], $filters, $flat, $total, $chunk_size);
+            return ['success'=>true,'execution_id'=>$exec,'total'=>$total,'chunk_size'=>$chunk_size,'term_name'=>'آهنگ‌های ترند','trend_count'=>$trend_count,
+                'message'=>'کار همگام‌سازی ترند ایجاد شد — '.$total.' آهنگ (بازهٔ '.number_format_i18n($tb['min']).' تا '.number_format_i18n($tb['max']).')'];
+        }
         if (!$term_id) return ['success'=>false,'message'=>'شناسه هنرمند نامعتبر'];
         if (!$taxonomy) $taxonomy = self::detect_artist_taxonomy();
         if (!$taxonomy) return ['success'=>false,'message'=>'تاکسونومی هنرمند یافت نشد'];
@@ -1383,7 +1507,7 @@ class ArtistManager {
             if (($cmax - $cmin) < 2000) $cmax = $cmin + max(5000, (int)($cmin*0.15));
             $custom_min=$cmin; $custom_max=$cmax; $has_custom_range=true;
         }
-        $flat=[];
+        $flat=[]; $trend_count=0;
         foreach($ids as $pid) {
             $is_hit = self::is_hit((int)$pid); $is_premium = self::is_in_selected_works((int)$pid);
             $cur_tier = $tier; if ($is_premium) $cur_tier = $tmap['tier_1'] ?? $tier;
@@ -1391,8 +1515,16 @@ class ArtistManager {
             $old_views = $before_views[$pid] ?? 0;
             $old_kksr = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
             $pidHash = (($pid * 9301 + 49297) % 233280)/233280;
-            if ($has_custom_range) {
-                $rmin=$custom_min; $rmax=$custom_max;
+            // آهنگ ترند: بازهٔ اختصاصی ترند، مستقل از بقیهٔ آثار همین هنرمند
+            $is_trend = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post((int)$pid);
+            if ($is_trend) $trend_count++;
+            if ($is_trend || $has_custom_range) {
+                if ($is_trend) {
+                    $tb = apex_omega_trend_band();
+                    $rmin = (int)$tb['min']; $rmax = (int)$tb['max'];
+                } else {
+                    $rmin=$custom_min; $rmax=$custom_max;
+                }
                 if ($old_views >= $rmax) {
                     $jitter=(mt_rand(-200,200)/10000);
                     $factor=0.03 + $pidHash * 0.12 + $jitter; $factor=max(0.02,$factor);
@@ -1424,7 +1556,11 @@ class ArtistManager {
                 $forcedVar=(int)round(($pidHash - 0.5) * $spread * 0.30);
                 $vals['views']=max($vals['views'],$vals['views'] + $forcedVar);
             }
-            $guarded=apex_omega_guard_stats(['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$old_views], ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']], false, $pid);
+            $guarded=apex_omega_guard_stats(
+                ['casts'=>$old_kksr['casts'],'avg'=>$old_kksr['avg'],'ratings'=>$old_kksr['ratings'],'views'=>$is_trend ? $vals['views'] : $old_views],
+                ['casts'=>$vals['casts'],'avg'=>$vals['avg'],'ratings'=>$vals['ratings'],'views'=>$vals['views']],
+                false, $pid
+            );
             $vals['casts']=$guarded['casts']; $vals['avg']=$guarded['avg']; $vals['ratings']=$guarded['ratings']; $vals['views']=$guarded['views'];
             if ($vals['views'] === $old_views) {
                 $minInc=(int)round($old_views * (0.025 + $pidHash * 0.08));
@@ -1437,7 +1573,7 @@ class ArtistManager {
             $flat[]=[
                 'post_id'=>$pid,
                 'post_title'=>get_the_title($pid)?: (string)$pid,
-                'tier_id'=>$tier_id,
+                'tier_id'=>$tier_id_post,
                 'weight'=>$weight,
                 'is_hit'=>$is_hit,
                 'is_premium'=>$is_premium,
@@ -1461,7 +1597,8 @@ class ArtistManager {
         $counts=[];
         \ApexOmega\Core\Database::create_job($exec,$user_id,$counts,$filters,$flat,$total,$chunk_size);
         if (class_exists('\\ApexOmega\\Core\\QueueWorker')) { try { \ApexOmega\Core\QueueWorker::enqueue('reseed_artist',['execution_id'=>$exec,'total'=>$total],10);} catch(\Throwable $e){} }
-        return ['success'=>true,'execution_id'=>$exec,'total'=>$total,'chunk_size'=>$chunk_size,'term_name'=>$term->name,'message'=>'کار تنوع‌دهی ایجاد شد — '.$total.' آهنگ در صف','has_custom_range'=>$has_custom_range,'custom_range'=>$has_custom_range?['min'=>$custom_min,'max'=>$custom_max]:null];
+        return ['success'=>true,'execution_id'=>$exec,'total'=>$total,'chunk_size'=>$chunk_size,'term_name'=>$term->name,'message'=>'کار تنوع‌دهی ایجاد شد — '.$total.' آهنگ در صف'
+            . (($trend_count > 0 && function_exists('apex_omega_trend_message')) ? apex_omega_trend_message($trend_count) : ''),'has_custom_range'=>$has_custom_range,'custom_range'=>$has_custom_range?['min'=>$custom_min,'max'=>$custom_max]:null,'trend_count'=>$trend_count];
     }
 
     public static function process_reseed_chunk(string $execution_id, int $chunk_size = 0): array {
@@ -1490,8 +1627,10 @@ class ArtistManager {
             $plock="apex_tier_{$pid}";
             if(!\ApexOmega\Core\Database::acquire_lock($plock,20)){ $errors[]="پست $pid قفل است"; continue; }
             $old_views=(int)get_post_meta($pid,'views',true);
+            $is_trend_item = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post((int)$pid);
             // اگر کسی همزمان تغییر داده و الان بیشتر از new_views است، هرگز کم نکن
-            if ($old_views > (int)$item['new_views']) {
+            // (به‌جز آهنگ ترند که برای برگشت به بازهٔ ۵۰۰k–۲.۸M کاهش هدفمند مجاز است)
+            if (!$is_trend_item && $old_views > (int)$item['new_views']) {
                 $guarded=apex_omega_guard_stats(['casts'=>$item['old_casts'],'avg'=>$item['old_avg'],'ratings'=>$item['old_ratings'],'views'=>$old_views], ['casts'=>$item['new_casts'],'avg'=>$item['new_avg'],'ratings'=>$item['new_ratings'],'views'=>$item['new_views']], false, $pid);
                 if ($guarded['views'] <= $old_views) { \ApexOmega\Core\Database::release_lock($plock); continue; }
                 $item['new_views']=$guarded['views']; $item['new_casts']=$guarded['casts']; $item['new_avg']=$guarded['avg']; $item['new_ratings']=$guarded['ratings'];
@@ -1527,7 +1666,10 @@ class ArtistManager {
                 if ($cur_comments < $target_comments) {
                     $need=$target_comments - $cur_comments; $need=max(1,min($need,14));
                     if (get_post_field('comment_status',$pid) !== 'open') wp_update_post(['ID'=>$pid,'comment_status'=>'open']);
-                    $artist_name_for_c=$filters['term_name'] ?? '';
+                    // در حالت ترند، نام خواننده باید از خود همان آهنگ بیاید (نه اسم دسته)
+                    $artist_name_for_c = !empty($filters['trend_mode'])
+                        ? \ApexOmega\Core\CommentGuardian::get_primary_artist((int)$pid)
+                        : ($filters['term_name'] ?? '');
                     $title_for_c=get_the_title($pid)?:'';
                     $inserted_c=0;
                     for($ci=0;$ci<$need;$ci++){

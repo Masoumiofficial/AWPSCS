@@ -23,6 +23,34 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
       <div style="background:rgba(255,255,255,0.15);"><span class="big" style="color:#fff;"><?php echo esc_html(number_format_i18n($total_posts)); ?></span><small style="color:#fff;">آهنگ کل</small></div>
     </div>
   </div>
+<div class="apex-card" style="margin-top:14px;border-top:4px solid #ef4444;background:rgba(255,255,255,0.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0;">🔥 دستهٔ آهنگ‌های ترند</h3>
+        <small style="color:#64748b;">آهنگ‌های داخل دستهٔ «ترند» بازهٔ اختصاصی می‌گیرند و با بقیهٔ آثار قاطی نمی‌شوند.</small>
+      </div>
+      <span class="apex-badge" style="background:linear-gradient(135deg,#ef4444,#f59e0b);color:#fff;">۵۰۰k تا ۲.۸M</span>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:10px;">
+      <div style="font-size:12px;color:#9a3412;line-height:1.8;">
+        بازدید هر آهنگ ترند بین <strong>۵۰۰٬۰۰۰</strong> و <strong>۲٬۸۰۰٬۰۰۰</strong> تنظیم می‌شود، امتیاز هم با همان بازه هماهنگ می‌شود و کامنت‌ها لحن وایرال/نوستالژی می‌گیرند (همیشه با نام همان خواننده و آهنگ).
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+      <button type="button" id="apex-trend-sync" class="button button-apex" style="background:linear-gradient(135deg,#ef4444,#f59e0b);border-color:#ef4444;color:#fff;font-weight:800;">🔥 همگام‌سازی همهٔ آهنگ‌های ترند</button>
+      <span id="apex-trend-result" style="font-weight:700;color:#9a3412;font-size:12px;"></span>
+    </div>
+    <div id="apex-trend-progress" style="display:none;margin-top:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;color:#1e293b;margin-bottom:6px;">
+        <span id="apex-trend-progress-text">0 از 0</span><span id="apex-trend-progress-pct" style="background:#ef4444;color:#fff;padding:2px 8px;border-radius:999px;font-size:10px;">0%</span>
+      </div>
+      <div style="background:#e5e7eb;border-radius:999px;height:14px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,0.08);">
+        <div id="apex-trend-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#ef4444,#f59e0b);transition:width 0.5s cubic-bezier(0.2,0.8,0.2,1);"></div>
+      </div>
+      <small id="apex-trend-progress-detail" style="color:#64748b;font-size:11px;display:block;margin-top:6px;"></small>
+    </div>
+  </div>
+
 <div class="apex-card" style="margin-top:14px;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <h3 style="margin:0;">📊 پیشرفت وزن‌گذاری</h3>
@@ -145,6 +173,7 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
           <button type="button" class="apex-range-preset" data-min="500000" data-max="900000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">500k – 900k</button>
           <button type="button" class="apex-range-preset" data-min="900000" data-max="2000000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">0.9M – 2M</button>
           <button type="button" class="apex-range-preset" data-min="1000000" data-max="5000000" style="padding:6px 10px;border-radius:999px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.85);font-size:11px;font-weight:700;cursor:pointer;">1M – 5M</button>
+          <button type="button" class="apex-range-preset" data-min="500000" data-max="2800000" style="padding:6px 10px;border-radius:999px;border:1px solid #ef4444;background:#fef2f2;font-size:11px;font-weight:800;cursor:pointer;">🔥 ترند 500k – 2.8M</button>
           <button type="button" class="apex-range-preset" data-min="8000000" data-max="12000000" style="padding:6px 10px;border-radius:999px;border:1px solid #f59e0b;background:#fffbeb;font-size:11px;font-weight:800;cursor:pointer;">💎 8M – 12M پرمیوم</button>
           <button type="button" class="apex-range-preset" data-min="" data-max="" data-auto="1" style="padding:6px 10px;border-radius:999px;border:1px dashed #7c3aed;background:#f5f3ff;font-size:11px;font-weight:800;cursor:pointer;">🤖 خودکار هوشمند</button>
         </div>
@@ -317,6 +346,45 @@ $total_posts = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE p
         _apply.disabled=false; _apply.textContent='✅ اعمال تنوع';
         if(origBtn) origBtn.disabled=false;
         if(progressBox) progressBox.style.display='none';
+      });
+    });
+
+    // 🔥 همگام‌سازی کل دستهٔ ترند (چانک‌شده با درصد)
+    var _trendBtn = qs('apex-trend-sync');
+    if (_trendBtn) _trendBtn.addEventListener('click', function(){
+      var btn = this, box = qs('apex-trend-progress'), bar = qs('apex-trend-progress-bar'),
+          txt = qs('apex-trend-progress-text'), pct = qs('apex-trend-progress-pct'),
+          det = qs('apex-trend-progress-detail'), res = qs('apex-trend-result');
+      if (!confirm('همهٔ آهنگ‌های دستهٔ ترند به بازهٔ ۵۰۰٬۰۰۰ تا ۲٬۸۰۰٬۰۰۰ تنظیم شوند؟ (هرگز کم نمی‌شود)')) return;
+      btn.disabled = true; btn.textContent = 'در حال شروع…';
+      if (box) box.style.display = 'block';
+      if (bar) bar.style.width = '0%';
+      if (txt) txt.textContent = 'در حال آماده‌سازی…';
+      if (res) res.textContent = '';
+      apexPost('apex_start_trend_job', {chunk_size: 10}).then(function(j){
+        if (!j.success) throw new Error(j.data.message || 'خطا');
+        var exec = j.data.execution_id, total = j.data.total, chunk = j.data.chunk_size || 10;
+        if (res) res.textContent = j.data.message || (total + ' آهنگ ترند در صف');
+        function next(){
+          return apexPost('apex_process_reseed_chunk', {execution_id: exec, chunk_size: chunk}).then(function(r){
+            if (!r.success) throw new Error(r.data.message || 'خطا در پردازش');
+            var d = r.data, processed = d.processed || 0, tot = d.total || total, percent = d.percent || 0;
+            if (bar) bar.style.width = percent + '%';
+            if (txt) txt.textContent = processed + ' از ' + tot + ' آهنگ';
+            if (pct) pct.textContent = percent + '%';
+            if (det) det.textContent = '✅ ' + processed + ' اعمال شد — ' + (d.applied_comments_in_chunk || 0) + ' کامنت ترند این بسته — باقی: ' + (d.remaining || 0) + ' — کل کامنت: ' + (d.total_applied_comments || 0);
+            if (d.status === 'done') {
+              btn.disabled = false; btn.textContent = '🔥 همگام‌سازی همهٔ آهنگ‌های ترند';
+              if (res) res.textContent = '✅ تمام شد: ' + processed + ' از ' + tot + ' (' + percent + '%)';
+              return;
+            }
+            setTimeout(next, 350);
+          });
+        }
+        return next();
+      }).catch(function(e){
+        alert('❌ ' + e.message);
+        btn.disabled = false; btn.textContent = '🔥 همگام‌سازی همهٔ آهنگ‌های ترند';
       });
     });
 

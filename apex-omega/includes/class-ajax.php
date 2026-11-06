@@ -51,6 +51,7 @@ class Ajax {
             'apex_apply_premium_selected',
             'apex_reseed_artist',
             'apex_start_reseed_job',
+            'apex_start_trend_job',
             'apex_process_reseed_chunk',
             'apex_reseed_job_status',
             'apex_apply_comments_selected',
@@ -192,6 +193,9 @@ class Ajax {
                 break;
             case 'apex_start_reseed_job':
                 self::start_reseed_job();
+                break;
+            case 'apex_start_trend_job':
+                self::start_trend_job();
                 break;
             case 'apex_process_reseed_chunk':
                 self::process_reseed_chunk();
@@ -849,6 +853,12 @@ class Ajax {
         if ($rmin !== null) { $rmin = max(1000, min(12000000, $rmin)); }
         if ($rmax !== null) { $rmax = max(1000, min(12000000, $rmax)); }
         $res = \ApexOmega\Core\ArtistManager::start_reseed_job($term_id, $tax, $rmin, $rmax, $chunk);
+        if (empty($res['success'])) wp_send_json_error($res, 400);
+        wp_send_json_success($res);
+    }
+    private static function start_trend_job(): void {
+        $chunk = isset($_POST['chunk_size']) ? max(5, min(50, (int)$_POST['chunk_size'])) : 10;
+        $res = \ApexOmega\Core\ArtistManager::start_reseed_job(0, '', null, null, $chunk, true);
         if (empty($res['success'])) wp_send_json_error($res, 400);
         wp_send_json_success($res);
     }

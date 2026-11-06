@@ -104,6 +104,107 @@ if (!function_exists('apex_omega_decrypt')) {
         return $ciphertext;
     }
 }
+
+/**
+ * دستهٔ «آهنگ‌های ترند» — تشخیص و بازهٔ اختصاصی بازدید
+ * پیش‌فرض: slug = trending-music  |  بازه: ۵۰۰٬۰۰۰ تا ۲٬۸۰۰٬۰۰۰
+ * قابل تغییر با فیلتر: apex_omega_trend_slugs / apex_omega_trend_band
+ */
+if (!function_exists('apex_omega_trend_slugs')) {
+    function apex_omega_trend_slugs(): array {
+        $opt = (string) get_option('apex_omega_trend_slugs', '');
+        $base = $opt !== '' ? $opt : 'trending-music,trending,trend,ahang-trend,آهنگ-های-ترند,اهنگ-های-ترند';
+        $list = array_filter(array_map(function ($s) {
+            return strtolower(trim($s));
+        }, preg_split('/[,،\n]/u', $base) ?: []));
+        $list = (array) apply_filters('apex_omega_trend_slugs', $list);
+        return array_values(array_unique($list));
+    }
+}
+
+if (!function_exists('apex_omega_trend_band')) {
+    function apex_omega_trend_band(): array {
+        $band = ['min' => 500000, 'max' => 2800000];
+        $opt = get_option('apex_omega_trend_band', []);
+        if (is_array($opt)) {
+            if (!empty($opt['min'])) $band['min'] = max(1000, (int) $opt['min']);
+            if (!empty($opt['max'])) $band['max'] = max($band['min'] + 1000, (int) $opt['max']);
+        }
+        $band = (array) apply_filters('apex_omega_trend_band', $band);
+        if ($band['max'] <= $band['min']) $band['max'] = $band['min'] + 1000;
+        return $band;
+    }
+}
+
+if (!function_exists('apex_omega_trend_terms')) {
+    /** شناسهٔ ترم‌های دسته/برچسب ترند (کش شده برای هر ریکوئست) */
+    function apex_omega_trend_terms(): array {
+        static $ids = null;
+        if ($ids !== null) return $ids;
+        $ids = [];
+        $slugs = apex_omega_trend_slugs();
+        foreach (['category', 'post_tag'] as $tax) {
+            if (!taxonomy_exists($tax)) continue;
+            $terms = get_terms(['taxonomy' => $tax, 'hide_empty' => false]);
+            if (is_wp_error($terms) || !is_array($terms)) continue;
+            foreach ($terms as $term) {
+                if (!is_object($term)) continue;
+                $slug = strtolower((string) ($term->slug ?? ''));
+                $name = trim((string) ($term->name ?? ''));
+                $hit = in_array($slug, $slugs, true)
+                    || preg_match('/(^|-)trend(ing)?(-|$)/', $slug)
+                    || preg_match('/ترند|وایرال|viral/u', $name);
+                if ($hit) $ids[] = (int) $term->term_id;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+        return $ids;
+    }
+}
+
+if (!function_exists('apex_omega_is_trend_post')) {
+    /** آیا این نوشته در دستهٔ «آهنگ‌های ترند» است؟ */
+    function apex_omega_is_trend_post(int $post_id): bool {
+        static $cache = [];
+        if (!$post_id) return false;
+        if (isset($cache[$post_id])) return $cache[$post_id];
+        $cache[$post_id] = false;
+        $ids = apex_omega_trend_terms();
+        if (!$ids) return $cache[$post_id];
+        foreach (['category', 'post_tag'] as $tax) {
+            if (!taxonomy_exists($tax)) continue;
+            $has = has_term($ids, $tax, $post_id);
+            if (is_wp_error($has)) continue;
+            if ($has) { $cache[$post_id] = true; break; }
+        }
+        return $cache[$post_id];
+    }
+}
+
+if (!function_exists('apex_omega_trend_clamp_views')) {
+    /**
+     * نگه‌داشتن بازدید آهنگ‌های ترند داخل بازهٔ ۵۰۰k–۲٬۸M
+     * فقط سقف به‌صورت خودکار بریده می‌شود (برای هر منبع غیردستی)؛
+     * کف در زمان تنوع‌دهی/ریتم اعمال می‌شود تا جهش ناگهانی رخ ندهد.
+     */
+    function apex_omega_trend_clamp_views(int $post_id, int $views, string $source = 'auto'): int {
+        if (!apex_omega_is_trend_post($post_id)) return $views;
+        if (in_array($source, ['manual', 'import', 'restore'], true)) return $views;
+        $band = apex_omega_trend_band();
+        if ($views > $band['max']) return $band['max'];
+        return $views;
+    }
+}
+
+if (!function_exists('apex_omega_trend_message')) {
+    function apex_omega_trend_message(int $count): string {
+        if ($count < 1) return '';
+        $band = apex_omega_trend_band();
+        return ' — ' . apex_omega_format_number_fa($count) . ' آهنگ ترند با بازهٔ '
+            . apex_omega_format_number_fa($band['min']) . ' تا ' . apex_omega_format_number_fa($band['max']);
+    }
+}
+
 if (!function_exists('apex_omega_lock_ttl')) {
     function apex_omega_lock_ttl(int $count, int $min = 30, int $max = 600, int $per_item = 2): int {
         $ttl = $count * $per_item + 15;
