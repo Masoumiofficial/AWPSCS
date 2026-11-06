@@ -71,7 +71,7 @@ class CommentGuardian {
     }
 
     // محاسبهٔ هدف کامنت — الگوی ریتم هرساعته (2026-10-21): بازدید + وزن + امتیاز همبسته، gradual increase never decrease
-    public static function calculate_target(int $views, int $weight, float $avg = 4.0, bool $is_premium = false): int {
+    public static function calculate_target(int $views, int $weight, float $avg = 4.0, bool $is_premium = false, int $post_id = 0): int {
         $views = max(0, $views);
         $weight = max(0, min(100, $weight));
         // پایه بر اساس بازدید — fresh 500-10000 → 3-10 (spec), scalable for million (~50)
@@ -119,6 +119,21 @@ class CommentGuardian {
             elseif ($views >= 10000 && $target < 10) $target = mt_rand(10, 14);
             $target = max($target, $base_min);
             $target = min($target, $base_max + 25); // سقف بازتر برای منتخب
+        }
+        // هنرمند ناشناخته: حجم بالا + همه تعریفی طبیعی نیست → سقف پایین‌تر
+        if (!$is_premium && $weight < 45 && $views < 40000 && $target > 7) {
+            $target = mt_rand(4, 7);
+        } elseif (!$is_premium && $weight < 45 && $views < 150000 && $target > 12) {
+            $target = mt_rand(8, 12);
+        }
+        // بیوگرافی/خبر: این نوع صفحات ذاتاً کامنت کمتری می‌گیرند و پر از تعریف نیستند
+        if ($post_id) {
+            $ctype = self::detect_content_type($post_id);
+            if ($ctype === 'bio') {
+                $target = min($target, 12);
+            } elseif ($ctype === 'news') {
+                $target = min($target, 14);
+            }
         }
         return $target;
     }
@@ -252,7 +267,15 @@ class CommentGuardian {
         $t = trim(preg_replace('/\s+/u', ' ', $t));
         $t = preg_replace('/\s*[\(\[][^\)\]]*[\)\]]\s*/u', ' ', $t);
         $t = self::trim_sep($t);
-        if ($t === '') return '';
+        // حذف کلمات عمومی که اسم اثر نیستند (وگرنه «آلبوم جدید» به‌عنوان نام آهنگ می‌آید)
+        $generic = '/^(?:آلبوم|آهنگ|موزیک|موزیک\s*ویدیو|موزیک\s*ویدئو|کلیپ|ویدیو|جدید|جدیدترین|رسمی|اورجینال|نسخه|بیوگرافی|زندگینامه|خبر|اخبار|دانلود)+\s*/u';
+        for ($i = 0; $i < 4; $i++) {
+            $new = preg_replace($generic, '', $t);
+            if (!is_string($new) || $new === $t) break;
+            $t = trim($new);
+        }
+        $t = self::trim_sep($t);
+        if ($t === '' || mb_strlen($t) < 3) return '';
         $w = preg_split('/\s+/u', $t) ?: [];
         if (count($w) > $max_words) $t = implode(' ', array_slice($w, 0, $max_words));
         if (mb_strlen($t) > 34) $t = mb_substr($t, 0, 34);
@@ -308,6 +331,116 @@ class CommentGuardian {
             'اون پاراگراف که آروم شروع میشه محشره',
         ];
     }
+
+    /* ============ تشخیص نوع محتوا: آهنگ / آلبوم / موزیک‌ویدیو / بیوگرافی / خبر ============ */
+    public static function detect_content_type(int $post_id, string $title = ''): string {
+        static $cache = [];
+        $ck = $post_id . '|' . mb_substr($title, 0, 60);
+        if (isset($cache[$ck])) return $cache[$ck];
+        $hay = ' ' . mb_strtolower($title) . ' ';
+        if ($post_id) {
+            $hay .= ' ' . mb_strtolower((string) get_the_title($post_id)) . ' ';
+            foreach (['category', 'post_tag'] as $tax) {
+                if (!function_exists('get_the_terms')) continue;
+                $terms = get_the_terms($post_id, $tax);
+                if (is_array($terms)) {
+                    foreach ($terms as $tm) {
+                        if (!is_object($tm)) continue;
+                        $hay .= ' ' . mb_strtolower((string)($tm->name ?? '')) . ' ' . mb_strtolower((string)($tm->slug ?? '')) . ' ';
+                    }
+                }
+            }
+            // دستهٔ والد هم مهم است (مثلاً زیرشاخهٔ «بیوگرافی خواننده‌ها»)
+            $cats = function_exists('get_the_category') ? get_the_category($post_id) : [];
+            if (is_array($cats)) foreach ($cats as $c) {
+                if (!is_object($c)) continue;
+                if (!empty($c->parent) && function_exists('get_term')) {
+                    $par = get_term((int)$c->parent);
+                    if (is_object($par) && !is_wp_error($par)) $hay .= ' ' . mb_strtolower((string)($par->name ?? '')) . ' ';
+                }
+            }
+        }
+        $hay = preg_replace('/\s+/u', ' ', $hay);
+
+        $type = 'song';
+        // بیوگرافی / زندگی‌نامه
+        if (preg_match('/بیوگرافی|بیوگرافى|زندگینامه|زندگى‌نامه|زندگی‌نامه|زندگي‌نامه|سیره|biography|\bbio\b|پروفایل|کیست|چند سالشه/u', $hay)) $type = 'bio';
+        // آلبوم
+        elseif (preg_match('/آلبوم|\balbum\b|\bep\b|ئی‌پی|ای‌پی|میکس‌تیپ|mixtape|آهنگ‌های آلبوم/u', $hay)) $type = 'album';
+        // موزیک ویدیو / کلیپ
+        elseif (preg_match('/موزیک ?ویدیو|موزیک ?ویدئو|موزیک‌ویدیو|\bvideo\b|\bclip\b|کلیپ|\bmv\b|تیزر|teaser/u', $hay)) $type = 'video';
+        // خبر
+        elseif (preg_match('/\bخبر\b|اخبار|\bnews\b|اطلاعیه|بیانیه|اعلام شد|رونمایی شد|واکنش|شایعه|گفتگو|مصاحبه|interview/u', $hay)) $type = 'news';
+        $cache[$ck] = $type;
+        return $type;
+    }
+
+    // سطح شناخته‌شدن هنرمند — ناشناخته نباید سیل تعریف و تمجید بگیرد
+    public static function recognition_level(int $weight, int $views): string {
+        if ($weight >= 70 || $views >= 300000) return 'high';
+        if ($weight >= 45 || $views >= 60000) return 'mid';
+        return 'low';
+    }
+
+    // متن پایه بر اساس نوع محتوا (بیوگرافی/خبر هیچ‌وقت کامنت آهنگ نمی‌گیرد)
+    private static function typed_pool(string $ctype, string $recog, bool $is_premium = false, bool $is_new_post = false): array {
+        $bio = [
+            'ممنون از بیوگرافی کاملش', 'خیلی چیزا یاد گرفتم مرسی', 'بخش کودکی‌اش رو دو بار خوندم',
+            'کاش درباره شروع کارش بیشتر توضیح می‌دادید', 'این اطلاعات از منبع موثقه؟', 'سال تولدش رو اشتباه نوشتید فکر کنم',
+            'اسم اولین آلبومش اشتباه نوشته شده', 'لطفا بیوگرافی بقیه خواننده‌ها رو هم بذارید', 'واقعا زندگی پرفراز و نشیبی داشته',
+            'نمی‌دونستم اینقدر سابقه داره', 'خوندنش خالی از لطف نبود', 'بخش مهاجرتش رو کاملتر بنویسید',
+            'چقدر سختی کشیده تا اینجا رسیده', 'کسی میدونه الان کجاست؟', 'ممنون، ولی عکس‌ها کم بود',
+            'منبعش ویکی‌پدیاست؟ یکم ویرایش لازم داره', 'کاش آلبوم‌هاش رو هم لیست می‌کردید', 'سال ازدواجش تو متن نبود',
+            'اولین استادش کی بوده؟', 'به‌روزرسانی لازم داره، اطلاعات قدیمیه', 'بخش سبک کاریش خیلی کوتاه بود',
+            'درباره همکاری‌هاش هم می‌نوشتید خوب بود', 'لایک برای زحمتی که کشیدید', 'چه مسیری طی کرده واقعا',
+            'فامیلش رو اشتباه نوشتید', 'این‌قدر که نوشتید کمه، حقش بیشتره',
+        ];
+        $news = [
+            'منبع خبر کجاست؟', 'امیدوارم شایعه باشه', 'بالاخره یه خبر خوب', 'منتظریم ببینیم چی میشه',
+            'کاش تاریخ دقیق رو می‌نوشتید', 'این خبر قدیمیه، قبلا هم منتشر شده بود', 'رسمی تایید شده یا نه؟',
+            'منتظرش بودم واقعا', 'خبر خوبیه اگه درست باشه', 'کسی لینک منبع داره؟', 'امیدوارم حقیقت داشته باشه',
+            'تا تایید رسمی باور نمی‌کنم', 'خبرش رو جای دیگه هم دیدم', 'کاش به‌روزرسانی می‌کردید',
+            'ممنون از اطلاع‌رسانی سریع', 'حیف شد، انتظار دیگه‌ای داشتم', 'خبر داغ بود دمتون گرم',
+            'اینو از کجا شنیدید؟', 'امیدوارم به‌زودی رسمی بشه', 'چند بار خبر رو چک کردم ببینم درست شده',
+            'تیترش یه چیز میگه متنش یه چیز دیگه', 'خبر خوبی نیست راستش', 'کاش منبع خبر رو لینک می‌دادید',
+        ];
+        $album = [
+            'آلبوم کامل رو گوش دادم، ارزشش رو داره', 'ترک ۴ حرف نداره', 'کدوم ترکش رو بیشتر دوست دارید؟',
+            'کاش روی استریم هم می‌اومد', 'چند تا ترک داره؟', 'ترتیب ترک‌ها خیلی خوب چیده شده',
+            'همه ترکاش رو دوست داشتم', 'کاور آلبوم خیلی خوبه', 'انتظار بیشتری داشتم ازش',
+            'دوتا ترکش ضعیف‌تر بود بقیه عالی', 'کاش نسخه فیزیکیش هم بیاد', 'ترک آخرش بهترین بود',
+            'میکس آلبوم یکدسته، کیفیت خوبه', 'قیمت نسخه اورجینالش چند؟', 'بهترین آلبوم امساله به نظرم',
+            'هنوز کامل گوش ندادم، ولی شروعش خوب بود', 'ترک ۷ رو چند بار برگردوندم',
+        ];
+        $video = [
+            'کلیپش قشنگ شده', 'کارگردانش کیه؟', 'لوکیشنش کجاست؟ خیلی قشنگه', 'کیفیت تصویرش خوبه',
+            'تدوینش حرف نداره', 'کلیپ از خود آهنگ بهتر شده', 'بازیگر کلیپش کیه؟', 'کاش کیفیت 1080 هم می‌ذاشتید',
+            'این صحنه آخرش عالی بود', 'آهنگ خوبه ولی کلیپش معمولیه', 'کلیپش خیلی ساده‌ست، انتظار بیشتری داشتم',
+            'رنگ‌بندی کلیپ خیلی خوبه', 'کلیپ بدون آهنگ هم قشنگه', 'چند روزه منتظر کلیپش بودم',
+            'استوری‌بوردش خوب طراحی شده', 'نورپردازی صحنه دوم عالیه',
+        ];
+        $neutral_low = [
+            'اولین باره اسمشو می‌شنوم، بد نبود', 'جدیده؟ صداش بد نیست', 'کیفیت کارش متوسط بود',
+            'برای شروع بد نیست ولی جا داره', 'فکر می‌کردم بهتر باشه', 'ازش چیزی نمی‌دونستم، یه گوش می‌دم',
+            'کسی ازش خبری داره؟', 'یکم آماتور بود ولی استعداد داره', 'صداش خاص نیست ولی بدک نبود',
+            'با یه بار گوش دادن نظر نمی‌دم', 'میکسش ضعیفه ولی صدا خوبه', 'کاش یه کار بهتر ازش می‌شنیدم',
+            'هنوز به پای کارای معروفش نمی‌رسه', 'اسمش رو نشنیده بودم، الان شناختم', 'قابل قبوله برای شروع',
+            'خیلی تعریفش رو شنیدم ولی انتظارم بیشتر بود', 'باید بیشتر ازش بشنوم تا نظر بدم',
+        ];
+        if ($ctype === 'bio') return $bio;
+        if ($ctype === 'news') return $news;
+        if ($ctype === 'album') {
+            // آلبوم از خوانندهٔ ناشناخته: نصف انتقادی/سوالی
+            if ($recog === 'low') return array_merge($album, array_slice($neutral_low, 0, 8), ['کسی این آلبوم رو معرفی کرده؟', 'اسمش برام ناشناسه، ارزش گوش دادن داره؟']);
+            return $album;
+        }
+        if ($ctype === 'video') {
+            if ($recog === 'low') return array_merge($video, array_slice($neutral_low, 0, 8));
+            return $video;
+        }
+        return $neutral_low;
+    }
+
     // ساخت جملهٔ «تعریف از خواننده» یا «اشاره به آهنگ» یا «تیکهٔ ترانه»
     private static function relevance_line(int $post_id, string $artist, string $title, int $weight): array {
         static $used = [];
@@ -393,6 +526,11 @@ class CommentGuardian {
         }
         return ['type'=>'','text'=>''];
     }
+    // آیا کامنت لحن منفی/سوالی/محتاط دارد؟ (برای اینکه ایموجی و تعریف به آن نچسبد)
+    private static function looks_negative(string $txt): bool {
+        return (bool) preg_match('/ضعیف|اذیت|کند|تکراری|قدیمی|گیر|تاخیر|چرا|کاش|متوسط|نبود|نیست|میکسش|شعرش|کیفیتش|انتظار|معمولی|شایعه|باور ?نمی|تایید|منبع|اشتباه|کمتر|به‌روز|چند تا|کیه|کجاست|کدوم|کسی .*داره|نظرتون|می‌دونید|میدونید|رسمی|چک کردم|نامشخص|معلوم نیست/u', $txt);
+    }
+
     // چسباندن طبیعی جملهٔ اضافه به کامنت پایه (بدون خراب کردن لحن قبلی)
     private static function weave(string $base, string $extra, bool $is_lyric = false): string {
         $base = trim($base);
@@ -406,11 +544,15 @@ class CommentGuardian {
             $emoji = trim($m[1]);
             $base = rtrim(mb_substr($base, 0, mb_strlen($base) - mb_strlen($m[1])));
         }
+        // اگر پایه سوالی است، جملهٔ دوم بدون نقطه‌گذاری عجیب بچسبد
+        if (preg_match('/[؟?]\s*$/u', $base)) {
+            return rtrim($base, ' ') . ' ' . $extra . ($emoji !== '' ? ' ' . $emoji : '');
+        }
         $r = mt_rand(1,100);
-        if ($r <= 45) $out = rtrim($base, '.!…') . '، ' . $extra;
+        if ($r <= 45) $out = rtrim($base, '.!…؟?') . '، ' . $extra;
         elseif ($r <= 62) $out = $base . ' — ' . $extra;
-        elseif ($r <= 76) $out = rtrim($base, '.!…') . '… ' . $extra;
-        elseif ($r <= 88 || $is_lyric) $out = rtrim($base, '.!…') . '. ' . $extra;
+        elseif ($r <= 76) $out = rtrim($base, '.!…؟?') . '… ' . $extra;
+        elseif ($r <= 88 || $is_lyric) $out = rtrim($base, '.!…؟?') . '. ' . $extra;
         else $out = $base . '، ' . $extra;
         return $emoji !== '' ? $out . ' ' . $emoji : $out;
     }
@@ -442,7 +584,7 @@ class CommentGuardian {
         }
         self::remember_text($txt);
         // فقط 2% اسم آهنگ (خیلی کم) — بقیه نظر خالص بدون نام
-        if (mt_rand(1,100) <= 2 && mb_strlen($clean) > 2 && mb_strlen($clean) < 30) {
+        if (in_array(self::detect_content_type($post_id, $title), ['song','album','video'], true) && mt_rand(1,100) <= 2 && mb_strlen($clean) > 2 && mb_strlen($clean) < 30) {
             $addons = [
                 " اون قسمتش خیلی دوس داشتم",
                 " مخصوصا اونجاش",
@@ -457,8 +599,13 @@ class CommentGuardian {
 
         // ===== لایهٔ ارتباط: تعریف از خواننده / نام آهنگ / تیکهٔ ترانه =====
         // روی ترکیب قبلی سوار می‌شود و چیزی از پول‌های موجود را حذف نمی‌کند.
-        $is_negative_final = (bool) preg_match('/ضعیف|اذیت|کند|تکراری|قدیمی|گیر|تاخیر|چرا|کاش|متوسط|نبود|نیست|میکسش|شعرش|کیفیتش/u', $txt);
-        if (!$is_negative_final && mt_rand(1,100) <= 55 && mb_strlen($txt) < 145 && !preg_match('/[A-Za-z]{5,}/u', $clean)) {
+        $is_negative_final = self::looks_negative($txt);
+        $ctype_final = self::detect_content_type($post_id, $title);
+        $recog_final = self::recognition_level($weight, $views);
+        $is_music = in_array($ctype_final, ['song','album','video'], true);
+        // ناشناخته: تعریف از خواننده نمی‌چسبانیم و احتمال اشاره هم کمتر است
+        $rel_chance = ($recog_final === 'low') ? 0 : 55;
+        if ($is_music && !$is_negative_final && mt_rand(1,100) <= $rel_chance && mb_strlen($txt) < 145 && !preg_match('/[A-Za-z]{5,}/u', $clean)) {
             $rel = self::relevance_line($post_id, $artist, $clean, $weight);
             if (!empty($rel['text'])) {
                 $dup = false;
@@ -534,6 +681,8 @@ class CommentGuardian {
         $clean = self::clean_song_title($title, $artist);
         $settings = AI_Helper::get_settings();
         if (empty($settings['api_key'])) return null;
+        // نوع محتوا اول مشخص شود — بیوگرافی/خبر هرگز لحن آهنگ نمی‌گیرد
+        $ctype_ai = self::detect_content_type($post_id, $clean);
         // لحن بر اساس تحلیل رز موزیک: کوتاه محاوره‌ای، نه رسمی (2-7 کلمه ایده‌آل 60%) — با توجه به تازگی پست
         $is_new_ai = ($post_age_days !== null && $post_age_days < 60);
         $roll = mt_rand(1,100);
@@ -565,18 +714,56 @@ class CommentGuardian {
         } else {
             $examples = 'نمونه طول/لحن (کپی نکن، فقط الگو بگیر): "ممنون عالی بود" / "آخرشه حرف نداره" / "عالییییی" / "محشره محسن جان ۲۰👌" / "زیبا بود ارمش گرفتم" / "چرا اهنگای قرن بوقی میذارین؟؟؟" / "خیلییی قشنگه متنشم قشنگه…" / "بهترین اهنگشه به نظرم 😍"';
         }
+        // بیوگرافی و خبر: لحن و نمونه‌ها باید از جنس متن باشند نه آهنگ
+        if ($ctype_ai === 'bio') {
+            $tone = 'نظر کوتاه دربارهٔ یک بیوگرافی/مقاله: "ممنون از این مطلب کامل" "کاش بخش شروع کارش کامل‌تر بود" "این اطلاعات از منبع موثقه؟" "خیلی چیزا یاد گرفتم" — 3 تا 10 کلمه، محاوره‌ای ولی محترمانه';
+            $examples = 'نمونه‌ها (کپی نکن): "ممنون از بیوگرافی کاملش" / "کاش درباره شروع کارش بیشتر می‌نوشتید" / "سال تولدش اشتباه نوشته شده" / "نمی‌دونستم اینقدر سابقه داره" / "منبعش ویکی‌پدیاست؟" / "لطفا بقیه خواننده‌ها هم"';
+        } elseif ($ctype_ai === 'news') {
+            $tone = 'نظر کوتاه دربارهٔ یک خبر: "منبعش کجاست؟" "امیدوارم شایعه باشه" "منتظر تایید رسمی‌ام" "بالاخره یه خبر خوب" — 3 تا 10 کلمه، محاوره‌ای و بی‌طرف';
+            $examples = 'نمونه‌ها (کپی نکن): "منبع خبر کجاست؟" / "امیدوارم شایعه باشه" / "بالاخره یه خبر خوب" / "کاش تاریخ دقیق رو می‌نوشتید" / "این خبر قدیمیه" / "تا تایید رسمی باور نمی‌کنم"';
+        }
+        // لحن اختصاصی هر نوع محتوا
+        if ($ctype_ai === 'bio') {
+            $type_rule = 'این صفحه بیوگرافی/زندگی‌نامهٔ خواننده است، نه آهنگ. دربارهٔ زندگی، شروع کار، آلبوم‌ها یا اطلاعات متن نظر بده؛ می‌توانی منبع را زیر سوال ببری یا بخواهی بخشی کامل‌تر شود («منبعش کجاست؟»، «کاش بخش شروع کارش کامل‌تر بود»). هرگز دربارهٔ ریتم یا ملودی یک آهنگ خاص حرف نزن.';
+        } elseif ($ctype_ai === 'news') {
+            $type_rule = 'این یک خبر یا اطلاعیه است، نه آهنگ. دربارهٔ خود خبر نظر بده: منبع، تایید رسمی، انتظار یا بدبینی ملایم («منبعش کجاست؟»، «امیدوارم شایعه باشه»، «منتظر تایید رسمی‌ام»). تعریف از آهنگ نکن.';
+        } elseif ($ctype_ai === 'album') {
+            $type_rule = 'این یک آلبوم است. می‌توانی از ترک‌ها، ترتیبش، کاور یا کیفیت کلی آلبوم بگویی («ترک ۴ حرف نداره»، «ترتیب ترک‌ها خوب چیده شده»).';
+        } elseif ($ctype_ai === 'video') {
+            $type_rule = 'این یک موزیک‌ویدیو یا کلیپ است. دربارهٔ تصویر، کارگردانی، لوکیشن یا تدوین هم می‌توانی نظر بدهی («کلیپش قشنگ شده»، «کارگردانش کیه؟»).';
+        } else {
+            $type_rule = '';
+        }
         // تیکهٔ واقعی ترانه (اگر موجود باشد) + نام خواننده/آهنگ برای اشارهٔ طبیعی
-        $hook = self::extract_lyric_hook($post_id);
+        $hook = ($ctype_ai === 'bio' || $ctype_ai === 'news') ? '' : self::extract_lyric_hook($post_id);
         $hook_hint = $hook !== '' ? ' تیکهٔ ترانهٔ واقعی این آهنگ: «'.$hook.'» — اگر خواستی فقط همین را نقل کن، چیزی از خودت به‌عنوان شعر نساز.' : '';
         $rel_roll = mt_rand(1,100);
-        if ($rel_roll <= 40) {
+        if ($ctype_ai === 'bio' || $ctype_ai === 'news') {
+            $rel_rule = $type_rule;
+        } elseif ($rel_roll <= 40) {
             $rel_rule = 'در این کامنت حتماً به‌طور طبیعی از خواننده ('.$artist.') تعریف کن، مثلا «دمت گرم '.self::artist_first_word($artist).'» یا «صدای '.self::artist_short($artist).' آرامشه» — خودمونی و کوتاه.';
         } elseif ($rel_roll <= 65) {
             $rel_rule = 'در این کامنت اسم آهنگ («'.self::title_short($clean).'») را طبیعی بیاور و تعریف کن، مثل «'.self::title_short($clean).' رو چند بار گوش دادم».';
         } else {
             $rel_rule = 'در این کامنت به تیکه/متن ترانه اشاره کن و بگو کدام قسمت به دلت نشست.'.$hook_hint;
         }
-        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. برای اهنگ \"".$clean."\" از \"".$artist."\" یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — $rel_rule — قوانین: 1) فارسی محاوره‌ای 2-12 کلمه ترجیحا، حداکثر 18 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) 4) هرگز شعر جعلی نساز؛ اگر تیکهٔ ترانه را نمی‌دانی، فقط تماتیک اشاره کن («اون تیکه که از دلتنگی میگه») 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.";
+        $recog_ai = self::recognition_level($weight, $views);
+        $known_rule = ($recog_ai === 'low')
+            ? ' این خواننده یا اثر شناخته‌شده نیست؛ پس تعریف بی‌جا و بزرگ‌نمایی نکن. طبیعی‌تر است کنجکاو باشی یا بی‌طرف نظر بدهی («اولین باره اسمشو می‌شنوم، بد نبود»، «برای شروع بد نیست») و حداکثر یک ایراد کوچک بگیری.'
+            : '';
+        if ($ctype_ai === 'bio') {
+            $subject = 'برای صفحهٔ بیوگرافی "'.$clean.'" دربارهٔ "'.$artist.'"';
+        } elseif ($ctype_ai === 'news') {
+            $subject = 'برای خبر "'.$clean.'" دربارهٔ "'.$artist.'"';
+        } elseif ($ctype_ai === 'album') {
+            $subject = 'برای آلبوم "'.$clean.'" از "'.$artist.'"';
+        } else {
+            $subject = 'برای اهنگ "'.$clean.'" از "'.$artist.'"';
+        }
+        $lyric_rule = ($ctype_ai === 'bio' || $ctype_ai === 'news')
+            ? '4) دربارهٔ آهنگ، ریتم یا ملودی حرف نزن؛ اگر اطلاعات متن ناقص است، طبیعی است که منبع یا تکمیل آن را بخواهی'
+            : '4) هرگز شعر جعلی نساز؛ اگر تیکهٔ ترانه را نمی‌دانی، فقط تماتیک اشاره کن («اون تیکه که از دلتنگی میگه»)';
+        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. ".$subject." یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — $rel_rule — قوانین: 1) فارسی محاوره‌ای 2-12 کلمه ترجیحا، حداکثر 18 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) ".$lyric_rule." 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.".$known_rule;
         $payload = [
             'model' => $settings['model'] ?: 'gpt-4o-mini',
             'messages' => [
@@ -659,12 +846,28 @@ private static function fallback_text(int $weight, int $views, string $title = '
             'خاطره دارم باهاش خیلی دوسش دارم', 'یاد عشق قدیمم افتادم', 'با عشقم با این اهنگ اشنا شدیم', 'هر وقت میشنوم دلم میگیره',
             'خیلی وقت بود دنبالش بودم مرسی', 'واقعا به دلم نشست', 'ارامش گرفتم باهاش ممنون', 'حالم باهاش خوب میشه',
         ];
+        // برای هنرمند ناشناخته: «شخصی/احساسی» هم نباید تعریف بزرگ باشد
+        $personal_neutral = [
+            'اولین باره می‌شنومش، ببینم بعدا چی میشه', 'این اولین کارشه؟', 'یه بار گوش دادم، نظر خاصی ندارم',
+            'باید چند بار گوش بدم تا نظرم عوض بشه', 'هنوز نمی‌دونم دوستش دارم یا نه', 'با این کارش نظرم عوض نشد',
+            'کسی معرفیش کرده؟', 'از کجا اومده یهو؟', 'اسمش برام ناآشناست', 'فکر کنم تازه شروع کرده',
+            'استعدادش هست، هنوز پخته نیست', 'باید بیشتر کار بده تا بشناسیمش',
+        ];
         $long_emotional = [
             'به جرات میتونم بگم بهترین اهنگشه باعث افتخارمونه همشهری 😍', 'متنش هم قشنگه ریتمش هم عالیه واقعا لذت بردم',
             'هم ریتمش هم متنش هم صداش عالیه واقعا محشره', 'خیلی اهنگ قشنگیه متنش هم قشنگه دمش گرم',
             'صداش معرکه است این قطعه خاص شده واقعا', 'هر ثانیه‌ش پر از احساس بود ممنون بابت این اثر',
             'واقعا شاهکاره صدا و حس بی نظیره', 'این قطعه بی تردید ماندگار میشه', 'اجرای فوق العاده بود تبریک میگم',
             'ترانه به یاد موندنی با تنظیمی خوب', 'بی نهایت لذت بردم جزو بهتریناست', 'صداتون معجزه میکنه',
+        ];
+        // برای هنرمند ناشناخته: همین طول ولی لحن بی‌طرف/منتقدانه‌تر (نه «بهترین آهنگشه»)
+        $long_neutral = [
+            'بد نبود، ولی هنوز جا داره بهتر بشه', 'برای شروع خوبه، منتظر کارای بعدیشم',
+            'صدا داره ولی تنظیم ضعیف‌تر از حد انتظار بود', 'کاش میکسش تمیزتر بود',
+            'یه چیز تازه بود، ارزش یه بار گوش دادن رو داشت', 'هنوز سبک خودش رو پیدا نکرده',
+            'استعداد داره، فقط باید بیشتر کار کنه', 'نسبت به کارای مشابهش متوسط بود',
+            'شنیدنی بود، ولی تو ذهنم نمی‌مونه', 'تلاشش قابل تقدیره ولی راه زیاد داره',
+            'ازش انتظار بیشتری داشتم راستش', 'قابل قبوله، ولی هنوز آماتوره',
         ];
 
         // تشخیص تازگی پست برای کامنت هوشمند — موزیک جدید نباید «چرا قدیمی میذارین» بخورد
@@ -700,13 +903,45 @@ private static function fallback_text(int $weight, int $views, string $title = '
         $critical_chance = $is_new_post ? 7 : 15; // درصد ورود به critical
         // محاسبه آستانه: ultra 38% + colloquial 24% = 62% → بعد critical 7/15% → بقیه personal/medium/long
 
-        if ($is_premium_effective) {
+        // نوع محتوا و سطح شناخته‌شدن هنرمند — بیوگرافی/خبر کامنت آهنگ نمی‌گیرد، ناشناخته سیل تعریف نمی‌گیرد
+        $ctype = self::detect_content_type($post_id, $title);
+        $recog = self::recognition_level($weight, $views);
+
+        if ($ctype !== 'song') {
+            // بیوگرافی/خبر/آلبوم/ویدیو: از استخر مخصوص خودش، غالباً سوالی و بی‌طرف
+            $tpool = self::typed_pool($ctype, $recog, $is_premium, $is_new_post);
+            $roll2 = mt_rand(1,100);
+            if ($ctype === 'bio' || $ctype === 'news') {
+                // این نوع محتوا سیل تعریف ندارد و هیچ‌وقت جملهٔ موزیکی نمی‌گیرد
+                $short_pos = ($ctype === 'bio')
+                    ? ['ممنون از این مطلب', 'خوب نوشته شده', 'عالی بود مرسی', 'کامل و دقیق بود', 'دستتون درد نکنه',
+                       'خیلی مفید بود', 'خسته نباشید', 'مطلب خوبی بود', 'به کارم اومد', 'مرسی از زحمتتون']
+                    : ['ممنون از خبر', 'خبر خوبی بود', 'مرسی از اطلاع‌رسانی', 'دمتون گرم', 'بالاخره',
+                       'خبر داغ بود', 'منتظر ادامه‌شیم', 'خوب بود', 'ممنون که گفتید', 'دستتون درد نکنه'];
+                if ($roll2 <= 22) $pool = $short_pos;
+                else $pool = $tpool;
+            } else {
+                // آلبوم/ویدیو: تعریف کوتاه عمومی + استخر مخصوص خودش (بدون «آهنگش محشره» نامربوط)
+                if ($roll2 <= 18) $pool = $ultra_short;
+                else $pool = $tpool;
+            }
+        } elseif ($is_premium_effective) {
             // پرفکت: 35% کوتاه، 40% محاوره، 15% شخصی، 10% متوسط — بدون انتقاد
             if ($roll <= 35) $pool = $ultra_short;
             elseif ($roll <= 65) $pool = $short_colloquial;
             elseif ($roll <= 80) $pool = $personal;
             elseif ($roll <= 92) $pool = $medium_natural;
             else $pool = $long_emotional;
+        } elseif ($recog === 'low') {
+            // هنرمند ناشناخته: تعریف کم، بی‌طرف/سوالی و انتقاد ملایم بیشتر — همه هم مثبت نه
+            $crit_end = $is_new_post ? 30 : 40;
+            if ($roll <= 8) $pool = $ultra_short;
+            elseif ($roll <= 20) $pool = $short_colloquial;
+            elseif ($roll <= $crit_end) $pool = $critical_question;
+            elseif ($roll <= ($crit_end + 26)) $pool = self::typed_pool('song', 'low'); // بی‌طرف/«نشنیده بودم»
+            elseif ($roll <= ($crit_end + 33)) $pool = $personal_neutral;
+            elseif ($roll <= ($crit_end + 39)) $pool = $medium_natural;
+            else $pool = $long_neutral;
         } else {
             // آستانه پویا بر اساس تازگی
             $crit_end = 62 + $critical_chance; // مثلا تازه: 69، قدیمی: 77
@@ -727,22 +962,33 @@ private static function fallback_text(int $weight, int $views, string $title = '
             }
         }
         // برای تازه‌ها بیشتر کوتاه، برای پرطرفدار بیشتر متوسط/طولانی ولی هنوز تنوع انتقاد حفظ شود
-        if ($is_low && $roll > 80) $pool = $ultra_short;
+        if ($is_low && $roll > 80 && $ctype === 'song') $pool = $ultra_short;
         // if ($is_high && $roll <= 10) $pool = $critical_question; // حتی هیت‌ها انتقاد میخورند
 
-        $natural_touch = [
-            'چند بار پشت سر هم گوش دادم', 'اینو تو پلی‌لیستم گذاشتم', 'از اون کاراست که خسته نمیشی',
-            'با هدفون گوش بدید یه چیز دیگه‌ست', 'امروز از صبح همینو گوش میدم', 'حالم با این خوب شد',
-            'دقیقا حالم رو خوب کرد', 'بعد از یه روز کاری چسبید', 'همین رو میخواستم امروز',
-            'تنظیمش تمیزه', 'کیفیت میکسش خوبه', 'قسمت آرومش خیلی خوب دراومده',
-            'به دوستمم فرستادم', 'توی ماشین فقط همین بود', 'اینو باید با صدای بلند گوش داد',
-            'چقدر خوب شد که اومد', 'منتظرش بودم واقعا', 'دلم میخواست یه همچین کاری بیاد',
-        ];
+        if ($ctype === 'bio' || $ctype === 'news') {
+            // بیوگرافی/خبر: جملهٔ دوم باید از جنس متن باشد نه موزیک
+            $natural_touch = [
+                'خوب و روان نوشته شده', 'منبع خوبی انتخاب کردید', 'کاش کامل‌ترش می‌کردید',
+                'چیزهای تازه‌ای دستگیرم شد', 'این مطلب رو ذخیره کردم', 'به دوستمم فرستادم بخونه',
+                'همیشه از این مطالب بذارید', 'خیلی به‌روز نیست ولی خوبه', 'دقیق و بی‌طرف نوشته شده',
+                'منتظرش بودم واقعا', 'بالاخره یه مطلب کامل', 'امیدوارم ادامه‌دار باشه',
+            ];
+        } else {
+            $natural_touch = [
+                'چند بار پشت سر هم گوش دادم', 'اینو تو پلی‌لیستم گذاشتم', 'از اون کاراست که خسته نمیشی',
+                'با هدفون گوش بدید یه چیز دیگه‌ست', 'امروز از صبح همینو گوش میدم', 'حالم با این خوب شد',
+                'دقیقا حالم رو خوب کرد', 'بعد از یه روز کاری چسبید', 'همین رو میخواستم امروز',
+                'تنظیمش تمیزه', 'کیفیت میکسش خوبه', 'قسمت آرومش خیلی خوب دراومده',
+                'به دوستمم فرستادم', 'توی ماشین فقط همین بود', 'اینو باید با صدای بلند گوش داد',
+                'چقدر خوب شد که اومد', 'منتظرش بودم واقعا', 'دلم میخواست یه همچین کاری بیاد',
+            ];
+        }
         $txt = $pool[array_rand($pool)];
         // کامنت انتقادی/سوالی نباید تعریف/ایموجی چسبیده بگیرد (طبیعی نیست)
-        $is_negative = (bool) preg_match('/ضعیف|اذیت|کند|تکراری|قدیمی|گیر|تاخیر|چرا|کاش|متوسط|نبود|نیست|میکسش|شعرش|کیفیتش/u', $txt);
-        // 14% یک جملهٔ طبیعی دوم (حرف آدم‌وار، نه تعریف تکراری)
-        if (!$is_negative && mt_rand(1,100) <= 14 && mb_strlen($txt) < 70 && !in_array($txt, $natural_touch, true)) {
+        $is_negative = self::looks_negative($txt);
+        // 14% یک جملهٔ طبیعی دوم — برای بیوگرافی/خبر نه (استخر خودشان لحن را دارد)
+        $allow_touch = !($ctype === 'bio' || $ctype === 'news');
+        if ($allow_touch && !$is_negative && mt_rand(1,100) <= 14 && mb_strlen($txt) < 70 && !in_array($txt, $natural_touch, true)) {
             $nt = $natural_touch[array_rand($natural_touch)];
             $txt = $txt . '، ' . $nt;
         }
@@ -759,7 +1005,10 @@ private static function fallback_text(int $weight, int $views, string $title = '
         }
         // 12% ترکیب دو جمله کوتاه با هم (برای تنوع طول) — بدون تکرار و بدون چسبیدن به انتقاد
         if (!$is_negative && mt_rand(1,100) <= 12 && mb_strlen($txt) < 75) {
-            $extra = $ultra_short[array_rand($ultra_short)];
+            $extra_pool = ($ctype === 'bio' || $ctype === 'news')
+                ? ['ممنون از زحمتتون', 'به کارم اومد', 'منتظرش بودم', 'ادامه بدید', 'دقیق بود']
+                : $ultra_short;
+            $extra = $extra_pool[array_rand($extra_pool)];
             $head = mb_substr($extra, 0, 7);
             if ($extra !== $txt && mb_strpos($txt, $head) === false) {
                 $hold = '';
@@ -911,7 +1160,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
             $stats = Adapter_KKSR::get_stats($pid);
             $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
             $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
-            $target = self::calculate_target($cur_views, $weight, $avg, $is_premium);
+            $target = self::calculate_target($cur_views, $weight, $avg, $is_premium, (int)$pid);
             // 2.1.0: برای پرطرفدار >100k خودکار بدون دخالت انسانی — هدف را 15% بیشتر کن
             if ($high_auto && $cur_views >= $high_thr) {
                 $target = min($max_per_post, $target + max(1, (int)ceil($target * 0.15)));
@@ -1081,7 +1330,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
             $stats = \ApexOmega\Core\Adapter_KKSR::get_stats($pid);
             $avg = isset($stats['avg']) ? (float)$stats['avg'] : 4.0;
             $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected((int)$r['ID']);
-            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg, $is_premium);
+            $target = self::calculate_target((int)$r['cur_views'], $weight, $avg, $is_premium, (int)$pid);
             $current = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
             $samples[] = ['ID'=>$pid,'title'=>mb_strimwidth($r['post_title']??'',0,40,'…'),'views'=>(int)$r['cur_views'],'weight'=>$weight,'avg'=>$avg,'target'=>$target,'current'=>$current];
         }

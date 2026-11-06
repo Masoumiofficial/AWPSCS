@@ -1291,7 +1291,7 @@ class ArtistManager {
                 // ——— هماهنگی کامنت با بازدید/امتیاز جدید (هرگز کم نمی‌شود) ———
                 try {
                     $cur_comments = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
-                    $target_comments = \ApexOmega\Core\CommentGuardian::calculate_target((int)$vals['views'], (int)$weight, (float)$vals['avg'], $is_premium);
+                    $target_comments = \ApexOmega\Core\CommentGuardian::calculate_target((int)$vals['views'], (int)$weight, (float)$vals['avg'], $is_premium, (int)$pid);
                     $cg_settings = \ApexOmega\Core\CommentGuardian::get_settings();
                     $max_per_post = (int)($cg_settings['max_per_post'] ?? 60);
                     $target_comments = min($target_comments, $max_per_post);
@@ -1521,7 +1521,7 @@ class ArtistManager {
                 $cur_comments=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'",$pid));
                 $weight_for_c=(int)($item['weight'] ?? 20);
                 $is_premium_c=!empty($item['is_premium']);
-                $target_comments=\ApexOmega\Core\CommentGuardian::calculate_target((int)$item['new_views'],$weight_for_c,(float)$item['new_avg'],$is_premium_c);
+                $target_comments=\ApexOmega\Core\CommentGuardian::calculate_target((int)$item['new_views'],$weight_for_c,(float)$item['new_avg'],$is_premium_c,(int)$pid);
                 $cg_settings=\ApexOmega\Core\CommentGuardian::get_settings(); $max_per_post=(int)($cg_settings['max_per_post'] ?? 60);
                 $target_comments=min($target_comments,$max_per_post);
                 if ($cur_comments < $target_comments) {
