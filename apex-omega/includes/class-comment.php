@@ -150,6 +150,19 @@ class CommentGuardian {
                 $target = min($target, 14);
             }
         }
+        // سقف هر پست + تنوع پایدار بین پست‌ها
+        // بدون این، همهٔ آهنگ‌های پرطرفدار دقیقاً به «سقف هر پست» می‌رسند و عدد یکسان می‌گیرند (سوتی)
+        $cap = (int) self::get_settings()['max_per_post'];
+        if ($cap > 0 && $post_id) {
+            if ($target >= $cap) {
+                $seed = (int) (crc32($post_id . '|' . $cap . '|' . ($is_premium ? 'p' : 'n')) % 1000);
+                $factor = $is_premium ? (0.95 + ($seed / 1000) * 0.05) : (0.90 + ($seed / 1000) * 0.10);
+                $target = (int) round($cap * $factor);
+                // هرگز کمتر از هدف واقعیِ پست نشود مگر اینکه از سقف رد شده باشد
+                $target = max(1, min($cap, $target));
+            }
+            $target = min($target, $cap);
+        }
         return $target;
     }
 
@@ -308,13 +321,24 @@ class CommentGuardian {
     }
 
     /* ============ لایهٔ ارتباط طبیعی با خواننده / آهنگ / تیکهٔ ترانه ============ */
+    // آیا نام خواننده واقعی است یا جای‌نگهدار («هنرمند ناشناس»)؟ جای‌نگهدار هرگز در کامنت نمی‌آید
+    public static function artist_is_placeholder(string $a): bool {
+        $a = trim($a);
+        if ($a === '') return true;
+        $low = str_replace(['‌', 'ي', 'ك'], ['', 'ی', 'ک'], mb_strtolower($a));
+        if (preg_match('/^(?:هنرمند|خواننده|گروه|آهنگ|موزیک|unknown|artist|n\/?a)(?:\s+(?:ناشناس|ناشناخته|نامشخص|unknown))?$/u', $low)) return true;
+        if (mb_strpos($low, 'ناشناس') !== false || mb_strpos($low, 'نامشخص') !== false) return true;
+        return false;
+    }
     // نام کوتاه خواننده برای «... جان»
     private static function artist_first_word(string $a): string {
+        if (self::artist_is_placeholder($a)) return '';
         $a = trim(preg_replace('/\s*\([^)]*\)/u', '', $a));
         $w = preg_split('/\s+/u', $a) ?: [];
         return count($w) ? trim($w[0]) : '';
     }
     private static function artist_short(string $a): string {
+        if (self::artist_is_placeholder($a)) return '';
         $a = trim(preg_replace('/\s*\([^)]*\)/u', '', $a));
         $w = preg_split('/\s+/u', $a) ?: [];
         if (count($w) > 2) $a = implode(' ', array_slice($w, 0, 2));
@@ -370,6 +394,7 @@ class CommentGuardian {
             $ln = self::trim_sep($ln);
             if (mb_strlen($ln) < 12 || mb_strlen($ln) > 46) continue;
             if (preg_match('/https?:|www\.|\.(mp3|zip|jpg|png|rar)|دانلود|کلیک|سایت|پخش|اشتراک|حق نشر/u', $ln)) continue;
+            if (preg_match('/آهنگ|موزیک|ترانه|آلبوم|خواننده|کیفیت|بیت\s*ریت|ریمیکس|کاور|پست|مطلب|نویسنده|منبع|جدیدترین|منتشر/u', $ln)) continue;
             if (preg_match('/[A-Za-z]{4,}/u', $ln)) continue;
             $w = preg_split('/\s+/u', $ln) ?: [];
             if (count($w) < 3 || count($w) > 7) continue;
@@ -626,6 +651,7 @@ class CommentGuardian {
         foreach ($choices as $type) {
             if (!empty($u[$type])) continue;
             if ($type === 'artist') {
+                if (self::artist_is_placeholder($artist)) continue;
                 $a = self::artist_short($artist);
                 $f = self::artist_first_word($artist);
                 if (mb_strlen($a) < 3) continue;
@@ -692,6 +718,22 @@ class CommentGuardian {
         }
         return ['type'=>'','text'=>''];
     }
+    // آیا جملهٔ دوم، تعریف تکراری جملهٔ اول است؟ («محشره واقعا. ... محشره»)
+    private static function repeats_praise(string $base, string $extra): bool {
+        $praise = ['محشره','محشر','عالیه','عالی','قشنگه','قشنگ','خفنه','خفن','بهترینه','بهترین','حرف نداره','دوسش دارم','دوستش دارم','آرامش','ارامش','زیبا','لذت بردم','شاهکار','معرکه'];
+        foreach ($praise as $w) {
+            if (mb_stripos($base, $w) !== false && mb_stripos($extra, $w) !== false) return true;
+        }
+        // تکرار کلمات معنادار (۵ حرف به بالا) هم آزاردهنده است
+        $stop = ['خیلی','واقعا','همیشه','اینو','اونو','برام','حالم','دلم','گوش','دادم','میدم','کردم'];
+        preg_match_all('/[\p{L}\x{200C}]{5,}/u', $extra, $m);
+        foreach (array_unique($m[0] ?? []) as $w) {
+            if (in_array($w, $stop, true)) continue;
+            if (mb_stripos($base, $w) !== false) return true;
+        }
+        return false;
+    }
+
     // آیا کامنت لحن منفی/سوالی/محتاط دارد؟ (برای اینکه ایموجی و تعریف به آن نچسبد)
     private static function looks_negative(string $txt): bool {
         return (bool) preg_match('/ضعیف|اذیت|کند|تکراری|قدیمی|گیر|تاخیر|چرا|کاش|متوسط|نبود|نیست|میکسش|شعرش|کیفیتش|انتظار|معمولی|شایعه|باور ?نمی|تایید|منبع|اشتباه|کمتر|به‌روز|چند تا|کیه|کجاست|کدوم|کسی .*داره|نظرتون|می‌دونید|میدونید|رسمی|چک کردم|نامشخص|معلوم نیست/u', $txt);
@@ -724,6 +766,26 @@ class CommentGuardian {
     }
 
     // تولید متن کامنت — طبیعی مثل رز موزیک / موزیکس-فا (تحلیل 12 نمونه واقعی) — کوتاه، کشیده، غلط ریز، بدون تکرار
+    /**
+     * متن یکتا برای همین پست — به‌جای چسباندن عدد تصادفی به انتهای کامنت،
+     * دوباره تولید می‌کند و اگر نتوانست، رشتهٔ خالی برمی‌گرداند (کامنت تکراری نگذار).
+     */
+    public static function unique_text(int $post_id, string $artist, string $title, int $weight, int $views, bool $is_premium = false, int $tries = 6): string {
+        global $wpdb;
+        $tries = max(1, min(12, $tries));
+        for ($n = 0; $n < $tries; $n++) {
+            $txt = self::generate_text($post_id, $artist, $title, $weight, $views, $is_premium);
+            $txt = trim((string)$txt);
+            if ($txt === '') continue;
+            $exists = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s",
+                $post_id, $txt
+            ));
+            if (!$exists) return $txt;
+        }
+        return '';
+    }
+
     public static function generate_text(int $post_id, string $artist, string $title, int $weight, int $views, bool $is_premium = false): string {
         $orig_weight = $weight; $orig_views = $views;
         // منتخب ویژه — وزن موثر 95 برای پرفکت بودن (حتی اگر خواننده نوپا باشد)
@@ -759,7 +821,7 @@ class CommentGuardian {
         // روی ترکیب قبلی سوار می‌شود و چیزی از پول‌های موجود را حذف نمی‌کند.
         $is_negative_final = self::looks_negative($txt);
         $ctype_final = self::detect_content_type($post_id, $title);
-        $recog_final = self::recognition_level($weight, $views);
+        $recog_final = self::artist_is_placeholder($artist) ? 'low' : self::recognition_level($weight, $views);
         $is_music = in_array($ctype_final, ['song','album','video'], true);
         $is_trend_final = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post($post_id);
         // ناشناخته: تعریف از خواننده نمی‌چسبانیم و احتمال اشاره هم کمتر است
@@ -815,7 +877,7 @@ class CommentGuardian {
         }
         return $s;
     }
-    // ضد تکرار سراسری — آخرین 200 متن را نگه می‌دارد
+    // ضد تکرار سراسری — آخرین ۱۰۰۰ متن را نگه می‌دارد
     private static function recent_key(): string { return 'apex_omega_recent_comments'; }
     private static function is_recent_duplicate(string $txt, int $post_id): bool {
         $key = self::recent_key();
@@ -963,6 +1025,17 @@ class CommentGuardian {
         $content = preg_replace('/#\S+/u', '', $content);
         $content = trim($content);
         if (!$content || mb_strlen($content) < 2 || mb_strlen($content) > 180) return null;
+        // هیچ لینک/تبلیغی در کامنت نباشد (ریسک اسپم برای سئو)
+        if (preg_match('/https?:|www\.|\.(?:com|ir|net|org)\b|\bدانلود\b|\bلینک\b|\bhref\b/iu', $content)) return null;
+        // اسم آهنگ در خروجی مدل هم کنترل می‌شود (پرامپت کافی نیست)
+        if (!self::mention_title_enabled()) {
+            $tt_ai = self::title_short($clean);
+            if ($tt_ai !== '' && mb_strlen($tt_ai) >= 3) {
+                $content = str_ireplace(['«'.$tt_ai.'»', '"'.$tt_ai.'"', $tt_ai], '', $content);
+                $content = trim(preg_replace('/\s{2,}/u', ' ', $content));
+                $content = self::trim_sep($content, '«»""،,.:;');
+            }
+        }
         // اگر خیلی رسمی/طولانی بود (بیش از 12 کلمه و با نقطه پایان رسمی)، کوتاه کن
         $words = preg_split('/\s+/u', $content);
         if (count($words) > 14 && mb_strlen($content) > 70) {
@@ -1080,6 +1153,8 @@ private static function fallback_text(int $weight, int $views, string $title = '
         // نوع محتوا و سطح شناخته‌شدن هنرمند — بیوگرافی/خبر کامنت آهنگ نمی‌گیرد، ناشناخته سیل تعریف نمی‌گیرد
         $ctype = self::detect_content_type($post_id, $title);
         $recog = self::recognition_level($weight, $views);
+        // بدون نام خواننده، تعریف از «هنرمند» بی‌معنی است → لحن محتاط/بی‌طرف
+        if (self::artist_is_placeholder($artist)) $recog = 'low';
 
         if ($ctype !== 'song') {
             // بیوگرافی/خبر/آلبوم/ویدیو: از استخر مخصوص خودش، غالباً سوالی و بی‌طرف
@@ -1160,10 +1235,11 @@ private static function fallback_text(int $weight, int $views, string $title = '
         // آهنگ ترند: لحن وایرال/نوستالژی با نام خود خواننده و آهنگ (با بقیه قاطی نمی‌شود)
         $is_trend_post = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post($post_id);
         if ($is_trend_post && empty($title) && $post_id) $title = (string) get_the_title($post_id);
-        if ($is_trend_post) {
+        if ($is_trend_post && in_array($ctype, ['song','album','video'], true)) {
             // وزن تمرکز: ۳۵٪ نام آهنگ، ۳۰٪ نام خواننده، ۲۰٪ تیکهٔ ترانه، ۱۵٪ عمومی/وایرال
             $roll_t = mt_rand(1,100);
-            if ($roll_t <= 35) $focus = 'title';
+            $title_ok = self::mention_title_enabled();
+            if ($roll_t <= 35 && $title_ok) $focus = 'title';
             elseif ($roll_t <= 65) $focus = 'artist';
             elseif ($roll_t <= 85) $focus = 'lyric';
             else $focus = 'generic';
@@ -1178,7 +1254,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
         $allow_touch = !($ctype === 'bio' || $ctype === 'news');
         if ($allow_touch && !$is_negative && mt_rand(1,100) <= 14 && mb_strlen($txt) < 70 && !in_array($txt, $natural_touch, true)) {
             $nt = $natural_touch[array_rand($natural_touch)];
-            $txt = $txt . '، ' . $nt;
+            if (!self::repeats_praise($txt, $nt)) $txt = $txt . '، ' . $nt;
         }
 
         // 22% ایموجی سبک (نه زیاده) — هرگز روی کامنت انتقادی (طبیعی نیست)
@@ -1198,7 +1274,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
                 : $ultra_short;
             $extra = $extra_pool[array_rand($extra_pool)];
             $head = mb_substr($extra, 0, 7);
-            if ($extra !== $txt && mb_strpos($txt, $head) === false) {
+            if ($extra !== $txt && mb_strpos($txt, $head) === false && !self::repeats_praise($txt, $extra)) {
                 $hold = '';
                 if (preg_match('/(\s*(?:[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}]\x{FE0F}?\s*)+)$/u', $txt, $m)) {
                     $hold = trim($m[1]);
@@ -1221,7 +1297,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
         $log = ob_get_clean();
         return ['before'=>$before,'after'=>$after,'log'=>$log];
     }
-    // تیک هر ۱ ساعت (ریتم هرساعته 2026-10-21) — همهٔ پست‌ها بر اساس بازدید+امتیاز، gradual increase never decrease
+    // تیک کامنت: کرون هر ۶ ساعت (گیت داخلی ۱ ساعت) — همهٔ پست‌ها بر اساس بازدید+امتیاز، gradual increase never decrease
     public static function tick(bool $verbose = false): void {
         if (!self::is_enabled()) return;
         // گیت ۱ساعته — فقط هر ۳۶۰۰ ثانیه اجرا شود (دستی verbose دور می‌زند)
@@ -1373,18 +1449,14 @@ private static function fallback_text(int $weight, int $views, string $title = '
                 } elseif ($cur_views >= 10000) {
                     $need = min($need, mt_rand(min(4, $target), min(7, $target)));
                 } else {
-                    $need = min($need, mt_rand(4, min(6, $target)));
+                    $hi = max(1, min(6, (int)$target));
+                    $lo = min(4, $hi);
+                    $need = min($need, mt_rand($lo, $hi));
                 }
                 if ($verbose) echo "zero-fill pid=$pid views=$cur_views target=$target need=$need\\n";
             } else {
-                $is_mega_hit = ($cur_views >= 500000 && ($avg >= 4.7 || $cur_views >= 1000000));
-                $is_zero_fill = ($current === 0 && $target >= 20);
-                if ($is_zero_fill && $is_mega_hit) {
-                    $need = min($need, mt_rand(10, 14));
-                    if ($verbose) echo "mega-fill pid=$pid views=$cur_views avg=$avg target=$target need=$need (burst)\\n";
-                } elseif ($is_zero_fill && $cur_views >= 300000) {
-                    $need = min($need, mt_rand(6, 9));
-                } elseif ($cur_views < $threshold) {
+                // (current !== 0 در این شاخه؛ پرکردن صفر در بالا هندل شده)
+                if ($cur_views < $threshold) {
                     $need = min($need, mt_rand($s['min_comments'], $s['max_comments']));
                 } else {
                     if ($cur_views >= 1000000) {
@@ -1415,19 +1487,13 @@ private static function fallback_text(int $weight, int $views, string $title = '
                 if ($current + $inserted >= $target) break;
                 if ($current + $inserted >= $max_per_post) break;
                 $who = self::generate_name();
-                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium ?? false);
+                // یکتا در کل تاریخچهٔ همین پست (نه فقط ۲۴ ساعت) — بدون چسباندن عدد
+                $text = self::unique_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium ?? false);
+                if ($text === '') continue;
                 // کمی تنوع زمانی: هر کامنت 2-10 دقیقه فاصله (برای طبیعی بودن تاریخ)
-                $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 600));
+                // پخش زمانی طبیعی (نه ۱۰ کامنت در ۱۰ دقیقه)
+                $comment_time_gmt = self::comment_time_gmt($pid, 72);
                 $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
-                // جلوگیری از duplicate exact (همون متن + همون پست در 24h)
-                $dup = $wpdb->get_var($wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s",
-                    $pid, $text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)
-                ));
-                if ($dup) {
-                    // متن تکراری — fallback دیگر بگیر
-                    $text = self::fallback_text($weight, $cur_views, '', $is_premium ?? false) . ' ' . mt_rand(10,99);
-                }
                 $cid = wp_insert_comment([
                     'comment_post_ID' => $pid,
                     'comment_author' => $who['author'],
@@ -1438,7 +1504,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
                     'comment_parent' => 0,
                     'user_id' => 0,
                     'comment_author_IP' => self::fake_ip(),
-                    'comment_agent' => 'Mozilla/5.0',
+                    'comment_agent' => self::fake_agent(),
                     'comment_date' => $comment_time,
                     'comment_date_gmt' => $comment_time_gmt,
                     'comment_approved' => 1,
@@ -1551,11 +1617,11 @@ private static function fallback_text(int $weight, int $views, string $title = '
         $inserted = 0;
         for ($i=0; $i < $count; $i++) {
             $who = self::generate_name();
-            $text = self::generate_text($post_id, $artist_name, $title, $weight, $cur_views);
-            $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 300));
+            // پرمیوم هم پاس داده شود (قبلاً فراموش شده بود)
+            $text = self::unique_text($post_id, $artist_name, $title, $weight, $cur_views, $is_premium);
+            if ($text === '') continue;
+            $comment_time_gmt = self::comment_time_gmt($post_id, 36);
             $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
-            $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $post_id, $text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
-            if ($dup) $text = self::fallback_text($weight, $cur_views) . ' ' . mt_rand(10,99);
             $cid = wp_insert_comment([
                 'comment_post_ID' => $post_id,
                 'comment_author' => $who['author'],
@@ -1566,7 +1632,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
                 'comment_parent' => 0,
                 'user_id' => 0,
                 'comment_author_IP' => self::fake_ip(),
-                'comment_agent' => 'Mozilla/5.0',
+                'comment_agent' => self::fake_agent(),
                 'comment_date' => $comment_time,
                 'comment_date_gmt' => $comment_time_gmt,
                 'comment_approved' => 1,
@@ -1659,12 +1725,10 @@ private static function fallback_text(int $weight, int $views, string $title = '
             for ($i=0; $i < $need; $i++) {
                 if ($cur + $inserted >= $max_per_post) break;
                 $who = self::generate_name();
-                $text = self::generate_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium);
-                $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 1800));
+                $text = self::unique_text($pid, $artist_name, $title, $weight, $cur_views, $is_premium);
+                if ($text === '') continue;
+                $comment_time_gmt = self::comment_time_gmt($pid, 72);
                 $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
-                // duplicate 24h چک
-                $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $pid, $text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
-                if ($dup) $text = self::fallback_text($weight, $cur_views, '', $is_premium) . ' ' . mt_rand(10,99);
                 $cid = wp_insert_comment([
                     'comment_post_ID' => $pid,
                     'comment_author' => $who['author'],
@@ -1675,7 +1739,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
                     'comment_parent' => 0,
                     'user_id' => 0,
                     'comment_author_IP' => self::fake_ip(),
-                    'comment_agent' => 'Mozilla/5.0',
+                    'comment_agent' => self::fake_agent(),
                     'comment_date' => $comment_time,
                     'comment_date_gmt' => $comment_time_gmt,
                     'comment_approved' => 1,
@@ -1737,18 +1801,67 @@ private static function fallback_text(int $weight, int $views, string $title = '
         ];
     }
 
+    // استخراج نام خواننده از عنوان وقتی ترم taxonomy ثبت نشده: «... از پازل بند» / «- پازل بند» / نام شناخته‌شده
+    private static function artist_from_title(string $title): string {
+        $t = trim(preg_replace('/\s*[\(\[][^\)\]]*[\)\]]\s*/u', ' ', (string)$title));
+        if ($t === '') return '';
+        // ۱) نام هنرمند شناخته‌شده داخل عنوان (بلندترین تطبیق برنده است: «محسن یگانه» بر «یگانه»)
+        $best = '';
+        foreach (self::known_artist_names() as $kn) {
+            $kn = trim((string)$kn);
+            if (mb_strlen($kn) < 3) continue;
+            if (mb_stripos($t, $kn) !== false && mb_strlen($kn) > mb_strlen($best)) $best = $kn;
+        }
+        if ($best !== '') return $best;
+        // ۲) الگوی «از X» / «با صدای X» / «اثر X» در انتهای عنوان
+        if (preg_match('/(?:از|با\s*صدای|اثر|به\s*خوانندگی|به\s*همراهی)\s+([\p{L}\p{M}][\p{L}\p{M}\s\x{200C}]{1,38})\s*$/u', $t, $m)) {
+            $cand = trim(preg_replace('/\s*(?:با\s*کیفیت|کیفیت|mp3|320|128|192|256).*$/iu', '', $m[1]));
+            $cand = self::trim_sep($cand);
+            if (mb_strlen($cand) >= 3 && !self::artist_is_placeholder($cand)) return $cand;
+        }
+        // ۳) جداکنندهٔ رایج «آهنگ - خواننده»
+        $ext = ArtistManager::extract_artist_from_title($t);
+        return ($ext && !self::artist_is_placeholder($ext)) ? $ext : '';
+    }
+
     public static function get_primary_artist(int $post_id): string {
         $tax = ArtistManager::detect_artist_taxonomy();
         if ($tax) {
             $terms = wp_get_post_terms($post_id, $tax, ['fields'=>'names']);
-            if (!empty($terms) && !is_wp_error($terms)) return $terms[0];
+            if (!empty($terms) && !is_wp_error($terms) && !self::artist_is_placeholder((string)$terms[0])) return $terms[0];
         }
-        $t = get_the_title($post_id);
-        $ext = ArtistManager::extract_artist_from_title($t);
-        return $ext ?: '';
+        return self::artist_from_title((string) get_the_title($post_id));
+    }
+
+    // زمان طبیعی کامنت: پخش‌شده در چند ساعت/روز گذشته، هرگز قبل از انتشار پست و هرگز در آینده
+    public static function comment_time_gmt(int $post_id, int $window_hours = 72): string {
+        $now = time();
+        $window = max(HOUR_IN_SECONDS, (int)$window_hours * HOUR_IN_SECONDS);
+        $ts = $now - mt_rand(60, $window);
+        if ($post_id) {
+            $pub = (string) get_post_field('post_date_gmt', $post_id);
+            if ($pub) {
+                $pub_ts = strtotime($pub . ' GMT');
+                if ($pub_ts && $pub_ts > $ts) $ts = $pub_ts + mt_rand(MINUTE_IN_SECONDS, 6 * HOUR_IN_SECONDS);
+            }
+        }
+        if ($ts > $now - 60) $ts = $now - mt_rand(60, 1800);
+        return gmdate('Y-m-d H:i:s', $ts);
     }
 
     private static function fake_ip(): string {
         return mt_rand(1,223).'.'.mt_rand(0,255).'.'.mt_rand(0,255).'.'.mt_rand(1,254);
+    }
+
+    // User-Agent متنوع مثل کاربر واقعی (نه همه «Mozilla/5.0»)
+    public static function fake_agent(): string {
+        $pool = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (Linux; Android 14; SM-A536B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
+        ];
+        return $pool[array_rand($pool)];
     }
 }

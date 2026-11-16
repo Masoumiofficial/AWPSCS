@@ -1083,7 +1083,11 @@ class ArtistManager {
             if ($with_comments) {
                 try {
                     $c_added = \ApexOmega\Core\CommentGuardian::send_for_post($pid, 1);
-                    if (empty($c_added['success']) || empty($c_added['inserted'])) {
+                    // اگر پست به سقف کامنت رسیده باشد، مسیر جایگزین هم نباید از سقف رد شود
+                    $cg_set = \ApexOmega\Core\CommentGuardian::get_settings();
+                    $cg_cap = (int)($cg_set['max_per_post'] ?? 60);
+                    $cg_cur = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_approved='1'", $pid));
+                    if ($cg_cur < $cg_cap && (empty($c_added['success']) || empty($c_added['inserted']))) {
                         $who = \ApexOmega\Core\CommentGuardian::generate_name();
                         $title_tmp = get_the_title($pid);
                         $artist_tmp = '';
@@ -1092,11 +1096,12 @@ class ArtistManager {
                             $terms_tmp = wp_get_post_terms($pid, $tax_tmp, ['fields'=>'names']);
                             if (!empty($terms_tmp) && !is_wp_error($terms_tmp)) $artist_tmp = $terms_tmp[0];
                         }
-                        $text_tmp = \ApexOmega\Core\CommentGuardian::generate_text($pid, $artist_tmp ?: 'هنرمند', $title_tmp, (int)$w, (int)$vals['views'], true);
-                        if ($text_tmp) {
+                        // یکتا و بدون عدد؛ متای _apex_commentor هم ثبت می‌شود تا بعداً قابل پاک‌سازی باشد
+                        $text_tmp = \ApexOmega\Core\CommentGuardian::unique_text($pid, (string)$artist_tmp, $title_tmp, (int)$w, (int)$vals['views'], true);
+                        if ($text_tmp !== '') {
                             apex_omega_ensure_comments_open((int)$pid);
-                            $comment_time_gmt_tmp = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 300));
-                            wp_insert_comment([
+                            $comment_time_gmt_tmp = \ApexOmega\Core\CommentGuardian::comment_time_gmt((int)$pid, 48);
+                            $cid_tmp = wp_insert_comment([
                                 'comment_post_ID'=>$pid,
                                 'comment_author'=>$who['author'],
                                 'comment_author_email'=>$who['email'],
@@ -1106,12 +1111,18 @@ class ArtistManager {
                                 'comment_parent'=>0,
                                 'user_id'=>0,
                                 'comment_author_IP'=> sprintf('%d.%d.%d.%d', mt_rand(1,223), mt_rand(0,255), mt_rand(0,255), mt_rand(1,254)),
-                                'comment_agent'=>'Mozilla/5.0 (APEX-Premium)',
+                                'comment_agent'=>\ApexOmega\Core\CommentGuardian::fake_agent(),
                                 'comment_date'=>get_date_from_gmt($comment_time_gmt_tmp,'Y-m-d H:i:s'),
                                 'comment_date_gmt'=>$comment_time_gmt_tmp,
                                 'comment_approved'=>1,
                             ]);
-                            wp_update_comment_count($pid);
+                            if ($cid_tmp && !is_wp_error($cid_tmp)) {
+                                add_comment_meta($cid_tmp, '_apex_commentor', 1, true);
+                                add_comment_meta($cid_tmp, '_apex_weight', (int)$w, true);
+                                update_post_meta($pid, \ApexOmega\Core\CommentGuardian::META_LAST, current_time('mysql', true));
+                                wp_update_comment_count($pid);
+                                \ApexOmega\Core\History::log($pid, 'comment', 0, 1, 'reseed_premium_comment', (int)get_current_user_id(), $exec, null, ['author'=>$who['author'], 'weight'=>(int)$w]);
+                            }
                         }
                     }
                 } catch(\Throwable $e){ error_log('[APEX Ω] premium comment fail pid='.$pid.' '.$e->getMessage()); }
@@ -1323,13 +1334,12 @@ class ArtistManager {
                             if ($cur_comments + $inserted_c >= $target_comments) break;
                             if ($cur_comments + $inserted_c >= $max_per_post) break;
                             $who = \ApexOmega\Core\CommentGuardian::generate_name();
-                            $c_text = \ApexOmega\Core\CommentGuardian::generate_text($pid, $artist_name_for_c, $title_for_c, (int)$weight, (int)$vals['views'], $is_premium);
-                            $comment_time_gmt = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 900));
+                            $c_text = \ApexOmega\Core\CommentGuardian::unique_text($pid, $artist_name_for_c, $title_for_c, (int)$weight, (int)$vals['views'], $is_premium);
+                            if ($c_text === '') continue;
+                            $comment_time_gmt = \ApexOmega\Core\CommentGuardian::comment_time_gmt((int)$pid, 72);
                             $comment_time = get_date_from_gmt($comment_time_gmt, 'Y-m-d H:i:s');
-                            $dup = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s", $pid, $c_text, gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
-                            if ($dup) $c_text .= ' ' . mt_rand(10,99);
                             $fake_ip = mt_rand(1,223).'.'.mt_rand(0,255).'.'.mt_rand(0,255).'.'.mt_rand(1,254);
-                            $cid = wp_insert_comment(['comment_post_ID'=>$pid,'comment_author'=>$who['author'],'comment_author_email'=>$who['email'],'comment_author_url'=>'','comment_content'=>$c_text,'comment_type'=>'','comment_parent'=>0,'user_id'=>0,'comment_author_IP'=>$fake_ip,'comment_agent'=>'Mozilla/5.0','comment_date'=>$comment_time,'comment_date_gmt'=>$comment_time_gmt,'comment_approved'=>1]);
+                            $cid = wp_insert_comment(['comment_post_ID'=>$pid,'comment_author'=>$who['author'],'comment_author_email'=>$who['email'],'comment_author_url'=>'','comment_content'=>$c_text,'comment_type'=>'','comment_parent'=>0,'user_id'=>0,'comment_author_IP'=>$fake_ip,'comment_agent'=>\ApexOmega\Core\CommentGuardian::fake_agent(),'comment_date'=>$comment_time,'comment_date_gmt'=>$comment_time_gmt,'comment_approved'=>1]);
                             if ($cid && !is_wp_error($cid)) {
                                 add_comment_meta($cid, '_apex_commentor', 1, true);
                                 add_comment_meta($cid, '_apex_weight', (int)$weight, true);
@@ -1676,13 +1686,12 @@ class ArtistManager {
                         if ($cur_comments + $inserted_c >= $target_comments) break;
                         if ($cur_comments + $inserted_c >= $max_per_post) break;
                         $who=\ApexOmega\Core\CommentGuardian::generate_name();
-                        $c_text=\ApexOmega\Core\CommentGuardian::generate_text($pid,$artist_name_for_c,$title_for_c,$weight_for_c,(int)$item['new_views'],$is_premium_c);
-                        $comment_time_gmt=gmdate('Y-m-d H:i:s', time() - mt_rand(0,900));
+                        $c_text=\ApexOmega\Core\CommentGuardian::unique_text($pid,$artist_name_for_c,$title_for_c,$weight_for_c,(int)$item['new_views'],$is_premium_c);
+                        if ($c_text === '') continue;
+                        $comment_time_gmt=\ApexOmega\Core\CommentGuardian::comment_time_gmt((int)$pid, 72);
                         $comment_time=get_date_from_gmt($comment_time_gmt,'Y-m-d H:i:s');
-                        $dup=$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->comments} WHERE comment_post_ID=%d AND comment_content=%s AND comment_date_gmt >= %s",$pid,$c_text,gmdate('Y-m-d H:i:s', time() - DAY_IN_SECONDS)));
-                        if ($dup) $c_text .= ' ' . mt_rand(10,99);
                         $fake_ip=mt_rand(1,223).'.'.mt_rand(0,255).'.'.mt_rand(0,255).'.'.mt_rand(1,254);
-                        $cid=wp_insert_comment(['comment_post_ID'=>$pid,'comment_author'=>$who['author'],'comment_author_email'=>$who['email'],'comment_author_url'=>'','comment_content'=>$c_text,'comment_type'=>'','comment_parent'=>0,'user_id'=>0,'comment_author_IP'=>$fake_ip,'comment_agent'=>'Mozilla/5.0','comment_date'=>$comment_time,'comment_date_gmt'=>$comment_time_gmt,'comment_approved'=>1]);
+                        $cid=wp_insert_comment(['comment_post_ID'=>$pid,'comment_author'=>$who['author'],'comment_author_email'=>$who['email'],'comment_author_url'=>'','comment_content'=>$c_text,'comment_type'=>'','comment_parent'=>0,'user_id'=>0,'comment_author_IP'=>$fake_ip,'comment_agent'=>\ApexOmega\Core\CommentGuardian::fake_agent(),'comment_date'=>$comment_time,'comment_date_gmt'=>$comment_time_gmt,'comment_approved'=>1]);
                         if ($cid && !is_wp_error($cid)) {
                             add_comment_meta($cid,'_apex_commentor',1,true);
                             add_comment_meta($cid,'_apex_weight',$weight_for_c,true);
