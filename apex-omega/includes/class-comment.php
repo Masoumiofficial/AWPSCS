@@ -30,6 +30,8 @@ class CommentGuardian {
             'high_views_auto' => true, // 2.1.0: کامنت خودکار برای آهنگ‌های پرطرفدار بدون دخالت انسانی
             'high_views_threshold' => 100000, // آستانه پرطرفدار (100k)
             'close_after_batch' => true, // بستن کامنت بعد از پایان کار (جلوگیری از اسپم لینک روی صفحات قدیمی)
+            // نام آهنگ در کامنت — پیش‌فرض خاموش: کاربر واقعی اسم آهنگ را در صفحهٔ همان آهنگ نمی‌نویسد
+            'mention_title' => false,
         ];
         $saved = get_option(self::OPTION, []);
         if (!is_array($saved)) $saved = [];
@@ -44,6 +46,7 @@ class CommentGuardian {
         $out['only_recent_days'] = max(0, min(365, (int)$out['only_recent_days']));
         $out['cooldown_hours'] = max(1, min(168, (int)$out['cooldown_hours']));
         $out['close_after_batch'] = !empty($out['close_after_batch']);
+        $out['mention_title'] = !empty($out['mention_title']);
         $out['high_views_auto'] = !empty($out['high_views_auto']);
         $out['high_views_threshold'] = max(10000, min(1000000, (int)$out['high_views_threshold']));
         return $out;
@@ -65,6 +68,7 @@ class CommentGuardian {
             'high_views_threshold' => isset($data['high_views_threshold']) ? (int)$data['high_views_threshold'] : $cur['high_views_threshold'],
             // null یعنی «از این فرم ارسال نشده» → مقدار قبلی حفظ شود
             'close_after_batch' => isset($data['close_after_batch']) ? !empty($data['close_after_batch']) : $cur['close_after_batch'],
+            'mention_title' => isset($data['mention_title']) ? !empty($data['mention_title']) : $cur['mention_title'],
         ];
         update_option(self::OPTION, $new, false);
         Scheduler::ensure_cron();
@@ -224,41 +228,84 @@ class CommentGuardian {
         return $r === null ? trim((string)$s) : $r;
     }
 
+    // نام هنرمندان شناخته‌شده (کش‌شده) — فقط برای زمانی که اسم خواننده پاس داده نشده
+    private static function known_artist_names(): array {
+        static $cache = null;
+        if ($cache !== null) return $cache;
+        $cache = [];
+        if (!function_exists('get_terms') || !class_exists('\ApexOmega\Core\ArtistManager')) return $cache;
+        $tax = \ApexOmega\Core\ArtistManager::detect_artist_taxonomy();
+        if (!$tax || is_wp_error($tax)) return $cache;
+        $terms = get_terms(['taxonomy' => $tax, 'hide_empty' => false, 'number' => 500, 'fields' => 'names']);
+        if (is_array($terms) && !is_wp_error($terms)) $cache = $terms;
+        return $cache;
+    }
+
+    // حذف «آویز»های عنوان: از / با / اثر / کیفیت 320 ... که اسم آهنگ نیستند
+    private static function strip_title_noise(string $t): string {
+        $t = trim($t);
+        // 1) پسوندهای کیفیت/فرمت که در سایت‌های دانلود رایج است
+        $t = preg_replace('/\s*(?:با\s*کیفیت|کیفیت|bitrate|kbps|mp3|ام\s*پی\s*سه|۳۲۰|320|128|192|256)(?:\s*[^\p{L}\p{N}]*\s*[\p{N}\p{L}]*)*\s*$/iu', '', $t);
+        // 2) حذف پرانتز/گیومه‌های انتهایی
+        $t = preg_replace('/\s*[\(\[][^\)\]]*[\)\]]\s*$/u', '', $t);
+        // 3) حرف اضافهٔ آویزان در انتها — مهم‌ترین بخش: «دلداده از» → «دلداده»
+        // فقط انتها را می‌زنیم؛ «از تو می‌گم» یا «دلم از تو گرفته» باید دست‌نخورده بماند
+        $tail = '(?:از|با|به|برای|اثر|و|که|همراه|همراهم|از\s*خواننده|با\s*صدای|به\s*خوانندگی|از\s*گروه|از\s*آلبوم)';
+        for ($i = 0; $i < 3; $i++) {
+            $before = $t;
+            $t = preg_replace('/\s+' . $tail . '\s*$/u', '', $t);
+            $t = self::trim_sep($t, "‘’“”،,.;:!?؟");
+            if ($t === $before) break;
+        }
+        return trim($t);
+    }
+
     private static function clean_song_title(string $raw, string $artist): string {
         $t = trim($raw);
+        $had_dl = false;
         // حذف پیشوندهای رایج
-        $prefixes = ['دانلود آهنگ ','دانلود موزیک ','دانلود ','آهنگ ','موزیک ','Download ','download ','دانلود رایگان '];
+        $prefixes = ['دانلود آهنگ ','دانلود موزیک ','دانلود آهنگ جدید ','دانلود ','آهنگ جدید ','آهنگ ','موزیک ','Download ','download ','دانلود رایگان '];
         foreach ($prefixes as $pre) {
             if (mb_stripos($t, $pre) === 0) {
                 $t = trim(mb_substr($t, mb_strlen($pre)));
+                $had_dl = true;
             }
         }
-        // حذف نام خواننده از عنوان (هر جا بود)
-        if ($artist && mb_strlen($artist) > 2) {
-            // حذف دقیق
+        // حذف براکت/پرانتز از کل عنوان («(کیفیت 320)» و ...)
+        $t = preg_replace('/\s*[\(\[][^\)\]]*[\)\]]\s*/u', ' ', $t);
+        // —— مهم: «از + نام خواننده» را با خودِ حرف اضافه پاک کن ——
+        // عنوان سایت: «دانلود آهنگ دلداده از پازل بند» → «دلداده» (نه «دلداده از»)
+        $artist = trim($artist);
+        if ($artist !== '' && mb_strlen($artist) > 2 && mb_stripos($artist, 'هنرمند') !== 0) {
+            $qa = preg_quote($artist, '/');
+            $t = preg_replace('/\s*(?:از\s*خواننده|از\s*گروه|با\s*صدای|به\s*خوانندگی|به\s*همراهی|اثر|از|با)\s*' . $qa . '\s*/u', ' ', $t);
+            // حذف سادهٔ نام خواننده (هر جای دیگر عنوان)
             if (mb_stripos($t, $artist) !== false) {
-                $t = trim(str_ireplace($artist, '', $t));
+                $t = str_ireplace($artist, ' ', $t);
             }
-            // حذف نسخه بدون فاصله (مثلاً "همایون شجریانبازگشت زال" — نادر ولی)
+        } elseif ($had_dl) {
+            // اسم خواننده پاس نشده: اگر انتهای عنوان یکی از هنرمندان شناخته‌شده بود، از «از» به بعد را بردار
+            $known = self::known_artist_names();
+            foreach ($known as $kn) {
+                if (mb_strlen($kn) < 3) continue;
+                $qk = preg_quote($kn, '/');
+                if (preg_match('/^(.+?)\s+(?:از|با\s*صدای|اثر|به\s*خوانندگی)\s*' . $qk . '\s*$/u', $t, $m)) {
+                    $t = $m[1];
+                    break;
+                }
+            }
         }
-        // حذف جداکننده‌های باقی‌مانده از ابتدا/انتها
-        $t = self::trim_sep($t);
-        $t = preg_replace('/^[\-–—|:\s]+/u','', $t);
-        $t = preg_replace('/[\-–—|:\s]+$/u','', $t);
-        // اگر هنوز "دانلود" مانده بود
-        $t = preg_replace('/^دانلود\s*/u','', $t);
-        $t = trim($t);
-        // اگر تمیزکاری همه را پاک کرد (مثلاً عنوان فقط "همایون شجریان" بود)، برگشت به خام بدون پیشوند
-        if (!$t || mb_strlen($t) < 2) {
-            $t = trim(str_ireplace('دانلود آهنگ','', $raw));
-            $t = trim(str_ireplace('دانلود','', $t));
-            $t = self::trim_sep($t);
-        }
-        // حذف گیومه‌های باقی‌مانده
+        // حذف جداکننده‌های باقی‌مانده + «از»/«با» آویزان
+        $t = self::strip_title_noise($t);
         $t = self::trim_sep($t, "‘’“”");
-        return $t ?: $raw;
+        // اگر تمیزکاری همه را پاک کرد (مثلاً عنوان فقط «همایون شجریان» بود)، برگشت به خام بدون پیشوند
+        if (!$t || mb_strlen($t) < 2) {
+            $t = trim(str_ireplace(['دانلود آهنگ','دانلود'], ' ', $raw));
+            $t = self::strip_title_noise(self::trim_sep($t));
+            if (!$t || mb_strlen($t) < 2) return '';
+        }
+        return $t;
     }
-
 
     /* ============ لایهٔ ارتباط طبیعی با خواننده / آهنگ / تیکهٔ ترانه ============ */
     // نام کوتاه خواننده برای «... جان»
@@ -278,6 +325,7 @@ class CommentGuardian {
         $t = trim(preg_replace('/\s+/u', ' ', $t));
         $t = preg_replace('/\s*[\(\[][^\)\]]*[\)\]]\s*/u', ' ', $t);
         $t = self::trim_sep($t);
+        $t = self::strip_title_noise($t);
         // حذف کلمات عمومی که اسم اثر نیستند (وگرنه «آلبوم جدید» به‌عنوان نام آهنگ می‌آید)
         $generic = '/^(?:آلبوم|آهنگ|موزیک|موزیک\s*ویدیو|موزیک\s*ویدئو|کلیپ|ویدیو|جدید|جدیدترین|رسمی|اورجینال|نسخه|بیوگرافی|زندگینامه|خبر|اخبار|دانلود)+\s*/u';
         for ($i = 0; $i < 4; $i++) {
@@ -285,8 +333,10 @@ class CommentGuardian {
             if (!is_string($new) || $new === $t) break;
             $t = trim($new);
         }
-        $t = self::trim_sep($t);
+        $t = self::strip_title_noise(self::trim_sep($t));
         if ($t === '' || mb_strlen($t) < 3) return '';
+        // اگر فقط حرف اضافه/کلمهٔ عمومی مانده بود، نام آهنگ نده (بهتر از «دلداده از»)
+        if (preg_match('/^(?:از|با|به|برای|که|و|در|روی|تا|اثر|آهنگ|موزیک|ترک)$/u', $t)) return '';
         $w = preg_split('/\s+/u', $t) ?: [];
         if (count($w) > $max_words) $t = implode(' ', array_slice($w, 0, $max_words));
         if (mb_strlen($t) > 34) {
@@ -392,6 +442,12 @@ class CommentGuardian {
         return $type;
     }
 
+    // آیا اسم آهنگ اجازه دارد در کامنت بیاید؟ (پیش‌فرض: نه — آدم واقعی در صفحهٔ خود آهنگ اسمش را تکرار نمی‌کند)
+    public static function mention_title_enabled(): bool {
+        $s = self::get_settings();
+        return !empty($s['mention_title']);
+    }
+
     // سطح شناخته‌شدن هنرمند — ناشناخته نباید سیل تعریف و تمجید بگیرد
     public static function recognition_level(int $weight, int $views): string {
         if ($weight >= 70 || $views >= 300000) return 'high';
@@ -433,9 +489,9 @@ class CommentGuardian {
             'چقدر خاطره با این آهنگ دارم',
         ];
 
-        // —— با نام دقیق آهنگ ——
+        // —— با نام دقیق آهنگ (فقط اگر در تنظیمات روشن شده باشد) ——
         $by_title = [];
-        if (mb_strlen($tt) >= 3) {
+        if (mb_strlen($tt) >= 3 && self::mention_title_enabled()) {
             $by_title = [
                 '«' . $tt . '» رو همه از حفظن',
                 '«' . $tt . '» هنوزم تو گوشیه همه‌ست',
@@ -556,14 +612,15 @@ class CommentGuardian {
         $u = array_merge(['artist'=>0,'title'=>0,'lyric'=>0], is_array($used[$post_id] ?? null) ? $used[$post_id] : []);
         $used[$post_id] = $u;
         $cap_artist = 3; $cap_title = 2; $cap_lyric = 3;
+        $allow_title = self::mention_title_enabled();
         $pool = [];
         if ($u['artist'] < $cap_artist) $pool = array_merge($pool, array_fill(0, 45, 'artist'));
-        if ($u['title']  < $cap_title)  $pool = array_merge($pool, array_fill(0, 25, 'title'));
+        if ($allow_title && $u['title'] < $cap_title) $pool = array_merge($pool, array_fill(0, 25, 'title'));
         if ($u['lyric']  < $cap_lyric)  $pool = array_merge($pool, array_fill(0, 30, 'lyric'));
         if (!$pool) return ['type'=>'','text'=>''];
         $type = $pool[array_rand($pool)];
         $choices = [$type];
-        $rest = array_values(array_diff(['artist','title','lyric'], [$type]));
+        $rest = array_values(array_diff($allow_title ? ['artist','title','lyric'] : ['artist','lyric'], [$type]));
         shuffle($rest);
         $choices = array_merge($choices, $rest);
         foreach ($choices as $type) {
@@ -692,15 +749,7 @@ class CommentGuardian {
             $tries++;
         }
         self::remember_text($txt);
-        // فقط 2% اسم آهنگ (خیلی کم) — بقیه نظر خالص بدون نام
-        if (in_array(self::detect_content_type($post_id, $title), ['song','album','video'], true) && mt_rand(1,100) <= 2 && mb_strlen($clean) > 2 && mb_strlen($clean) < 30) {
-            $addons = [
-                " اون قسمتش خیلی دوس داشتم",
-                " مخصوصا اونجاش",
-                " اون تیکه دلمو برد",
-            ];
-            if (mt_rand(1,100) <= 30) $txt .= $addons[array_rand($addons)];
-        }
+        // نکته: اسم آهنگ به‌صورت پیش‌فرض در کامنت نمی‌آید (تنظیم «نام آهنگ در کامنت»)
         // نهایی: یا کشیده‌نویسی یا یک غلط ریز (نه هر دو روی هم — خروجی خراب نشود)
         $style_roll = mt_rand(1,100);
         if ($style_roll <= 17) $txt = self::elongate($txt);
@@ -855,14 +904,15 @@ class CommentGuardian {
             $rel_rule = $type_rule;
         } elseif ($rel_roll <= 40) {
             $rel_rule = 'در این کامنت حتماً به‌طور طبیعی از خواننده ('.$artist.') تعریف کن، مثلا «دمت گرم '.self::artist_first_word($artist).'» یا «صدای '.self::artist_short($artist).' آرامشه» — خودمونی و کوتاه.';
-        } elseif ($rel_roll <= 65) {
+        } elseif ($rel_roll <= 65 && self::mention_title_enabled() && mb_strlen(self::title_short($clean)) >= 3) {
             $rel_rule = 'در این کامنت اسم آهنگ («'.self::title_short($clean).'») را طبیعی بیاور و تعریف کن، مثل «'.self::title_short($clean).' رو چند بار گوش دادم».';
         } else {
             $rel_rule = 'در این کامنت به تیکه/متن ترانه اشاره کن و بگو کدام قسمت به دلت نشست.'.$hook_hint;
         }
         $is_trend_ai = function_exists('apex_omega_is_trend_post') && apex_omega_is_trend_post($post_id);
         if ($is_trend_ai && $ctype_ai === 'song') {
-            $type_rule = 'این آهنگ در دستهٔ «آهنگ‌های ترند» است و معمولاً قدیمی و وایرال شده؛ لحن باید نوستالژی و هیجان «چرا تازه ترند شد؟» باشد («این آهنگ یه زمان همه‌جا بود»، «حقش بود ترند بشه»، «نسل ما با این بزرگ شد»). در همین کامنت اسم خواننده یا آهنگ را طبیعی بیاور.';
+            $type_rule = 'این آهنگ در دستهٔ «آهنگ‌های ترند» است و معمولاً قدیمی و وایرال شده؛ لحن باید نوستالژی و هیجان «چرا تازه ترند شد؟» باشد («این آهنگ یه زمان همه‌جا بود»، «حقش بود ترند بشه»، «نسل ما با این بزرگ شد»). در همین کامنت اسم خواننده را طبیعی بیاور.';
+            if (self::mention_title_enabled()) $type_rule = rtrim($type_rule, '.') . ' اسم آهنگ را هم می‌توانی بیاوری.';
             $lyric_rule_hint = true;
         } else {
             $lyric_rule_hint = false;
@@ -871,19 +921,23 @@ class CommentGuardian {
         $known_rule = ($recog_ai === 'low' && !$is_trend_ai)
             ? ' این خواننده یا اثر شناخته‌شده نیست؛ پس تعریف بی‌جا و بزرگ‌نمایی نکن. طبیعی‌تر است کنجکاو باشی یا بی‌طرف نظر بدهی («اولین باره اسمشو می‌شنوم، بد نبود»، «برای شروع بد نیست») و حداکثر یک ایراد کوچک بگیری.'
             : '';
+        // اسم آهنگ به مدل داده نمی‌شود مگر تنظیمش روشن باشد — مدل نباید اسم را در کامنت تکرار کند
+        $title_for_prompt = self::mention_title_enabled() ? $clean : '';
         if ($ctype_ai === 'bio') {
             $subject = 'برای صفحهٔ بیوگرافی "'.$clean.'" دربارهٔ "'.$artist.'"';
         } elseif ($ctype_ai === 'news') {
             $subject = 'برای خبر "'.$clean.'" دربارهٔ "'.$artist.'"';
         } elseif ($ctype_ai === 'album') {
             $subject = 'برای آلبوم "'.$clean.'" از "'.$artist.'"';
-        } else {
+        } elseif ($title_for_prompt !== '') {
             $subject = 'برای اهنگ "'.$clean.'" از "'.$artist.'"';
+        } else {
+            $subject = 'برای صفحهٔ آهنگ "'.$artist.'" (اسم آهنگ را در کامنت ننویس)';
         }
         $lyric_rule = ($ctype_ai === 'bio' || $ctype_ai === 'news')
             ? '4) دربارهٔ آهنگ، ریتم یا ملودی حرف نزن؛ اگر اطلاعات متن ناقص است، طبیعی است که منبع یا تکمیل آن را بخواهی'
             : '4) هرگز شعر جعلی نساز؛ اگر تیکهٔ ترانه را نمی‌دانی، فقط تماتیک اشاره کن («اون تیکه که از دلتنگی میگه»)';
-        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. ".$subject." یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — $rel_rule — قوانین: 1) فارسی محاوره‌ای 2-12 کلمه ترجیحا، حداکثر 18 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) ".$lyric_rule." 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.".$known_rule;
+        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. ".$subject." یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — $rel_rule — قوانین: 1) فارسی محاوره‌ای 2-12 کلمه ترجیحا، حداکثر 18 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) ".$lyric_rule." 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.".($title_for_prompt === '' ? ' 6) اسم آهنگ را در کامنت ننویس؛ کاربری که در صفحهٔ همین آهنگ است اسمش را تکرار نمی‌کند.' : '').$known_rule;
         $payload = [
             'model' => $settings['model'] ?: 'gpt-4o-mini',
             'messages' => [

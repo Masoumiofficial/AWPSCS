@@ -105,6 +105,10 @@ $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings();
           <input type="checkbox" id="apex-commentor-close" <?php checked(!empty($commentor['close_after_batch']), true); ?>>
           <span><strong>بستن کامنت بعد از هر اجرا</strong><br><small style="color:#6b21a8;">پیشنهاد سئو: از جمع‌شدن اسپم لینک روی آهنگ‌های قدیمی جلوگیری می‌کند. فقط پست‌هایی که خود افزونه باز کرده، دوباره بسته می‌شوند.</small></span>
         </label>
+        <label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #a7f3d0;border-radius:10px;padding:8px 10px;">
+          <input type="checkbox" id="apex-commentor-title" <?php checked(!empty($commentor['mention_title']), true); ?>>
+          <span><strong>اسم آهنگ در کامنت بیاید</strong><br><small style="color:#065f46;">پیش‌فرض خاموش و همیشه بهتر است خاموش بماند: کاربری که داخل صفحهٔ همان آهنگ است اسمش را تکرار نمی‌کند. تعریف از خواننده و اشاره به تیکهٔ ترانه سر جای خودش می‌ماند.</small></span>
+        </label>
         <button type="button" id="apex-commentor-save" class="button button-apex" style="background:#7c3aed;">💬 ذخیره</button>
       </div>
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
@@ -146,9 +150,9 @@ $rhythm = \ApexOmega\Core\ArtistManager::get_rhythm_settings();
     });
     bindOnce('apex-commentor-save', function(btn){
       btn.disabled=true; var o=btn.textContent; btn.textContent='ذخیره…';
-      var enabled=qs('apex-commentor-enabled')?.checked?1:0, threshold=parseInt(qs('apex-commentor-threshold')?.value)||10000, minc=parseInt(qs('apex-commentor-min')?.value)||2, maxc=parseInt(qs('apex-commentor-max')?.value)||4, daily=parseInt(qs('apex-commentor-daily')?.value)||2, maxpost=parseInt(qs('apex-commentor-maxpost')?.value)||60, batch=parseInt(qs('apex-commentor-batch')?.value), recent=parseInt(qs('apex-commentor-recent')?.value)||0, closeAfter=qs('apex-commentor-close')?.checked?1:0; if(isNaN(batch)) batch=0;
+      var enabled=qs('apex-commentor-enabled')?.checked?1:0, threshold=parseInt(qs('apex-commentor-threshold')?.value)||10000, minc=parseInt(qs('apex-commentor-min')?.value)||2, maxc=parseInt(qs('apex-commentor-max')?.value)||4, daily=parseInt(qs('apex-commentor-daily')?.value)||2, maxpost=parseInt(qs('apex-commentor-maxpost')?.value)||60, batch=parseInt(qs('apex-commentor-batch')?.value), recent=parseInt(qs('apex-commentor-recent')?.value)||0, closeAfter=qs('apex-commentor-close')?.checked?1:0, mentionTitle=qs('apex-commentor-title')?.checked?1:0; if(isNaN(batch)) batch=0;
       var resEl=qs('apex-commentor-result'); if(resEl) resEl.textContent='در حال ذخیره…';
-      apexPost('apex_save_commentor',{enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent,close_after_batch:closeAfter}).then(j=>{ if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message; resEl.style.color='#065f46';}} else if(resEl){resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b';}}).catch(err=>{ if(resEl){resEl.textContent='❌ '+err; resEl.style.color='#991b1b';}}).finally(()=>{ btn.disabled=false; btn.textContent='💬 ذخیره'; });
+      apexPost('apex_save_commentor',{enabled:enabled,threshold:threshold,min_comments:minc,max_comments:maxc,daily_growth:daily,max_per_post:maxpost,batch:batch,only_recent_days:recent,close_after_batch:closeAfter,mention_title:mentionTitle}).then(j=>{ if(j.success){ if(resEl){resEl.textContent='✅ '+j.data.message; resEl.style.color='#065f46';}} else if(resEl){resEl.textContent='❌ '+(j.data?.message||'خطا'); resEl.style.color='#991b1b';}}).catch(err=>{ if(resEl){resEl.textContent='❌ '+err; resEl.style.color='#991b1b';}}).finally(()=>{ btn.disabled=false; btn.textContent='💬 ذخیره'; });
     });
     bindOnce('apex-commentor-run', function(btn){
       btn.disabled=true; var o=btn.textContent; btn.textContent='در حال اجرا…'; var resEl=qs('apex-commentor-result'); if(resEl) resEl.textContent='⏳ در حال اجرا…';
