@@ -462,7 +462,9 @@ class CommentGuardian {
         // موزیک ویدیو / کلیپ
         elseif (preg_match('/موزیک ?ویدیو|موزیک ?ویدئو|موزیک‌ویدیو|\bvideo\b|\bclip\b|کلیپ|\bmv\b|تیزر|teaser/u', $hay)) $type = 'video';
         // خبر
-        elseif (preg_match('/\bخبر\b|اخبار|\bnews\b|اطلاعیه|بیانیه|اعلام شد|رونمایی شد|واکنش|شایعه|گفتگو|مصاحبه|interview/u', $hay)) $type = 'news';
+        elseif (preg_match('/\bخبر\b|اخبار|\bnews\b|اطلاعیه|بیانیه|اعلام شد|رونمایی شد|واکنش|شایعه|گفتگو|مصاحبه|interview|به گزارش|روابط عمومی|برگزار می‌شود|برگزار میشود|بلیط‌فروشی|بلیط فروشی|درگذشت|تسلیت/u', $hay)) $type = 'news';
+        // «کنسرت» فقط اگر نشانهٔ موزیک بودن متن نباشد (آهنگ/آلبوم/موزیک‌ویدیو)
+        elseif (preg_match('/کنسرت|تور\b|اجرای زنده|جشنواره/u', $hay) && !preg_match('/آهنگ|موزیک|ترانه|آلبوم|کلیپ/u', $hay)) $type = 'news';
         $cache[$ck] = $type;
         return $type;
     }
@@ -573,26 +575,23 @@ class CommentGuardian {
         return array_values(array_unique(array_merge($generic, $by_title, $by_artist, $by_lyric)));
     }
     // متن پایه بر اساس نوع محتوا (بیوگرافی/خبر هیچ‌وقت کامنت آهنگ نمی‌گیرد)
-    private static function typed_pool(string $ctype, string $recog, bool $is_premium = false, bool $is_new_post = false): array {
+    private static function typed_pool(string $ctype, string $recog, bool $is_premium = false, bool $is_new_post = false, int $post_id = 0, string $artist = ''): array {
+        // بیوگرافی: بدون ادعای «اشتباه نوشتید» و «منبعش ویکی‌پدیاست» — عمومی ولی محترمانه
         $bio = [
             'ممنون از بیوگرافی کاملش', 'خیلی چیزا یاد گرفتم مرسی', 'بخش کودکی‌اش رو دو بار خوندم',
-            'کاش درباره شروع کارش بیشتر توضیح می‌دادید', 'این اطلاعات از منبع موثقه؟', 'سال تولدش رو اشتباه نوشتید فکر کنم',
-            'اسم اولین آلبومش اشتباه نوشته شده', 'لطفا بیوگرافی بقیه خواننده‌ها رو هم بذارید', 'واقعا زندگی پرفراز و نشیبی داشته',
+            'کاش درباره شروع کارش بیشتر توضیح می‌دادید', 'واقعا زندگی پرفراز و نشیبی داشته',
             'نمی‌دونستم اینقدر سابقه داره', 'خوندنش خالی از لطف نبود', 'بخش مهاجرتش رو کاملتر بنویسید',
-            'چقدر سختی کشیده تا اینجا رسیده', 'کسی میدونه الان کجاست؟', 'ممنون، ولی عکس‌ها کم بود',
-            'منبعش ویکی‌پدیاست؟ یکم ویرایش لازم داره', 'کاش آلبوم‌هاش رو هم لیست می‌کردید', 'سال ازدواجش تو متن نبود',
-            'اولین استادش کی بوده؟', 'به‌روزرسانی لازم داره، اطلاعات قدیمیه', 'بخش سبک کاریش خیلی کوتاه بود',
+            'چقدر سختی کشیده تا اینجا رسیده', 'ممنون، ولی عکس‌ها کم بود', 'کاش آلبوم‌هاش رو هم لیست می‌کردید',
+            'به‌روزرسانی لازم داره، اطلاعات قدیمیه', 'بخش سبک کاریش خیلی کوتاه بود',
             'درباره همکاری‌هاش هم می‌نوشتید خوب بود', 'لایک برای زحمتی که کشیدید', 'چه مسیری طی کرده واقعا',
-            'فامیلش رو اشتباه نوشتید', 'این‌قدر که نوشتید کمه، حقش بیشتره',
+            'این‌قدر که نوشتید کمه، حقش بیشتره', 'بخش جوایزش رو هم اضافه کنید', 'زندگینامه خوبی بود، ممنون',
         ];
+        // خبر: بدون «منبع کجاست؟» و «امیدوارم شایعه باشه» — این‌ها به هر خبری می‌چسبیدند و بی‌ربط بودند
         $news = [
-            'منبع خبر کجاست؟', 'امیدوارم شایعه باشه', 'بالاخره یه خبر خوب', 'منتظریم ببینیم چی میشه',
-            'کاش تاریخ دقیق رو می‌نوشتید', 'این خبر قدیمیه، قبلا هم منتشر شده بود', 'رسمی تایید شده یا نه؟',
-            'منتظرش بودم واقعا', 'خبر خوبیه اگه درست باشه', 'کسی لینک منبع داره؟', 'امیدوارم حقیقت داشته باشه',
-            'تا تایید رسمی باور نمی‌کنم', 'خبرش رو جای دیگه هم دیدم', 'کاش به‌روزرسانی می‌کردید',
-            'ممنون از اطلاع‌رسانی سریع', 'حیف شد، انتظار دیگه‌ای داشتم', 'خبر داغ بود دمتون گرم',
-            'اینو از کجا شنیدید؟', 'امیدوارم به‌زودی رسمی بشه', 'چند بار خبر رو چک کردم ببینم درست شده',
-            'تیترش یه چیز میگه متنش یه چیز دیگه', 'خبر خوبی نیست راستش', 'کاش منبع خبر رو لینک می‌دادید',
+            'خبر رو کامل خوندم، ممنون', 'ممنون از اطلاع‌رسانی سریع', 'خبر داغ بود دمتون گرم',
+            'کاش ادامه‌ش رو هم می‌نوشتید', 'منتظر خبرهای بعدی‌ش هستیم', 'خبر خوبی بود',
+            'این یکی رو دنبال می‌کردم، ممنون', 'خبرش رو جای دیگه هم دیدم', 'کاش عکس بیشتری می‌گذاشتید',
+            'تیتر خوبی زدید، متن هم کامل بود', 'دستتون درد نکنه بابت پوشش خبر',
         ];
         $album = [
             'آلبوم کامل رو گوش دادم، ارزشش رو داره', 'ترک ۴ حرف نداره', 'کدوم ترکش رو بیشتر دوست دارید؟',
@@ -617,18 +616,325 @@ class CommentGuardian {
             'هنوز به پای کارای معروفش نمی‌رسه', 'اسمش رو نشنیده بودم، الان شناختم', 'قابل قبوله برای شروع',
             'خیلی تعریفش رو شنیدم ولی انتظارم بیشتر بود', 'باید بیشتر ازش بشنوم تا نظر بدم',
         ];
-        if ($ctype === 'bio') return $bio;
-        if ($ctype === 'news') return $news;
-        if ($ctype === 'album') {
-            // آلبوم از خوانندهٔ ناشناخته: نصف انتقادی/سوالی
-            if ($recog === 'low') return array_merge($album, array_slice($neutral_low, 0, 8), ['کسی این آلبوم رو معرفی کرده؟', 'اسمش برام ناشناسه، ارزش گوش دادن داره؟']);
-            return $album;
+        if ($ctype === 'bio' || $ctype === 'news') {
+            $facts = $post_id ? self::content_facts($post_id) : [];
+            $fact_lines = [];
+            if ($facts && !empty($facts['raw_len'])) {
+                $fact_lines = ($ctype === 'news') ? self::news_fact_lines($facts) : self::bio_fact_lines($facts, $artist);
+            }
+            if (!$fact_lines) {
+                // متن پست خوانده نشد یا فکتی نبود → همان استخر عمومی (بدون ادعای بی‌ربط)
+                return ($ctype === 'bio') ? $bio : $news;
+            }
+            // ~۹۰٪ خطوط مبتنی بر خود متن + چند خط عمومی (طبیعی بماند)
+            $generic = ($ctype === 'bio') ? $bio : $news;
+            // تکرار عمدی برای وزن‌دهی (array_unique وزن را صفر می‌کرد)
+            return array_merge($fact_lines, $fact_lines, $fact_lines, $fact_lines, $fact_lines, $fact_lines, array_slice($generic, 0, 1));
         }
-        if ($ctype === 'video') {
-            if ($recog === 'low') return array_merge($video, array_slice($neutral_low, 0, 8));
-            return $video;
+        if ($ctype === 'album' || $ctype === 'video') {
+            $base = ($ctype === 'album') ? $album : $video;
+            if ($recog === 'low') {
+                $base = array_merge($base, array_slice($neutral_low, 0, 8), $ctype === 'album' ? ['کسی این آلبوم رو معرفی کرده؟', 'اسمش برام ناشناسه، ارزش گوش دادن داره؟'] : []);
+            }
+            if ($post_id) {
+                $facts = self::content_facts($post_id);
+                if (!empty($facts['raw_len'])) {
+                    $fl = self::album_fact_lines($facts);
+                    if ($fl) {
+                        return array_merge($fl, $fl, $fl, $fl, $fl, $fl, array_slice($base, 0, 8));
+                    }
+                }
+            }
+            return $base;
         }
         return $neutral_low;
+    }
+
+    /* ============ خواندن متن خبر/بیوگرافی و ساختن کامنت دربارهٔ همان متن ============ */
+
+    // متن واقعی پست بدون HTML/شورت‌کد و بدون خطوط تبلیغاتی سایت
+    public static function post_body_text(int $post_id, int $limit = 4000): string {
+        static $cache = [];
+        if (isset($cache[$post_id])) return $cache[$post_id];
+        $raw = '';
+        if ($post_id) {
+            $raw = (string) get_post_field('post_content', $post_id);
+            if (mb_strlen(trim($raw)) < 60) {
+                $ex = (string) get_post_field('post_excerpt', $post_id);
+                $raw = trim($raw . "\n" . $ex);
+            }
+        }
+        $txt = strip_shortcodes((string) $raw);
+        $txt = preg_replace('/<script[\s\S]*?<\/script>/iu', ' ', $txt);
+        $txt = preg_replace('/<style[\s\S]*?<\/style>/iu', ' ', $txt);
+        $txt = wp_strip_all_tags($txt);
+        $txt = html_entity_decode($txt, ENT_QUOTES, 'UTF-8');
+        $txt = str_replace(["\u{200F}", "\u{200E}", "\u{FEFF}"], ' ', $txt);
+        $txt = preg_replace('/[ \t]+/u', ' ', $txt);
+        // خطوط تبلیغ/تکرارشوندهٔ قالب را حذف کن
+        $lines = preg_split('/\r\n|\r|\n/u', $txt) ?: [];
+        $keep = [];
+        foreach ($lines as $ln) {
+            $ln = trim($ln);
+            if ($ln === '') continue;
+            if (preg_match('/^(?:دانلود|پخش آنلاین|لینک|به اشتراک|نظر شما|دیدگاه|مطالب مرتبط|خبرهای مرتبط|تبلیغات|کلیک کنید|منبع:|نویسنده:|برچسب|دسته)/u', $ln)) continue;
+            if (preg_match('/https?:\/\/|www\./iu', $ln)) continue;
+            $keep[] = $ln;
+        }
+        $txt = trim(implode(' ', $keep));
+        if (mb_strlen($txt) > $limit) $txt = mb_substr($txt, 0, $limit);
+        $cache[$post_id] = $txt;
+        return $txt;
+    }
+
+    // استخراج «فکت»های قابل استفاده در کامنت — با توجه به جملهٔ پیرامون (تولد ≠ شروع کار)
+    public static function content_facts(int $post_id): array {
+        static $cache = [];
+        if (isset($cache[$post_id])) return $cache[$post_id];
+        $txt = self::post_body_text($post_id, 4000);
+        $facts = [
+            'city' => '', 'city_event' => '', 'city_origin' => '',
+            'year' => '', 'years' => [], 'birth_year' => '', 'start_year' => '',
+            'quoted' => [], 'topic' => '', 'style' => '', 'tracks' => '',
+            'source' => false, 'raw_len' => mb_strlen($txt),
+        ];
+        if ($txt === '') { $cache[$post_id] = $facts; return $facts; }
+
+        $latin = strtr($txt, ['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9']);
+        $fa = function (string $s): string { return strtr($s, ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']); };
+
+        // ——— سال‌ها با تشخیص نقش: تولد یا شروع فعالیت ———
+        $birth_re = '/تولد|متولد|به دنیا آمد|زاده|دنیا آمد/u';
+        $start_re = '/شروع|آغاز|فعالیت|کار خود|پا گرفت|تشکیل/u';
+        if (preg_match_all('/(?<!\d)(1[34]\d{2}|20[0-4]\d)(?!\d)/u', $latin, $m, PREG_OFFSET_CAPTURE)) {
+            foreach ($m[1] as $hit) {
+                $val = (int)$hit[0];
+                if (!(($val >= 1300 && $val <= 1420) || ($val >= 2015 && $val <= 2030))) continue;
+                $disp = $fa((string)$val);
+                if (!in_array($disp, $facts['years'], true)) $facts['years'][] = $disp;
+                // PREG_OFFSET_CAPTURE آفست بایتی می‌دهد → با substr (بایتی) بخوان تا پنجرهٔ جمله درست باشد
+                $off = (int) $hit[1];
+                $ctx_before = substr($latin, max(0, $off - 90), min(90, $off));
+                $ctx_after  = substr($latin, $off + strlen($hit[0]), 90);
+                if ($facts['birth_year'] === '' && preg_match($birth_re, $ctx_before . ' ' . $ctx_after)) {
+                    $facts['birth_year'] = $disp;
+                } elseif ($facts['start_year'] === '' && preg_match($start_re, $ctx_before . ' ' . $ctx_after)) {
+                    $facts['start_year'] = $disp;
+                }
+            }
+            // اگر هیچ‌کدام نقش مشخصی نداشت، اولین سال
+            if ($facts['birth_year'] === '' && $facts['start_year'] === '' && $facts['years']) {
+                $facts['start_year'] = $facts['years'][0];
+            }
+        }
+        $facts['year'] = $facts['birth_year'] !== '' ? $facts['birth_year'] : $facts['start_year'];
+
+        // ——— شهر با نقش: محل رویداد یا زادگاه/شروع ———
+        $places = ['تهران','اصفهان','شیراز','مشهد','تبریز','رشت','کرج','اهواز','کیش','قشم','بندرعباس','یزد','کرمان','همدان','ارومیه','سنندج','زنجان','ساری','بوشهر','دبی','استانبول','آنتالیا','ارمنستان','گرجستان','لس‌آنجلس','تورنتو','ونکوور','لندن','پاریس','برلین','استکهلم','آلمان','کانادا','آمریکا','استرالیا','هلند','سوئد'];
+        $event_re = '/کنسرت|اجرا|برگزار|رونمایی|جشنواره|بلیط|بلیت|رویداد/u';
+        $origin_re = '/متولد|تولد|زاده|اصالت|شروع|آغاز|به دنیا/u';
+        foreach ($places as $pl) {
+            $pos = mb_stripos($txt, $pl);
+            if ($pos === false) continue;
+            $ctx = mb_substr($txt, max(0, $pos - 45), 45 + mb_strlen($pl) + 45, 'UTF-8');
+            if (preg_match($event_re, $ctx) && $facts['city_event'] === '') $facts['city_event'] = $pl;
+            if (preg_match($origin_re, $ctx) && $facts['city_origin'] === '') $facts['city_origin'] = $pl;
+            if ($facts['city'] === '') $facts['city'] = $pl;
+            if ($facts['city_event'] !== '' && $facts['city_origin'] !== '') break;
+        }
+
+        // ——— نام‌های داخل گیومه ———
+        if (preg_match_all('/«([^»]{3,32})»/u', $txt, $m)) {
+            foreach ($m[1] as $q) {
+                $q = self::trim_sep($q);
+                if (mb_strlen($q) < 3) continue;
+                if (preg_match('/^(?:دانلود|آهنگ|آلبوم|جدید|متن|عکس)/u', $q)) continue;
+                if (!in_array($q, $facts['quoted'], true)) $facts['quoted'][] = $q;
+                if (count($facts['quoted']) >= 3) break;
+            }
+        }
+
+        // ——— تعداد ترک ———
+        if (preg_match('/(\d{1,2})\s*(?:ترک|قطعه|آهنگ)/u', $latin, $m)) {
+            $facts['tracks'] = $fa($m[1]);
+        }
+
+        // ——— موضوع ———
+        $topics = [
+            'کنسرت' => '/کنسرت|تور\b|اجرای زنده|روی صحنه|بلیط‌فروشی|بلیط فروشی/u',
+            'آلبوم' => '/آلبوم|ئی‌پی|ای‌پی|ترک جدید/u',
+            'تک‌آهنگ' => '/تک‌آهنگ|ترانهٔ جدید|ترانه جدید|قطعهٔ جدید|قطعه جدید|سینگل/u',
+            'همکاری' => '/همکاری|دو صدایی|دوئت|\bفت\b|feat/iu',
+            'مصاحبه' => '/مصاحبه|گفتگو|گفت‌وگو|اعلام کرد/u',
+            'جشنواره' => '/جشنواره|فستیوال|جایزه|برنده|نامزد/u',
+            'بازگشت' => '/بازگشت|برمی‌گردد|برمیگردد|کنسرت بعد از|دوباره روی صحنه/u',
+            'ویدیو' => '/موزیک ?ویدیو|موزیک ?ویدئو|کلیپ|تیزر/u',
+            'ازدواج' => '/ازدواج|نامزدی/u',
+            'مهاجرت' => '/مهاجرت|زندگی در خارج/u',
+            'درگذشت' => '/درگذشت|فوت|تسلیت|خاکسپاری/u',
+            'بیماری' => '/بیمار|درمان|عمل جراحی|بستری/u',
+            'انتشار' => '/منتشر|عرضه|رونمایی شد|منتشر شد|منتشر می‌شود/u',
+        ];
+        foreach ($topics as $name => $re) {
+            if (preg_match($re, $txt)) { $facts['topic'] = $name; break; }
+        }
+
+        // ——— سبک ———
+        $styles = ['پاپ','سنتی','رپ','هیپ‌هاپ','هیپ هاپ','راک','کلاسیک','تلفیقی','فولک','محلی','الکترونیک','بی‌کلام','آذری','کردی','مازندرانی','لری','بندری'];
+        foreach ($styles as $st) {
+            if (mb_stripos($txt, $st) !== false) { $facts['style'] = $st; break; }
+        }
+
+        // ——— منبع ذکر شده؟ ———
+        $facts['source'] = (bool) preg_match('/منبع|به گزارش|به نقل از|اعلام کرد|روابط عمومی|در گفت‌وگو با|در گفتگو با|پایگاه خبری|ایسنا|ایلنا|مهر|تسنیم|ایرنا|بی‌بی‌سی|bbc/iu', $txt);
+
+        $cache[$post_id] = $facts;
+        return $facts;
+    }
+
+    // کامنت‌هایی که واقعاً به همان خبر اشاره می‌کنند
+    private static function news_fact_lines(array $f): array {
+        $lines = [];
+        $city  = (string)(($f['city_event'] ?? '') !== '' ? $f['city_event'] : ($f['city'] ?? ''));
+        $year  = (string)($f['year'] ?? '');
+        $topic = (string)($f['topic'] ?? '');
+        $q     = $f['quoted'][0] ?? '';
+        $q2    = $f['quoted'][1] ?? '';
+
+        if ($city !== '') {
+            if ($topic === 'کنسرت') {
+                $lines[] = 'کنسرت ' . $city . ' رو حتماً میام';
+                $lines[] = 'بلیط کنسرت ' . $city . ' از کِی میاد؟';
+                $lines[] = 'کنسرت ' . $city . ' رو خوب زمان‌بندی کردید';
+                $lines[] = 'کاش تاریخ دقیق کنسرت ' . $city . ' رو هم می‌نوشتید';
+                $lines[] = 'برای کنسرت ' . $city . ' باید از کجا بلیط بگیریم؟';
+                $lines[] = 'کنسرت ' . $city . ' رو از دست نمی‌دم';
+                $lines[] = 'این کنسرت تو ' . $city . ' خیلی وقته منتظرش بودم';
+                $lines[] = 'امیدوارم برای کنسرت ' . $city . ' بلیط به همه برسه';
+                $lines[] = 'ساعت شروع کنسرت ' . $city . ' رو هم می‌نوشتید';
+                $lines[] = 'کنسرت ' . $city . ' با این خبر حال همه رو خوب کرد';
+            } else {
+                $lines[] = 'خبرش رو خوندم، ' . $city . ' رو که گفتید همه‌چی روشن شد';
+                $lines[] = 'پس ' . $city . ' بوده، فکر می‌کردم جای دیگه‌ست';
+                $lines[] = 'این اتفاق تو ' . $city . ' خیلی به‌جا بود';
+                $lines[] = 'برای ' . $city . ' خبر مهمی بود';
+                $lines[] = 'کاش جزئیات بیشتری از ' . $city . ' می‌نوشتید';
+            }
+        }
+        if ($q !== '') {
+            $lines[] = 'یعنی «' . $q . '» بالاخره اومد؟';
+            $lines[] = 'دربارهٔ «' . $q . '» بیشتر توضیح می‌دید؟';
+            $lines[] = '«' . $q . '» رو که نوشتید، جدی؟';
+            $lines[] = 'پس «' . $q . '» همونیه که منتظرش بودیم';
+            if ($q2 !== '') $lines[] = 'بین «' . $q . '» و «' . $q2 . '» کدوم مهم‌تره؟';
+        }
+        if ($year !== '') {
+            $lines[] = 'یعنی ' . $year . ' منتشر می‌شه؟';
+            $lines[] = $year . ' رو که نوشتید، تاریخ قطعیه؟';
+        }
+        if ($topic === 'کنسرت' && $city === '') {
+            $lines[] = 'کنسرت رو بالاخره اعلام کردید، بلیط‌فروشی کِی شروع می‌شه؟';
+            $lines[] = 'برای کنسرت باید از کجا بلیط بگیریم؟';
+            $lines[] = 'این کنسرت رو از دست نمی‌دم';
+        } elseif ($topic === 'آلبوم') {
+            $lines[] = 'آلبوم کامل کی میاد؟';
+            $lines[] = 'چند تا ترک داره آلبوم جدیدش؟';
+            $lines[] = 'خبر آلبوم جدیدش رو دنبال می‌کردم';
+        } elseif ($topic === 'همکاری') {
+            $lines[] = 'همکاریش با این خواننده جالب بود';
+            $lines[] = 'این همکاری رو انتظار نداشتم، خوب شد';
+        } elseif ($topic === 'مصاحبه') {
+            $lines[] = 'مصاحبه رو کامل بخونید، حرفاش مهم بود';
+            $lines[] = 'توی مصاحبه چیزهای تازه‌ای گفت';
+        } elseif ($topic === 'جشنواره') {
+            $lines[] = 'جایزه‌اش حقش بود';
+            $lines[] = 'انتظار داشتم بیشتر از این بگیره';
+        } elseif ($topic === 'بازگشت') {
+            $lines[] = 'بعد از این همه وقت برگشتنش خبر خوبیه';
+            $lines[] = 'بالاخره برگشت، منتظرش بودیم';
+        } elseif ($topic === 'ویدیو') {
+            $lines[] = 'کلیپش کی منتشر می‌شه؟';
+            $lines[] = 'برای کلیپ جدیدش منتظرم';
+        } elseif ($topic === 'ازدواج') {
+            $lines[] = 'خبر ازدواجش رو شنیدم، تبریک';
+            $lines[] = 'کاش تاریخش رو هم می‌نوشتید';
+        } elseif ($topic === 'مهاجرت') {
+            $lines[] = 'مهاجرتش رو نمی‌دونستم';
+            $lines[] = 'حیف شد که رفت، ولی موفق باشه';
+        } elseif ($topic === 'درگذشت') {
+            $lines[] = 'تسلیت به خانواده‌اش، خیلی غم‌انگیز بود';
+            $lines[] = 'باورم نمی‌شه، روحش شاد';
+        } elseif ($topic === 'بیماری') {
+            $lines[] = 'امیدوارم زودتر خوب بشه';
+            $lines[] = 'دعا می‌کنیم سلامتش رو به دست بیاره';
+        } elseif ($topic === 'انتشار') {
+            $lines[] = 'بالاخره منتشر شد، منتظرش بودیم';
+            $lines[] = 'خبر انتشارش رو دنبال می‌کردم';
+        }
+        return array_values(array_unique($lines));
+    }
+
+    // کامنت‌هایی که به متن همان بیوگرافی اشاره می‌کنند
+    private static function bio_fact_lines(array $f, string $artist = ''): array {
+        $lines = [];
+        $city = (string)(($f['city_origin'] ?? '') !== '' ? $f['city_origin'] : ($f['city'] ?? ''));
+        $birth = (string)($f['birth_year'] ?? '');
+        $start = (string)($f['start_year'] ?? '');
+        $q    = $f['quoted'][0] ?? '';
+
+        if ($birth !== '') {
+            $lines[] = 'تولدش ' . $birth . ' بوده، درست نوشتید؟';
+            $latin = (int) strtr($birth, ['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'۸','۹'=>'9']);
+            if ($latin >= 1300 && $latin <= 1420) {
+                $jalali_now = (int) gmdate('Y') - 621;
+                $age = (int) ($jalali_now - $latin);
+                if ($age > 15 && $age < 95) $lines[] = 'یعنی الان ' . strtr((string)$age, ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']) . ' سالشه؟';
+            }
+        }
+        if ($start !== '') {
+            $lines[] = 'از ' . $start . ' شروع کرده، سابقه‌اش کم نیست';
+            $lines[] = 'یعنی از ' . $start . ' تو کار موزیکه';
+            $lines[] = 'سال ' . $start . ' رو درست نوشتید؟ فکر می‌کردم دیرتر شروع کرده';
+        }
+        if ($city !== '') {
+            $lines[] = 'اینکه از ' . $city . ' شروع کرده رو نمی‌دونستم';
+            $lines[] = 'بخش ' . $city . ' و شروع کارش رو دو بار خوندم';
+            $lines[] = $city . ' بودنش رو تو بیوگرافی ندیده بودم';
+        }
+        if ($q !== '') {
+            $lines[] = 'پس با «' . $q . '» کارش رو شروع کرده';
+            $lines[] = '«' . $q . '» همون اولش بود؟ یادم نبود';
+            $lines[] = 'بخش «' . $q . '» رو کامل‌تر می‌نوشتید';
+        }
+        $style = (string)($f['style'] ?? '');
+        if ($style !== '') {
+            $lines[] = 'سبک ' . $style . ' رو خوب توضیح دادید';
+            $lines[] = 'اینکه تو ' . $style . ' کار می‌کنه رو نمی‌دونستم';
+            $lines[] = 'بخش ' . $style . ' کارش رو بیشتر باز می‌کردید';
+        }
+        return array_values(array_unique($lines));
+    }
+
+    // کامنت‌هایی که به خود آلبوم/ویدیوی همان پست اشاره می‌کنند (نام، تعداد ترک، شهر رونمایی)
+    private static function album_fact_lines(array $f): array {
+        $lines = [];
+        $q = $f['quoted'][0] ?? '';
+        $city = (string)(($f['city_event'] ?? '') !== '' ? $f['city_event'] : '');
+        $tracks = (string)($f['tracks'] ?? '');
+        if ($q !== '') {
+            $lines[] = '«' . $q . '» رو کامل گوش دادم، ارزشش رو داره';
+            $lines[] = 'یعنی اسم آلبوم «' . $q . '»ه؟ اسم خوبی انتخاب کرده';
+            $lines[] = '«' . $q . '» رو از کجا شروع کنم بهتره؟';
+        }
+        if ($tracks !== '') {
+            $lines[] = $tracks . ' ترک داره؟ پس باید کامل گوش بدم';
+            $lines[] = $tracks . ' تا ترک برای یه آلبوم کم نیست';
+        }
+        if ($city !== '') {
+            $lines[] = 'رونمایی تو ' . $city . ' کی برگزار می‌شه؟';
+            $lines[] = $city . ' بود؟ کاش بیشتر توضیح می‌دادید';
+        }
+        return array_values(array_unique($lines));
     }
 
     // ساخت جملهٔ «تعریف از خواننده» یا «اشاره به آهنگ» یا «تیکهٔ ترانه»
@@ -867,7 +1173,8 @@ class CommentGuardian {
         if (mb_strpos($s, 'آهنگ') !== false && mt_rand(1,100) <= 55) {
             return str_replace('آهنگ', 'اهنگ', $s);
         }
-        if (mb_strpos($s, '‌') !== false && mt_rand(1,100) <= 40) {
+        // نیم‌فاصلهٔ داخل نام/عنوان داخل گیومه دست‌نخورده بماند («شب‌های بی‌ستاره»)
+        if (mb_strpos($s, '‌') !== false && !preg_match('/«[^»]{2,}»/u', $s) && mt_rand(1,100) <= 40) {
             return str_replace('‌', '', $s);
         }
         if (mt_rand(1,100) <= 22) {
@@ -907,6 +1214,16 @@ class CommentGuardian {
         if (empty($settings['api_key'])) return null;
         // نوع محتوا اول مشخص شود — بیوگرافی/خبر هرگز لحن آهنگ نمی‌گیرد
         $ctype_ai = self::detect_content_type($post_id, $clean);
+        // خبر/بیوگرافی: خودِ متن خوانده شود تا کامنت دربارهٔ همان خبر باشد نه یک جملهٔ کلی
+        $facts_ai = [];
+        $body_excerpt = '';
+        if ($post_id && in_array($ctype_ai, ['bio','news'], true)) {
+            $facts_ai = self::content_facts($post_id);
+            $body = self::post_body_text($post_id, 900);
+            if ($body !== '') {
+                $body_excerpt = (mb_strlen($body) > 420) ? mb_substr($body, 0, 420) : $body;
+            }
+        }
         // لحن بر اساس تحلیل رز موزیک: کوتاه محاوره‌ای، نه رسمی (2-7 کلمه ایده‌آل 60%) — با توجه به تازگی پست
         $is_new_ai = ($post_age_days !== null && $post_age_days < 60);
         $roll = mt_rand(1,100);
@@ -986,9 +1303,13 @@ class CommentGuardian {
         // اسم آهنگ به مدل داده نمی‌شود مگر تنظیمش روشن باشد — مدل نباید اسم را در کامنت تکرار کند
         $title_for_prompt = self::mention_title_enabled() ? $clean : '';
         if ($ctype_ai === 'bio') {
-            $subject = 'برای صفحهٔ بیوگرافی "'.$clean.'" دربارهٔ "'.$artist.'"';
+            $subject = $body_excerpt !== ''
+                ? 'برای صفحهٔ بیوگرافی "'.$clean.'" دربارهٔ "'.$artist.'". متن بیوگرافی: "'.$body_excerpt.'"'
+                : 'برای صفحهٔ بیوگرافی "'.$clean.'" دربارهٔ "'.$artist.'"';
         } elseif ($ctype_ai === 'news') {
-            $subject = 'برای خبر "'.$clean.'" دربارهٔ "'.$artist.'"';
+            $subject = $body_excerpt !== ''
+                ? 'برای این خبر دربارهٔ "'.$artist.'": "'.$body_excerpt.'"'
+                : 'برای خبر "'.$clean.'" دربارهٔ "'.$artist.'"';
         } elseif ($ctype_ai === 'album') {
             $subject = 'برای آلبوم "'.$clean.'" از "'.$artist.'"';
         } elseif ($title_for_prompt !== '') {
@@ -999,7 +1320,7 @@ class CommentGuardian {
         $lyric_rule = ($ctype_ai === 'bio' || $ctype_ai === 'news')
             ? '4) دربارهٔ آهنگ، ریتم یا ملودی حرف نزن؛ اگر اطلاعات متن ناقص است، طبیعی است که منبع یا تکمیل آن را بخواهی'
             : '4) هرگز شعر جعلی نساز؛ اگر تیکهٔ ترانه را نمی‌دانی، فقط تماتیک اشاره کن («اون تیکه که از دلتنگی میگه»)';
-        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. ".$subject." یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — $rel_rule — قوانین: 1) فارسی محاوره‌ای 2-12 کلمه ترجیحا، حداکثر 18 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) ".$lyric_rule." 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.".($title_for_prompt === '' ? ' 6) اسم آهنگ را در کامنت ننویس؛ کاربری که در صفحهٔ همین آهنگ است اسمش را تکرار نمی‌کند.' : '').$known_rule;
+        $prompt = "تو یک کاربر سایت رز موزیک/موزیکس‌فا هستی. ".$subject." یک کامنت کوتاه فارسی محاوره‌ای بنویس. $tone — $examples — $rel_rule — قوانین: 1) فارسی محاوره‌ای 2-12 کلمه ترجیحا، حداکثر 18 کلمه 2) گاهی غلط ریز مثل اهنگ بجای آهنگ، کشیده مثل خیلییییی، بدون نگارش رسمی کامل 3) گاهی ایموجی ساده ❤️😍👌 ولی نه همیشه (20% مواقع) ".$lyric_rule." 5) بدون هشتگ/انگلیسی/گیومه/دانلود — فقط متن کامنت.".($title_for_prompt === '' ? ' 6) اسم آهنگ را در کامنت ننویس؛ کاربری که در صفحهٔ همین آهنگ است اسمش را تکرار نمی‌کند.' : '').(in_array($ctype_ai, ['bio','news'], true) ? ' 7) حتماً به یک جزئیات مشخص از همین متن اشاره کن (شهر، سال، نام آلبوم/آهنگ داخل گیومه، کنسرت، همکاری). جمله‌های کلی و بی‌ربط مثل «منبع خبر کجاست؟» یا «امیدوارم شایعه باشه» را هرگز ننویس — منبع در همین متن ذکر شده است.' : '').$known_rule;
         $payload = [
             'model' => $settings['model'] ?: 'gpt-4o-mini',
             'messages' => [
@@ -1025,6 +1346,20 @@ class CommentGuardian {
         $content = preg_replace('/#\S+/u', '', $content);
         $content = trim($content);
         if (!$content || mb_strlen($content) < 2 || mb_strlen($content) > 180) return null;
+        // خبر/بیوگرافی: اگر به هیچ جزئیات همین متن اشاره نکرد، رد شود تا نسخهٔ مبتنی بر متن ساخته شود
+        if (!empty($facts_ai) && !empty($facts_ai['raw_len'])) {
+            $tokens = [];
+            foreach ([$facts_ai['city'] ?? '', $facts_ai['style'] ?? '', $facts_ai['topic'] ?? ''] as $tok) {
+                if (is_string($tok) && mb_strlen($tok) >= 3) $tokens[] = $tok;
+            }
+            foreach (($facts_ai['years'] ?? []) as $y) $tokens[] = (string)$y;
+            foreach (($facts_ai['quoted'] ?? []) as $q) $tokens[] = (string)$q;
+            $hit = false;
+            foreach ($tokens as $tok) {
+                if ($tok !== '' && mb_stripos($content, $tok) !== false) { $hit = true; break; }
+            }
+            if (!$hit) return null;
+        }
         // هیچ لینک/تبلیغی در کامنت نباشد (ریسک اسپم برای سئو)
         if (preg_match('/https?:|www\.|\.(?:com|ir|net|org)\b|\bدانلود\b|\bلینک\b|\bhref\b/iu', $content)) return null;
         // اسم آهنگ در خروجی مدل هم کنترل می‌شود (پرامپت کافی نیست)
@@ -1158,7 +1493,16 @@ private static function fallback_text(int $weight, int $views, string $title = '
 
         if ($ctype !== 'song') {
             // بیوگرافی/خبر/آلبوم/ویدیو: از استخر مخصوص خودش، غالباً سوالی و بی‌طرف
-            $tpool = self::typed_pool($ctype, $recog, $is_premium, $is_new_post);
+            $tpool = self::typed_pool($ctype, $recog, $is_premium, $is_new_post, (int)$post_id, (string)$artist);
+            // اگر متن پست فکت دارد، سهم جمله‌های عمومی کم شود تا کامنت دربارهٔ همان متن باشد
+            $facts_have = false;
+            if ($post_id) {
+                $fx = self::content_facts($post_id);
+                $facts_have = !empty($fx['raw_len']) && (
+                    ($fx['city'] ?? '') !== '' || ($fx['year'] ?? '') !== '' || ($fx['topic'] ?? '') !== ''
+                    || ($fx['style'] ?? '') !== '' || !empty($fx['quoted'])
+                );
+            }
             $roll2 = mt_rand(1,100);
             if ($ctype === 'bio' || $ctype === 'news') {
                 // این نوع محتوا سیل تعریف ندارد و هیچ‌وقت جملهٔ موزیکی نمی‌گیرد
@@ -1167,11 +1511,11 @@ private static function fallback_text(int $weight, int $views, string $title = '
                        'خیلی مفید بود', 'خسته نباشید', 'مطلب خوبی بود', 'به کارم اومد', 'مرسی از زحمتتون']
                     : ['ممنون از خبر', 'خبر خوبی بود', 'مرسی از اطلاع‌رسانی', 'دمتون گرم', 'بالاخره',
                        'خبر داغ بود', 'منتظر ادامه‌شیم', 'خوب بود', 'ممنون که گفتید', 'دستتون درد نکنه'];
-                if ($roll2 <= 22) $pool = $short_pos;
+                if ($roll2 <= ($facts_have ? 4 : 22)) $pool = $short_pos;
                 else $pool = $tpool;
             } else {
                 // آلبوم/ویدیو: تعریف کوتاه عمومی + استخر مخصوص خودش (بدون «آهنگش محشره» نامربوط)
-                if ($roll2 <= 18) $pool = $ultra_short;
+                if ($roll2 <= ($facts_have ? 3 : 12)) $pool = $ultra_short;
                 else $pool = $tpool;
             }
         } elseif ($is_premium_effective) {
