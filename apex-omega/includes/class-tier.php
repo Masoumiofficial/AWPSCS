@@ -237,15 +237,22 @@ class TierManager {
         }
         $avg = min(max($avg, (float)$tier['avg_min']), (float)$tier['avg_max']);
         $avg = min($avg, $best);
-        if ($is_premium) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.92);
-        elseif ($is_hit) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.85);
+        // سقف سئو: میانگین ۵.۰ روی صدها آهنگ = امتیاز ساختگی
+        $seo_cap = function_exists('apex_omega_max_avg') ? apex_omega_max_avg() : 4.8;
+        $avg = min($avg, $seo_cap);
+        if ($is_premium) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.80);
+        elseif ($is_hit) $avg = max($avg, (float)$tier['avg_min'] + $avgRange * 0.75);
+        $avg = min($avg, $seo_cap);
         $avg = round($avg, 1);
+        // بعد از رُند هم از سقف عبور نکند (round(4.85,1) = 4.9)
+        if ($avg > $seo_cap) $avg = floor($seo_cap * 10) / 10;
 
         // همبستگی بازدید↔امتیاز (نامحسوس)
         if ($weight === null) {
             $views_factor = min(0.15, max(0, ($views - 10000) / 10000000 * 0.12));
             $avg = min((float)$tier['avg_max'], max((float)$tier['avg_min'], $avg + $views_factor));
             $avg = round($avg, 1);
+            if ($avg > $seo_cap) $avg = floor($seo_cap * 10) / 10;
         }
         $ratings = $best > 0 ? round($avg * $casts / $best * 5, 2) : 0;
 

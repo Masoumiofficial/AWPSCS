@@ -29,6 +29,7 @@ class CommentGuardian {
             'cooldown_hours' => 6, // 2.0 hourly: 6h تعادل طبیعی (was 24h) — hourly rhythm
             'high_views_auto' => true, // 2.1.0: کامنت خودکار برای آهنگ‌های پرطرفدار بدون دخالت انسانی
             'high_views_threshold' => 100000, // آستانه پرطرفدار (100k)
+            'close_after_batch' => true, // بستن کامنت بعد از پایان کار (جلوگیری از اسپم لینک روی صفحات قدیمی)
         ];
         $saved = get_option(self::OPTION, []);
         if (!is_array($saved)) $saved = [];
@@ -42,6 +43,7 @@ class CommentGuardian {
         $out['batch'] = max(0, min(500, (int)$out['batch'])); // 0=همه، الگوی روزانه
         $out['only_recent_days'] = max(0, min(365, (int)$out['only_recent_days']));
         $out['cooldown_hours'] = max(1, min(168, (int)$out['cooldown_hours']));
+        $out['close_after_batch'] = !empty($out['close_after_batch']);
         $out['high_views_auto'] = !empty($out['high_views_auto']);
         $out['high_views_threshold'] = max(10000, min(1000000, (int)$out['high_views_threshold']));
         return $out;
@@ -61,6 +63,8 @@ class CommentGuardian {
             'cooldown_hours' => isset($data['cooldown_hours']) ? (int)$data['cooldown_hours'] : $cur['cooldown_hours'],
             'high_views_auto' => isset($data['high_views_auto']) ? !empty($data['high_views_auto']) : $cur['high_views_auto'],
             'high_views_threshold' => isset($data['high_views_threshold']) ? (int)$data['high_views_threshold'] : $cur['high_views_threshold'],
+            // null یعنی «از این فرم ارسال نشده» → مقدار قبلی حفظ شود
+            'close_after_batch' => isset($data['close_after_batch']) ? !empty($data['close_after_batch']) : $cur['close_after_batch'],
         ];
         update_option(self::OPTION, $new, false);
         Scheduler::ensure_cron();
@@ -781,7 +785,8 @@ class CommentGuardian {
         if (!is_array($list)) $list = [];
         $hash = md5(trim($txt));
         array_unshift($list, $hash);
-        $list = array_slice(array_unique($list), 0, 200);
+        // 1000 متن اخیر (قبلاً ۲۰۰) — تنوع بیشتر، تکرار کمتر
+        $list = array_slice(array_unique($list), 0, 1000);
         update_option($key, $list, false);
     }
 
@@ -1345,9 +1350,7 @@ private static function fallback_text(int $weight, int $views, string $title = '
             $need = max(1, min(14, $need));
 
             // اگر گفت‌وگو بسته باشد، باز کن — وگرنه کامنت تو دیتابیس هست ولی قالب نشان نمی‌دهد
-            if (get_post_field('comment_status', $pid) !== 'open') {
-                wp_update_post(['ID' => $pid, 'comment_status' => 'open']);
-            }
+            apex_omega_ensure_comments_open((int)$pid);
             // خواننده برای AI
             $artist_name = self::get_primary_artist($pid);
             if (!$artist_name) $artist_name = 'هنرمند ناشناس';
@@ -1488,10 +1491,8 @@ private static function fallback_text(int $weight, int $views, string $title = '
         $artist_name = self::get_primary_artist($post_id);
         if (!$artist_name) $artist_name = 'هنرمند ناشناس';
         $is_premium = \ApexOmega\Core\ArtistManager::is_premium_selected($post_id);
-        // Open comment_status if closed
-        if (get_post_field('comment_status', $post_id) !== 'open') {
-            wp_update_post(['ID' => $post_id, 'comment_status' => 'open']);
-        }
+        // باز کردن کامنت بدون تغییر post_modified (جلوگیری از churn سایتمپ)
+        apex_omega_ensure_comments_open((int)$post_id);
         $exec = apex_omega_generate_uuid();
         $inserted = 0;
         for ($i=0; $i < $count; $i++) {
@@ -1598,10 +1599,8 @@ private static function fallback_text(int $weight, int $views, string $title = '
             $artist_name = self::get_primary_artist($pid);
             if (!$artist_name) $artist_name = 'هنرمند ناشناس';
             $is_premium = $is_premium_opt !== null ? (bool)$is_premium_opt : \ApexOmega\Core\ArtistManager::is_premium_selected($pid);
-            // comment_status باز
-            if (get_post_field('comment_status', $pid) !== 'open') {
-                wp_update_post(['ID' => $pid, 'comment_status' => 'open']);
-            }
+            // comment_status باز (بدون تغییر post_modified)
+            apex_omega_ensure_comments_open((int)$pid);
             $inserted = 0;
             for ($i=0; $i < $need; $i++) {
                 if ($cur + $inserted >= $max_per_post) break;

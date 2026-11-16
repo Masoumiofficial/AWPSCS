@@ -716,6 +716,7 @@ class Ajax {
             'max_comments' => isset($_POST['max_comments']) ? (int)$_POST['max_comments'] : null,
             'daily_growth' => isset($_POST['daily_growth']) ? (int)$_POST['daily_growth'] : null,
             'max_per_post' => isset($_POST['max_per_post']) ? (int)$_POST['max_per_post'] : null,
+            'close_after_batch' => isset($_POST['close_after_batch']) ? (int)$_POST['close_after_batch'] : null,
             'batch' => isset($_POST['batch']) ? (int)$_POST['batch'] : null,
             'only_recent_days' => isset($_POST['only_recent_days']) ? (int)$_POST['only_recent_days'] : null,
         ];

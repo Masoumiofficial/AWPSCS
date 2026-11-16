@@ -205,6 +205,73 @@ if (!function_exists('apex_omega_trend_message')) {
     }
 }
 
+
+/**
+ * سقف میانگین امتیاز — برای کاهش ریسک «اسکیمای امتیاز اسپم» در گوگل
+ * میانگین کامل ۵.۰ روی صدها آهنگ، الگوی کلاسیک امتیاز ساختگی است.
+ */
+if (!function_exists('apex_omega_max_avg')) {
+    function apex_omega_max_avg(): float {
+        $cap = (float) get_option('apex_omega_max_avg', 4.8);
+        if ($cap <= 0 || $cap > 5) $cap = 4.8;
+        $cap = (float) apply_filters('apex_omega_max_avg', $cap);
+        return max(3.0, min(5.0, $cap));
+    }
+}
+
+/**
+ * باز کردن کامنت بدون دست‌زدن به post_modified (جلوگیری از churn سایتمپ و «آپدیت امروز» جعلی)
+ * اگر پست از قبل باز بود false برمی‌گرداند؛ در غیر این صورت true و پست برای بستن مجدد ثبت می‌شود.
+ */
+if (!function_exists('apex_omega_ensure_comments_open')) {
+    function apex_omega_ensure_comments_open(int $post_id): bool {
+        if (!$post_id) return false;
+        if (get_post_field('comment_status', $post_id) === 'open') return false;
+        // اگر همین حالا خودمان بازش کرده‌ایم، دوباره ثبت نکن
+        if (!empty($GLOBALS['apex_omega_opened_posts'][$post_id])) return false;
+        global $wpdb;
+        $wpdb->update($wpdb->posts, ['comment_status' => 'open'], ['ID' => $post_id]);
+        clean_post_cache($post_id);
+        if (!isset($GLOBALS['apex_omega_opened_posts']) || !is_array($GLOBALS['apex_omega_opened_posts'])) {
+            $GLOBALS['apex_omega_opened_posts'] = [];
+        }
+        $GLOBALS['apex_omega_opened_posts'][$post_id] = true;
+        static $registered = false;
+        if (!$registered) {
+            $registered = true;
+            // در پایان ریکوئست (ajax/cron) پست‌ها دوباره بسته می‌شوند
+            add_action('shutdown', 'apex_omega_close_opened_comments', 1);
+        }
+        return true;
+    }
+}
+
+if (!function_exists('apex_omega_close_after_batch_enabled')) {
+    function apex_omega_close_after_batch_enabled(): bool {
+        $s = get_option('apex_omega_commentor', []);
+        if (!is_array($s)) return true;
+        if (!array_key_exists('close_after_batch', $s)) return true; // پیش‌فرض: بستن (امن برای سئو)
+        return !empty($s['close_after_batch']);
+    }
+}
+
+/** بستن کامنت پست‌هایی که خود افزونه باز کرده بود (بدون تغییر post_modified) */
+if (!function_exists('apex_omega_close_opened_comments')) {
+    function apex_omega_close_opened_comments(): void {
+        $list = $GLOBALS['apex_omega_opened_posts'] ?? [];
+        if (!is_array($list) || !$list) return;
+        $GLOBALS['apex_omega_opened_posts'] = [];
+        if (!apex_omega_close_after_batch_enabled()) return;
+        global $wpdb;
+        foreach (array_keys($list) as $pid) {
+            $pid = (int) $pid;
+            if ($pid <= 0) continue;
+            $wpdb->update($wpdb->posts, ['comment_status' => 'closed'], ['ID' => $pid]);
+            clean_post_cache($pid);
+        }
+    }
+}
+
 if (!function_exists('apex_omega_lock_ttl')) {
     function apex_omega_lock_ttl(int $count, int $min = 30, int $max = 600, int $per_item = 2): int {
         $ttl = $count * $per_item + 15;
@@ -242,6 +309,7 @@ if (!function_exists('apex_omega_guard_views')) {
 }
 if (!function_exists('apex_omega_guard_stats')) {
     function apex_omega_guard_stats(array $old_stats, array $new_vals, bool $allow_decrease = false, ?int $post_id = null): array {
+        $new_vals = apex_omega_apply_avg_cap($new_vals);
         if ($allow_decrease || !apex_omega_never_decrease_enabled()) return $new_vals;
         if (isset($new_vals['casts']) && $new_vals['casts'] < (int)($old_stats['casts'] ?? 0)) $new_vals['casts'] = (int)$old_stats['casts'];
         if (isset($new_vals['avg']) && $new_vals['avg'] < (float)($old_stats['avg'] ?? 0)) $new_vals['avg'] = (float)$old_stats['avg'];
@@ -252,7 +320,23 @@ if (!function_exists('apex_omega_guard_stats')) {
             $inc = max(1200, $inc);
             $new_vals['views'] = (int)$old_stats['views'] + $inc;
         }
-        return $new_vals;
+        return apex_omega_apply_avg_cap($new_vals);
+    }
+}
+
+// سقف امتیاز — این تنها استثنای «هرگز کم نشود» است و فقط برای avg بالاتر از سقف اعمال می‌شود
+if (!function_exists('apex_omega_apply_avg_cap')) {
+    function apex_omega_apply_avg_cap(array $vals): array {
+        if (!isset($vals['avg'])) return $vals;
+        $cap = apex_omega_max_avg();
+        $avg = (float) $vals['avg'];
+        if ($avg <= $cap) return $vals;
+        $ratio = $avg > 0 ? ($cap / $avg) : 1;
+        $vals['avg'] = $cap;
+        if (isset($vals['ratings']) && (float) $vals['ratings'] > 0) {
+            $vals['ratings'] = round((float) $vals['ratings'] * $ratio, 2);
+        }
+        return $vals;
     }
 }
 

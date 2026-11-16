@@ -1094,7 +1094,7 @@ class ArtistManager {
                         }
                         $text_tmp = \ApexOmega\Core\CommentGuardian::generate_text($pid, $artist_tmp ?: 'هنرمند', $title_tmp, (int)$w, (int)$vals['views'], true);
                         if ($text_tmp) {
-                            if (get_post_field('comment_status', $pid) !== 'open') wp_update_post(['ID'=>$pid,'comment_status'=>'open']);
+                            apex_omega_ensure_comments_open((int)$pid);
                             $comment_time_gmt_tmp = gmdate('Y-m-d H:i:s', time() - mt_rand(0, 300));
                             wp_insert_comment([
                                 'comment_post_ID'=>$pid,
@@ -1315,7 +1315,7 @@ class ArtistManager {
                     if ($cur_comments < $target_comments) {
                         $need = $target_comments - $cur_comments;
                         $need = max(1, min($need, 14)); // سقف هر تنوع تا 14 کامنت برای جلوگیری از سنگینی
-                        if (get_post_field('comment_status', $pid) !== 'open') wp_update_post(['ID'=>$pid,'comment_status'=>'open']);
+                        apex_omega_ensure_comments_open((int)$pid);
                         $artist_name_for_c = $term->name ?? '';
                         $title_for_c = get_the_title($pid) ?: '';
                         $inserted_c = 0;
@@ -1665,7 +1665,7 @@ class ArtistManager {
                 $target_comments=min($target_comments,$max_per_post);
                 if ($cur_comments < $target_comments) {
                     $need=$target_comments - $cur_comments; $need=max(1,min($need,14));
-                    if (get_post_field('comment_status',$pid) !== 'open') wp_update_post(['ID'=>$pid,'comment_status'=>'open']);
+                    apex_omega_ensure_comments_open((int)$pid);
                     // در حالت ترند، نام خواننده باید از خود همان آهنگ بیاید (نه اسم دسته)
                     $artist_name_for_c = !empty($filters['trend_mode'])
                         ? \ApexOmega\Core\CommentGuardian::get_primary_artist((int)$pid)
